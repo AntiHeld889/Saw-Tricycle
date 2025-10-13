@@ -180,9 +180,9 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
   <style>
     :root { color-scheme: dark; }
     * { box-sizing: border-box; }
-    body { font-family: 'Segoe UI', sans-serif; background: #0d0d0d; color: #f2f2f2; margin: 0; padding: 1.5rem; display: flex; justify-content: center; }
-    .card { width: 100%; max-width: 760px; background: #151515; border-radius: 16px; padding: 1.6rem; box-shadow: 0 0 40px rgba(0,0,0,0.45); }
-    .joystick-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1.5rem; margin-top: 1.5rem; }
+    body { font-family: 'Segoe UI', sans-serif; background: #0d0d0d; color: #f2f2f2; margin: 0; padding: 1.5rem; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
+    .card { width: 100%; max-width: 860px; background: #151515; border-radius: 16px; padding: 1.6rem; box-shadow: 0 0 40px rgba(0,0,0,0.45); }
+    .joystick-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1.5rem; margin-top: 1.5rem; align-items: start; }
     .joystick-card { background: rgba(255,255,255,0.04); border-radius: 14px; padding: 1.2rem; display: flex; flex-direction: column; gap: 1rem; }
     .joystick-card h2 { margin: 0; font-size: 1.1rem; font-weight: 600; }
     .joystick { position: relative; border-radius: 18px; border: 2px solid rgba(255,255,255,0.08); background: radial-gradient(circle at center, rgba(229,9,20,0.28) 0%, rgba(229,9,20,0.08) 60%, rgba(229,9,20,0.0) 100%); padding-top: 100%; touch-action: none; user-select: none; transition: border-color 0.2s ease; }
@@ -211,6 +211,16 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
     @media (max-width: 540px) {
       body { padding: 1rem; }
       .card { padding: 1.3rem; }
+    }
+    @media (orientation: landscape) and (max-height: 520px) {
+      body { padding: 0.8rem; align-items: stretch; }
+      .card { padding: 1.1rem; display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 1rem; }
+      .joystick-grid { margin-top: 0; grid-template-columns: repeat(3, minmax(140px, 1fr)); gap: 1rem; }
+      .joystick-card { padding: 1rem; gap: 0.8rem; }
+      .joystick { padding-top: 72%; }
+      .controls { flex-direction: column; align-items: stretch; justify-content: flex-start; }
+      .controls button, .toggle { width: 100%; }
+      .card footer { grid-column: 1 / -1; margin-top: 1rem; }
     }
   </style>
 </head>
