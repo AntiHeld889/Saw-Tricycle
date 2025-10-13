@@ -136,6 +136,9 @@ RATE_UNITS_S         = 3.0
 
 MOTOR_LIMIT_FWD      = 0.60
 MOTOR_LIMIT_REV      = 0.50
+MOTOR_LIMIT_MIN      = 0.0
+MOTOR_LIMIT_MAX      = 1.0
+MOTOR_LIMIT_STEP     = 0.01
 MOTOR_SAFE_START_S   = 1.0
 MOTOR_ARM_NEUTRAL_MS = 500
 MOTOR_NEUTRAL_THRESH = 0.08
@@ -158,6 +161,7 @@ PRINT_EVERY_S        = 0.3
 # =========================
 #   IMPLEMENTIERUNG
 # =========================
+import math
 import os
 import sys
 import time
@@ -181,6 +185,31 @@ def _default_state_dir():
 
 STATE_DIR = _default_state_dir()
 AUDIO_SELECTION_FILE = STATE_DIR / "audio-selection.json"
+
+
+def _load_persisted_state():
+    try:
+        with AUDIO_SELECTION_FILE.open("r", encoding="utf-8") as fh:
+            data = json.load(fh)
+    except FileNotFoundError:
+        return {}
+    except Exception:
+        return {}
+    if isinstance(data, dict):
+        return data
+    return {}
+
+
+def _persist_state(payload):
+    try:
+        STATE_DIR.mkdir(parents=True, exist_ok=True)
+        tmp_path = AUDIO_SELECTION_FILE.with_suffix(".tmp")
+        with tmp_path.open("w", encoding="utf-8") as fh:
+            json.dump(payload, fh)
+        os.replace(tmp_path, AUDIO_SELECTION_FILE)
+        return True
+    except Exception:
+        return False
 
 
 def _normalize_audio_output_id(audio_id):
@@ -271,12 +300,8 @@ def load_persisted_audio_state(default_id=DEFAULT_AUDIO_OUTPUT_ID):
         "audio_device": default_audio,
         "volumes": {},
     }
-    try:
-        with AUDIO_SELECTION_FILE.open("r", encoding="utf-8") as fh:
-            data = json.load(fh)
-    except FileNotFoundError:
-        return state
-    except Exception:
+    data = _load_persisted_state()
+    if not data:
         return state
 
     audio_id = _normalize_audio_output_id(data.get("audio_device"))
@@ -342,19 +367,10 @@ def persist_audio_state(*, audio_device=None, volume_updates=None):
     if not changed:
         return False
 
-    payload = {
-        "audio_device": state["audio_device"],
-        "audio_volume": state["volumes"],
-    }
-    try:
-        STATE_DIR.mkdir(parents=True, exist_ok=True)
-        tmp_path = AUDIO_SELECTION_FILE.with_suffix(".tmp")
-        with tmp_path.open("w", encoding="utf-8") as fh:
-            json.dump(payload, fh)
-        os.replace(tmp_path, AUDIO_SELECTION_FILE)
-        return True
-    except Exception:
-        return False
+    payload = _load_persisted_state()
+    payload["audio_device"] = state["audio_device"]
+    payload["audio_volume"] = state["volumes"]
+    return _persist_state(payload)
 
 
 def persist_audio_output(audio_id):
@@ -376,6 +392,69 @@ def sanitize_audio_volume(audio_id, value):
     return _sanitize_volume_value(value, profile)
 
 
+def sanitize_motor_limit(value, *, step=MOTOR_LIMIT_STEP):
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(numeric):
+        return None
+    numeric = max(MOTOR_LIMIT_MIN, min(MOTOR_LIMIT_MAX, numeric))
+    if step and step > 0:
+        steps = round((numeric - MOTOR_LIMIT_MIN) / step)
+        numeric = MOTOR_LIMIT_MIN + steps * step
+    numeric = max(MOTOR_LIMIT_MIN, min(MOTOR_LIMIT_MAX, numeric))
+    return round(numeric, 4)
+
+
+def load_persisted_motor_limits(
+    default_forward=MOTOR_LIMIT_FWD, default_reverse=MOTOR_LIMIT_REV
+):
+    limits = {
+        "forward": sanitize_motor_limit(default_forward, step=None)
+        or MOTOR_LIMIT_FWD,
+        "reverse": sanitize_motor_limit(default_reverse, step=None)
+        or MOTOR_LIMIT_REV,
+    }
+    data = _load_persisted_state()
+    raw_limits = data.get("motor_limits") if isinstance(data, dict) else None
+    if isinstance(raw_limits, dict):
+        forward = sanitize_motor_limit(raw_limits.get("forward"))
+        if forward is not None:
+            limits["forward"] = forward
+        reverse = sanitize_motor_limit(raw_limits.get("reverse"))
+        if reverse is not None:
+            limits["reverse"] = reverse
+    return limits
+
+
+def persist_motor_limits(*, forward=None, reverse=None):
+    current = load_persisted_motor_limits()
+    changed = False
+
+    if forward is not None:
+        sanitized_forward = sanitize_motor_limit(forward)
+        if sanitized_forward is not None and sanitized_forward != current["forward"]:
+            current["forward"] = sanitized_forward
+            changed = True
+
+    if reverse is not None:
+        sanitized_reverse = sanitize_motor_limit(reverse)
+        if sanitized_reverse is not None and sanitized_reverse != current["reverse"]:
+            current["reverse"] = sanitized_reverse
+            changed = True
+
+    if not changed:
+        return False
+
+    payload = _load_persisted_state()
+    payload["motor_limits"] = {
+        "forward": current["forward"],
+        "reverse": current["reverse"],
+    }
+    return _persist_state(payload)
+
+
 # === Laufzeit-Handle für exklusives MP3-Playback ===
 CURRENT_PLAYER_PROC = None
 CURRENT_PLAYER_PATH = None
@@ -385,7 +464,7 @@ CURRENT_PLAYER_PATH = None
 class WebControlState:
     """Thread-sicherer Zustand für Web-Eingaben."""
 
-    def __init__(self, *, initial_audio_device=None, initial_volume_map=None):
+    def __init__(self, *, initial_audio_device=None, initial_volume_map=None, initial_motor_limits=None):
         self._lock = threading.Lock()
         self._override = False
         self._motor = 0.0
@@ -403,6 +482,15 @@ class WebControlState:
                 key_str = str(key)
                 self._audio_volumes[key_str] = sanitized
         self._ensure_volume_defaults_locked(self._audio_device)
+        self._motor_limit_forward = MOTOR_LIMIT_FWD
+        self._motor_limit_reverse = MOTOR_LIMIT_REV
+        if isinstance(initial_motor_limits, dict):
+            forward = sanitize_motor_limit(initial_motor_limits.get("forward"))
+            if forward is not None:
+                self._motor_limit_forward = forward
+            reverse = sanitize_motor_limit(initial_motor_limits.get("reverse"))
+            if reverse is not None:
+                self._motor_limit_reverse = reverse
 
     def _ensure_volume_defaults_locked(self, audio_id):
         profile = get_audio_volume_profile(audio_id)
@@ -445,11 +533,22 @@ class WebControlState:
             "step": profile["step"],
         }
 
-    def update(self, *, override=None, motor=None, steering=None, head=None, audio_device=None, audio_volume=None):
+    def update(
+        self,
+        *,
+        override=None,
+        motor=None,
+        steering=None,
+        head=None,
+        audio_device=None,
+        audio_volume=None,
+        motor_limits=None,
+    ):
         new_audio_id = None
         persist_audio_id = None
         volume_updates = {}
         apply_volume_change = None
+        motor_limits_to_persist = None
         with self._lock:
             if override is not None:
                 self._override = bool(override)
@@ -490,12 +589,29 @@ class WebControlState:
                             self._audio_volumes[target_id] = volume_value
                             volume_updates[target_id] = volume_value
                             apply_volume_change = (target_id, volume_value)
+            if motor_limits is not None and isinstance(motor_limits, dict):
+                changed_limits = False
+                forward_value = sanitize_motor_limit(motor_limits.get("forward"))
+                if forward_value is not None and forward_value != self._motor_limit_forward:
+                    self._motor_limit_forward = forward_value
+                    changed_limits = True
+                reverse_value = sanitize_motor_limit(motor_limits.get("reverse"))
+                if reverse_value is not None and reverse_value != self._motor_limit_reverse:
+                    self._motor_limit_reverse = reverse_value
+                    changed_limits = True
+                if changed_limits:
+                    motor_limits_to_persist = {
+                        "forward": self._motor_limit_forward,
+                        "reverse": self._motor_limit_reverse,
+                    }
             self._last_update = time.time()
             snapshot = self.snapshot_locked()
         if persist_audio_id is not None:
             persist_audio_output(persist_audio_id)
         if volume_updates:
             persist_audio_volumes(volume_updates)
+        if motor_limits_to_persist is not None:
+            persist_motor_limits(**motor_limits_to_persist)
         if new_audio_id is not None:
             apply_audio_output(new_audio_id)
         if apply_volume_change is not None:
@@ -512,6 +628,13 @@ class WebControlState:
             "motor": self._motor,
             "steering": self._steering,
             "head": self._head,
+            "motor_limits": {
+                "forward": self._motor_limit_forward,
+                "reverse": self._motor_limit_reverse,
+                "min": MOTOR_LIMIT_MIN,
+                "max": MOTOR_LIMIT_MAX,
+                "step": MOTOR_LIMIT_STEP,
+            },
             "audio_device": self._audio_device,
             "audio_outputs": [
                 {"id": cfg["id"], "label": cfg["label"]}
@@ -1226,6 +1349,11 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
       flex-direction: column;
       gap: 0.55rem;
     }
+    .motor-limits {
+      display: flex;
+      flex-direction: column;
+      gap: 0.55rem;
+    }
     .slider-row {
       display: flex;
       align-items: center;
@@ -1239,6 +1367,11 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
       min-width: 3ch;
       text-align: right;
       font-variant-numeric: tabular-nums;
+    }
+    .settings-section p.hint {
+      margin: 0;
+      color: #bbb;
+      font-size: 0.9rem;
     }
     .status {
       font-size: 0.95rem;
@@ -1278,6 +1411,24 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
       </div>
       <p id="status" class="status"></p>
     </section>
+    <section class="settings-section">
+      <h2>Motorgrenzen</h2>
+      <p class="hint">Begrenzt den maximalen PWM-Anteil für den DC-Motor (0–100&nbsp;%).</p>
+      <div class="motor-limits">
+        <label for="motorForward">Vorwärts</label>
+        <div class="slider-row">
+          <input id="motorForward" type="range" min="0" max="100" step="1" aria-label="Vorwärtslimit einstellen">
+          <output id="motorForwardValue" for="motorForward">–</output>
+        </div>
+      </div>
+      <div class="motor-limits">
+        <label for="motorReverse">Rückwärts</label>
+        <div class="slider-row">
+          <input id="motorReverse" type="range" min="0" max="100" step="1" aria-label="Rückwärtslimit einstellen">
+          <output id="motorReverseValue" for="motorReverse">–</output>
+        </div>
+      </div>
+    </section>
   </div>
   <script>
     const audioSelect = document.getElementById('audioDevice');
@@ -1285,14 +1436,33 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
     const volumeContainer = document.getElementById('audioVolumeContainer');
     const volumeSlider = document.getElementById('audioVolume');
     const volumeValue = document.getElementById('audioVolumeValue');
+    const motorForward = document.getElementById('motorForward');
+    const motorReverse = document.getElementById('motorReverse');
+    const motorForwardValue = document.getElementById('motorForwardValue');
+    const motorReverseValue = document.getElementById('motorReverseValue');
     audioSelect.disabled = true;
     let audioOptionsSignature = '';
     let volumeConfig = null;
+    let motorConfig = null;
     if (volumeSlider) {
       volumeSlider.disabled = true;
     }
     if (volumeContainer) {
       volumeContainer.hidden = true;
+    }
+    if (motorForward) {
+      motorForward.disabled = true;
+      motorForward.value = '0';
+    }
+    if (motorReverse) {
+      motorReverse.disabled = true;
+      motorReverse.value = '0';
+    }
+    if (motorForwardValue) {
+      motorForwardValue.textContent = '–';
+    }
+    if (motorReverseValue) {
+      motorReverseValue.textContent = '–';
     }
 
     const setStatus = (message, tone = '') => {
@@ -1303,6 +1473,91 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
       } else if (tone === 'error') {
         statusEl.classList.add('error');
       }
+    };
+
+    const formatMotorPercent = (value) => `${Math.round((Number.parseFloat(value) || 0) * 100)}%`;
+
+    const clampMotorLimit = (value) => {
+      if (!motorConfig) {
+        return null;
+      }
+      const { min, max, step } = motorConfig;
+      const numeric = Number.parseFloat(value);
+      if (!Number.isFinite(numeric)) {
+        return null;
+      }
+      const limited = Math.max(min, Math.min(max, numeric));
+      const steps = Math.round((limited - min) / step);
+      const quantized = min + steps * step;
+      const clamped = Math.max(min, Math.min(max, quantized));
+      return Number.parseFloat(clamped.toFixed(4));
+    };
+
+    const clampMotorFromSlider = (value) => {
+      if (!motorConfig) {
+        return null;
+      }
+      const numeric = Number.parseFloat(value);
+      if (!Number.isFinite(numeric)) {
+        return null;
+      }
+      return clampMotorLimit(numeric / 100);
+    };
+
+    const syncMotorLimits = (info) => {
+      if (!motorForward || !motorReverse || !motorForwardValue || !motorReverseValue) {
+        return null;
+      }
+      if (!info || !Number.isFinite(info.forward) || !Number.isFinite(info.reverse)) {
+        motorConfig = null;
+        motorForward.disabled = true;
+        motorReverse.disabled = true;
+        motorForwardValue.textContent = '–';
+        motorReverseValue.textContent = '–';
+        return null;
+      }
+      const min = Number.isFinite(info.min) ? info.min : 0;
+      const max = Number.isFinite(info.max) ? info.max : 1;
+      const step = Number.isFinite(info.step) && info.step > 0 ? info.step : 0.01;
+      motorConfig = { min, max, step };
+      const sliderMin = Math.round(min * 100);
+      const sliderMax = Math.round(max * 100);
+      const sliderStep = Math.max(1, Math.round(step * 100));
+      motorForward.min = String(sliderMin);
+      motorForward.max = String(sliderMax);
+      motorForward.step = String(sliderStep);
+      motorReverse.min = String(sliderMin);
+      motorReverse.max = String(sliderMax);
+      motorReverse.step = String(sliderStep);
+      const forwardValue = clampMotorLimit(info.forward);
+      const reverseValue = clampMotorLimit(info.reverse);
+      if (forwardValue === null || reverseValue === null) {
+        motorConfig = null;
+        motorForward.disabled = true;
+        motorReverse.disabled = true;
+        motorForwardValue.textContent = '–';
+        motorReverseValue.textContent = '–';
+        return null;
+      }
+      motorForward.disabled = false;
+      motorReverse.disabled = false;
+      motorForward.value = String(Math.round(forwardValue * 100));
+      motorReverse.value = String(Math.round(reverseValue * 100));
+      motorForwardValue.textContent = formatMotorPercent(forwardValue);
+      motorReverseValue.textContent = formatMotorPercent(reverseValue);
+      return { forward: forwardValue, reverse: reverseValue };
+    };
+
+    const getCurrentMotorValues = () => {
+      if (!motorConfig || !motorForward || !motorReverse) {
+        return null;
+      }
+      const forward = clampMotorFromSlider(motorForward.value);
+      const reverse = clampMotorFromSlider(motorReverse.value);
+      if (forward === null || reverse === null) {
+        return null;
+      }
+      return { forward, reverse };
     };
 
     const syncAudioSelection = (options, selectedId) => {
@@ -1393,19 +1648,33 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
         const selected = typeof data.audio_device === 'string' ? data.audio_device : null;
         const current = syncAudioSelection(data.audio_outputs, selected);
         const volumeValue = syncVolume(data.audio_volume);
+        const motorValues = syncMotorLimits(data.motor_limits);
+        const messageParts = [];
+        let tone = '';
         if (current) {
           if (volumeValue !== null) {
-            setStatus('Ausgabegerät und Lautstärke geladen.');
+            messageParts.push('Audio-Ausgabe und Lautstärke geladen');
           } else {
-            setStatus('Ausgabegerät geladen (keine Lautstärke-Steuerung verfügbar).');
+            messageParts.push('Audio-Ausgabe geladen (keine Lautstärke-Steuerung verfügbar)');
           }
+          tone = 'success';
         } else {
-          setStatus('Keine Audio-Ausgabegeräte verfügbar.', 'error');
+          messageParts.push('Keine Audio-Ausgabegeräte verfügbar');
+          tone = 'error';
         }
+        if (motorValues) {
+          messageParts.push('Motor-Limits geladen');
+          if (!tone) {
+            tone = 'success';
+          }
+        }
+        const message = messageParts.length > 0 ? `${messageParts.join(' · ')}.` : '';
+        setStatus(message, tone);
       } catch (err) {
         console.error('Laden fehlgeschlagen', err);
         setStatus('Konnte Einstellungen nicht laden.', 'error');
         audioSelect.disabled = true;
+        syncMotorLimits(null);
       }
     }
 
@@ -1426,6 +1695,7 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
         const data = await resp.json();
         syncAudioSelection(data.audio_outputs, data.audio_device);
         const volumeValue = syncVolume(data.audio_volume);
+        syncMotorLimits(data.motor_limits);
         if (volumeValue !== null) {
           setStatus('Audio-Ausgabe und Lautstärke gespeichert.', 'success');
         } else {
@@ -1462,6 +1732,7 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
         }
         const data = await resp.json();
         syncAudioSelection(data.audio_outputs, data.audio_device);
+        syncMotorLimits(data.motor_limits);
         const updated = syncVolume(data.audio_volume);
         if (updated !== null) {
           setStatus('Lautstärke gespeichert.', 'success');
@@ -1474,12 +1745,78 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
       }
     }
 
+    async function saveMotorLimits(forward, reverse) {
+      if (!motorForward || !motorReverse) {
+        return;
+      }
+      try {
+        setStatus('Speichere Motor-Grenzen …');
+        const payload = { motor_limits: { forward, reverse } };
+        const currentDevice = audioSelect.value;
+        if (currentDevice) {
+          payload.audio_device = currentDevice;
+        }
+        const resp = await fetch('/api/control', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        if (!resp.ok) {
+          throw new Error(`Status ${resp.status}`);
+        }
+        const data = await resp.json();
+        syncAudioSelection(data.audio_outputs, data.audio_device);
+        syncMotorLimits(data.motor_limits);
+        syncVolume(data.audio_volume);
+        setStatus('Motor-Grenzen gespeichert.', 'success');
+      } catch (err) {
+        console.error('Speichern der Motor-Grenzen fehlgeschlagen', err);
+        setStatus('Motor-Grenzen konnten nicht gespeichert werden.', 'error');
+      }
+    }
+
     audioSelect.addEventListener('change', () => {
       const value = audioSelect.value;
       if (value) {
         saveSelection(value);
       }
     });
+
+    if (motorForward && motorForwardValue) {
+      motorForward.addEventListener('input', () => {
+        const value = clampMotorFromSlider(motorForward.value);
+        motorForwardValue.textContent = value === null ? '–' : formatMotorPercent(value);
+      });
+      motorForward.addEventListener('change', () => {
+        const values = getCurrentMotorValues();
+        if (!values) {
+          return;
+        }
+        motorForward.value = String(Math.round(values.forward * 100));
+        motorForwardValue.textContent = formatMotorPercent(values.forward);
+        motorReverse.value = String(Math.round(values.reverse * 100));
+        motorReverseValue.textContent = formatMotorPercent(values.reverse);
+        saveMotorLimits(values.forward, values.reverse);
+      });
+    }
+
+    if (motorReverse && motorReverseValue) {
+      motorReverse.addEventListener('input', () => {
+        const value = clampMotorFromSlider(motorReverse.value);
+        motorReverseValue.textContent = value === null ? '–' : formatMotorPercent(value);
+      });
+      motorReverse.addEventListener('change', () => {
+        const values = getCurrentMotorValues();
+        if (!values) {
+          return;
+        }
+        motorForward.value = String(Math.round(values.forward * 100));
+        motorForwardValue.textContent = formatMotorPercent(values.forward);
+        motorReverse.value = String(Math.round(values.reverse * 100));
+        motorReverseValue.textContent = formatMotorPercent(values.reverse);
+        saveMotorLimits(values.forward, values.reverse);
+      });
+    }
 
     if (volumeSlider) {
       volumeSlider.addEventListener('input', () => {
@@ -1543,6 +1880,7 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
                 head=data.get("head"),
                 audio_device=data.get("audio_device"),
                 audio_volume=data.get("audio_volume"),
+                motor_limits=data.get("motor_limits"),
             )
 
         body = json.dumps(state)
@@ -1852,9 +2190,11 @@ def main():
 
     # Webserver für Remote-Steuerung
     persisted_audio = load_persisted_audio_state()
+    persisted_motor_limits = load_persisted_motor_limits()
     web_state = WebControlState(
         initial_audio_device=persisted_audio.get("audio_device"),
         initial_volume_map=persisted_audio.get("volumes"),
+        initial_motor_limits=persisted_motor_limits,
     )
     web_server = None
     try:
@@ -2108,10 +2448,21 @@ def main():
                 motor_target = 0.0
 
             # Limits
+            limit_forward = MOTOR_LIMIT_FWD
+            limit_reverse = MOTOR_LIMIT_REV
+            limits_snapshot = control_snapshot.get("motor_limits")
+            if isinstance(limits_snapshot, dict):
+                forward_limit = sanitize_motor_limit(limits_snapshot.get("forward"))
+                if forward_limit is not None:
+                    limit_forward = forward_limit
+                reverse_limit = sanitize_motor_limit(limits_snapshot.get("reverse"))
+                if reverse_limit is not None:
+                    limit_reverse = reverse_limit
+
             if motor_speed > 0:
-                motor_speed = min(motor_speed, MOTOR_LIMIT_FWD)
+                motor_speed = min(motor_speed, limit_forward)
             elif motor_speed < 0:
-                motor_speed = max(motor_speed, -MOTOR_LIMIT_REV)
+                motor_speed = max(motor_speed, -limit_reverse)
 
             set_motor(pi, motor_speed)
 
