@@ -175,17 +175,68 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
 <html lang="de">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Saw Tricycle Websteuerung</title>
   <style>
-    :root { color-scheme: dark; }
+    :root {
+      color-scheme: dark;
+      --safe-top: env(safe-area-inset-top, 0px);
+      --safe-bottom: env(safe-area-inset-bottom, 0px);
+      --safe-left: env(safe-area-inset-left, 0px);
+      --safe-right: env(safe-area-inset-right, 0px);
+    }
     * { box-sizing: border-box; }
-    body { font-family: 'Segoe UI', sans-serif; background: #0d0d0d; color: #f2f2f2; margin: 0; padding: 1.5rem; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
-    .card { width: 100%; max-width: 860px; background: #151515; border-radius: 16px; padding: 1.6rem; box-shadow: 0 0 40px rgba(0,0,0,0.45); }
-    .joystick-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1.5rem; margin-top: 1.5rem; align-items: start; }
-    .joystick-card { background: rgba(255,255,255,0.04); border-radius: 14px; padding: 1.2rem; display: flex; flex-direction: column; gap: 1rem; }
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background: #0d0d0d;
+      color: #f2f2f2;
+      margin: 0;
+      min-height: 100vh;
+      min-height: 100dvh;
+      padding: calc(1.4rem + var(--safe-top)) calc(1.4rem + var(--safe-right)) calc(1.4rem + var(--safe-bottom)) calc(1.4rem + var(--safe-left));
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      -webkit-text-size-adjust: 100%;
+      touch-action: manipulation;
+      gap: 1.2rem;
+    }
+    .card {
+      width: 100%;
+      max-width: 860px;
+      background: #151515;
+      border-radius: 16px;
+      padding: clamp(1.2rem, 3vw + 0.4rem, 1.8rem);
+      box-shadow: 0 0 40px rgba(0,0,0,0.45);
+    }
+    .joystick-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 1.5rem;
+      margin-top: 1.5rem;
+      align-items: start;
+    }
+    .joystick-card {
+      background: rgba(255,255,255,0.04);
+      border-radius: 14px;
+      padding: 1.2rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
     .joystick-card h2 { margin: 0; font-size: 1.1rem; font-weight: 600; }
-    .joystick { position: relative; border-radius: 18px; border: 2px solid rgba(255,255,255,0.08); background: radial-gradient(circle at center, rgba(229,9,20,0.28) 0%, rgba(229,9,20,0.08) 60%, rgba(229,9,20,0.0) 100%); width: 100%; aspect-ratio: 1 / 1; min-height: 180px; touch-action: none; user-select: none; transition: border-color 0.2s ease; }
+    .joystick {
+      position: relative;
+      border-radius: 18px;
+      border: 2px solid rgba(255,255,255,0.08);
+      background: radial-gradient(circle at center, rgba(229,9,20,0.28) 0%, rgba(229,9,20,0.08) 60%, rgba(229,9,20,0.0) 100%);
+      width: 100%;
+      aspect-ratio: 1 / 1;
+      min-height: 180px;
+      touch-action: none;
+      user-select: none;
+      transition: border-color 0.2s ease;
+    }
     @supports not (aspect-ratio: 1) {
       .joystick { padding-top: 100%; min-height: 0; }
     }
@@ -198,12 +249,24 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
     .value { font-variant-numeric: tabular-nums; font-size: 0.95rem; color: #bbb; }
     .value strong { color: #fff; }
     label { font-size: 0.95rem; }
-    button { background: #e50914; border: none; color: #fff; padding: 0.65rem 1.6rem; border-radius: 999px; font-size: 1rem; cursor: pointer; transition: background 0.2s ease, transform 0.2s ease; }
+    button {
+      background: #e50914;
+      border: none;
+      color: #fff;
+      padding: 0.65rem 1.6rem;
+      border-radius: 999px;
+      font-size: 1rem;
+      cursor: pointer;
+      transition: background 0.2s ease, transform 0.2s ease;
+      touch-action: manipulation;
+      min-height: 44px;
+      -webkit-tap-highlight-color: transparent;
+    }
     button:hover { background: #ff1a25; }
     button:active { transform: translateY(1px); }
     button:disabled { opacity: 0.55; cursor: not-allowed; }
     .head-controls { display: flex; gap: 0.5rem; }
-    .head-controls button { flex: 1; padding: 0.45rem 0.6rem; font-size: 0.85rem; }
+    .head-controls button { flex: 1; padding: 0.55rem 0.6rem; font-size: 0.9rem; }
     .head-actions { display: flex; flex-wrap: wrap; gap: 0.6rem; align-items: center; margin-top: 0.6rem; }
     .head-actions button { flex: 0 1 auto; }
     .override-toggle { display: inline-flex; align-items: center; gap: 0.4rem; }
@@ -212,9 +275,45 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
     button.ghost.active { background: #e50914; border-color: #e50914; box-shadow: 0 0 18px rgba(229,9,20,0.35); }
     input[type="checkbox"] { width: 1.2rem; height: 1.2rem; accent-color: #e50914; }
     footer { margin-top: 2rem; font-size: 0.8rem; color: #666; text-align: center; }
-    @media (max-width: 540px) {
-      body { padding: 1rem; }
-      .card { padding: 1.3rem; }
+    @media (max-width: 900px) {
+      body {
+        padding: calc(1.1rem + var(--safe-top)) calc(1.1rem + var(--safe-right)) calc(1.1rem + var(--safe-bottom)) calc(1.1rem + var(--safe-left));
+        align-items: stretch;
+      }
+      .card {
+        margin: 0 auto;
+        border-radius: 14px;
+      }
+    }
+    @media (max-width: 720px) {
+      body {
+        padding: calc(0.9rem + var(--safe-top)) calc(0.9rem + var(--safe-right)) calc(1rem + var(--safe-bottom)) calc(0.9rem + var(--safe-left));
+      }
+      .card {
+        border-radius: 12px;
+        padding: clamp(1rem, 5vw + 0.3rem, 1.4rem);
+      }
+      .joystick-grid {
+        grid-template-columns: minmax(0, 1fr);
+        gap: 1.2rem;
+      }
+      .joystick {
+        min-height: clamp(200px, 60vw, 280px);
+      }
+      .head-controls button {
+        font-size: 1rem;
+        padding-block: 0.65rem;
+      }
+      .head-actions {
+        flex-direction: column;
+        align-items: stretch;
+      }
+      .head-actions button {
+        width: 100%;
+      }
+      .override-toggle {
+        justify-content: space-between;
+      }
     }
     @media (orientation: landscape) and (max-height: 520px) {
       body { padding: 0.8rem; align-items: flex-start; }
@@ -246,6 +345,12 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
       }
       .joystick-card { min-height: 0; }
       .joystick { min-height: 130px; }
+    }
+    @media (pointer: coarse) {
+      button { font-size: 1.05rem; }
+      .head-controls button { font-size: 1.05rem; }
+      .value { font-size: 1.05rem; }
+      label { font-size: 1.05rem; }
     }
   </style>
 </head>
@@ -404,6 +509,9 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
 
       pad.addEventListener('pointerup', releasePointer);
       pad.addEventListener('pointercancel', releasePointer);
+      pad.addEventListener('contextmenu', (event) => {
+        event.preventDefault();
+      });
 
       return {
         setValue(next) {
