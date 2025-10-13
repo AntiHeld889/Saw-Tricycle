@@ -114,6 +114,32 @@ CURRENT_PLAYER_PROC = None
 CURRENT_PLAYER_PATH = None
 
 
+# --------- Validierung & Hilfsfunktionen ---------
+def validate_configuration():
+    """Validiert zentrale Konfigurationsparameter beim Programmstart."""
+
+    if not os.path.isabs(START_MP3_PATH):
+        raise ValueError("START_MP3_PATH muss ein absoluter Pfad sein")
+
+    if US_MIN >= US_MAX:
+        raise ValueError("US_MIN muss kleiner als US_MAX sein")
+
+    if not (0.0 <= LEFT_MAX_DEG <= MID_DEG <= RIGHT_MAX_DEG <= SERVO_RANGE_DEG):
+        raise ValueError("Lenkwinkel müssen innerhalb der Servo-Range liegen und sortiert sein")
+
+    if DEADZONE_IN < 0 or DEADZONE_OUT < 0 or DEADZONE_IN >= DEADZONE_OUT:
+        raise ValueError("DEADZONE_IN/OUT müssen >=0 und DEADZONE_IN < DEADZONE_OUT sein")
+
+    if not (0.0 <= MOTOR_LIMIT_REV <= 1.0 and 0.0 <= MOTOR_LIMIT_FWD <= 1.0):
+        raise ValueError("Motorlimits müssen im Bereich [0, 1] liegen")
+
+    if HEAD_MIN_DEG < 0 or HEAD_MAX_DEG > SERVO_RANGE_DEG or not (HEAD_MIN_DEG <= HEAD_CENTER_DEG <= HEAD_MAX_DEG):
+        raise ValueError("Kopf-Servo Winkel sind ungültig")
+
+    if SERVO_ARM_NEUTRAL_MS <= 0 or MOTOR_ARM_NEUTRAL_MS <= 0:
+        raise ValueError("ARM_NEUTRAL_MS Werte müssen positiv sein")
+
+
 # --------- Hilfsfunktionen: Mathe/Mapping ---------
 def clamp(x, lo, hi):
     return lo if x < lo else (hi if x > hi else x)
@@ -311,6 +337,8 @@ def set_motor(pi, speed_norm):
 
 # --------- Main ---------
 def main():
+    validate_configuration()
+
     # Button-/Achskonstanten aus Namen auflösen
     BTN_CENTER = getattr(ecodes, BTN_CENTER_NAME)
     BTN_QUIT   = getattr(ecodes, BTN_QUIT_NAME)
