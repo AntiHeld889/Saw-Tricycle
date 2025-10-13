@@ -316,6 +316,42 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
       padding: clamp(1.2rem, 3vw + 0.4rem, 1.8rem);
       box-shadow: 0 0 40px rgba(0,0,0,0.45);
     }
+    .card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+    }
+    .card-header h1 {
+      margin: 0;
+      font-size: clamp(1.25rem, 2.8vw, 1.6rem);
+      font-weight: 600;
+    }
+    .settings-button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      background: rgba(229,9,20,0.16);
+      border: 1px solid rgba(229,9,20,0.3);
+      color: #fff;
+      text-decoration: none;
+      transition: background 0.2s ease, transform 0.2s ease, border-color 0.2s ease;
+    }
+    .settings-button:hover {
+      background: rgba(229,9,20,0.28);
+      border-color: rgba(229,9,20,0.55);
+    }
+    .settings-button:active {
+      transform: scale(0.96);
+    }
+    .settings-button svg {
+      width: 22px;
+      height: 22px;
+      fill: currentColor;
+    }
     .joystick-grid {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
@@ -479,6 +515,14 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
 </head>
 <body>
   <div class="card">
+    <div class="card-header">
+      <h1>Saw Tricycle</h1>
+      <a class="settings-button" href="/settings" title="Einstellungen" aria-label="Einstellungen öffnen">
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <path d="M19.14 12.94c.04-.31.06-.63.06-.94s-.02-.63-.06-.94l2.03-1.58a.5.5 0 0 0 .12-.64l-1.92-3.32a.5.5 0 0 0-.6-.22l-2.39.96a7.1 7.1 0 0 0-1.62-.94l-.36-2.54A.5.5 0 0 0 14.92 2h-3.84a.5.5 0 0 0-.5.43l-.36 2.54a7.1 7.1 0 0 0-1.62.94l-2.39-.96a.5.5 0 0 0-.6.22L3.69 8.45a.5.5 0 0 0 .12.64l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94l-2.03 1.58a.5.5 0 0 0-.12.64l1.92 3.32c.14.24.43.33.68.22l2.39-.96c.49.39 1.04.71 1.62.94l.36 2.54c.04.25.25.43.5.43h3.84c.25 0 .46-.18.5-.43l.36-2.54c.58-.23 1.13-.55 1.62-.94l2.39.96c.25.11.54.02.68-.22l1.92-3.32a.5.5 0 0 0-.12-.64zm-7.14 2.56a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z"/>
+        </svg>
+      </a>
+    </div>
     <div class="joystick-grid">
       <div class="joystick-card">
         <h2>Motor</h2>
@@ -498,10 +542,6 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
             <label for="override">Web-Override aktivieren</label>
           </div>
           <button id="center" type="button">Zentrieren</button>
-        </div>
-        <div class="audio-output">
-          <label for="audioDevice">Audio-Ausgabe</label>
-          <select id="audioDevice" aria-label="Audio-Ausgabe auswählen"></select>
         </div>
         <div class="value">Kopf: <strong><span id="headVal">+0.00</span></strong></div>
       </div>
@@ -807,6 +847,235 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
 </body>
 </html>"""
 
+    SETTINGS_PAGE = """<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Einstellungen · Saw Tricycle</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --safe-top: env(safe-area-inset-top, 0px);
+      --safe-bottom: env(safe-area-inset-bottom, 0px);
+      --safe-left: env(safe-area-inset-left, 0px);
+      --safe-right: env(safe-area-inset-right, 0px);
+    }
+    * { box-sizing: border-box; }
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background: #0d0d0d;
+      color: #f2f2f2;
+      margin: 0;
+      min-height: 100vh;
+      min-height: 100dvh;
+      padding: calc(1.4rem + var(--safe-top)) calc(1.4rem + var(--safe-right)) calc(1.4rem + var(--safe-bottom)) calc(1.4rem + var(--safe-left));
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      -webkit-text-size-adjust: 100%;
+      touch-action: manipulation;
+    }
+    .settings-card {
+      width: 100%;
+      max-width: 520px;
+      background: #151515;
+      border-radius: 16px;
+      padding: clamp(1.2rem, 4vw + 0.4rem, 1.8rem);
+      box-shadow: 0 0 40px rgba(0,0,0,0.45);
+      display: flex;
+      flex-direction: column;
+      gap: 1.4rem;
+    }
+    .settings-header {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
+    .back-button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 42px;
+      height: 42px;
+      border-radius: 12px;
+      background: rgba(229,9,20,0.16);
+      border: 1px solid rgba(229,9,20,0.3);
+      color: #fff;
+      text-decoration: none;
+      transition: background 0.2s ease, transform 0.2s ease, border-color 0.2s ease;
+    }
+    .back-button:hover {
+      background: rgba(229,9,20,0.28);
+      border-color: rgba(229,9,20,0.55);
+    }
+    .back-button:active {
+      transform: translateY(1px);
+    }
+    .settings-header h1 {
+      margin: 0;
+      font-size: clamp(1.25rem, 3vw, 1.7rem);
+      font-weight: 600;
+    }
+    .settings-section {
+      background: rgba(255,255,255,0.04);
+      border-radius: 14px;
+      padding: 1.2rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.9rem;
+    }
+    .settings-section h2 {
+      margin: 0;
+      font-size: 1.1rem;
+      font-weight: 600;
+    }
+    label { font-size: 0.95rem; }
+    select {
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.12);
+      color: #fff;
+      padding: 0.55rem 0.75rem;
+      border-radius: 12px;
+      font-size: 0.95rem;
+      min-height: 44px;
+    }
+    select:focus {
+      outline: none;
+      border-color: rgba(229,9,20,0.55);
+      box-shadow: 0 0 0 3px rgba(229,9,20,0.2);
+    }
+    .status {
+      font-size: 0.95rem;
+      color: #bbb;
+      min-height: 1.2em;
+    }
+    .status.success { color: #63f58c; }
+    .status.error { color: #ff7a7a; }
+    @media (max-width: 640px) {
+      body {
+        padding: calc(1rem + var(--safe-top)) calc(1rem + var(--safe-right)) calc(1rem + var(--safe-bottom)) calc(1rem + var(--safe-left));
+      }
+      .settings-card {
+        border-radius: 12px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="settings-card">
+    <div class="settings-header">
+      <a class="back-button" href="/" aria-label="Zurück zur Steuerung" title="Zurück">⟵</a>
+      <h1>Einstellungen</h1>
+    </div>
+    <section class="settings-section">
+      <h2>Audio-Ausgabe</h2>
+      <div class="audio-output">
+        <label for="audioDevice">Ausgabegerät auswählen</label>
+        <select id="audioDevice" aria-label="Audio-Ausgabe auswählen"></select>
+      </div>
+      <p id="status" class="status"></p>
+    </section>
+  </div>
+  <script>
+    const audioSelect = document.getElementById('audioDevice');
+    const statusEl = document.getElementById('status');
+    audioSelect.disabled = true;
+    let audioOptionsSignature = '';
+
+    const setStatus = (message, tone = '') => {
+      statusEl.textContent = message ?? '';
+      statusEl.classList.remove('success', 'error');
+      if (tone === 'success') {
+        statusEl.classList.add('success');
+      } else if (tone === 'error') {
+        statusEl.classList.add('error');
+      }
+    };
+
+    const syncAudioSelection = (options, selectedId) => {
+      const normalized = Array.isArray(options)
+        ? options
+            .map((opt) => ({ id: opt?.id ?? '', label: opt?.label ?? String(opt?.id ?? '') }))
+            .filter((opt) => String(opt.id).length > 0)
+        : [];
+      const signature = JSON.stringify(normalized);
+      if (signature !== audioOptionsSignature) {
+        audioOptionsSignature = signature;
+        audioSelect.innerHTML = '';
+        normalized.forEach((opt) => {
+          const option = document.createElement('option');
+          option.value = String(opt.id);
+          option.textContent = opt.label;
+          audioSelect.append(option);
+        });
+      }
+      const desired = String(selectedId ?? '');
+      const hasDesired = normalized.some((opt) => String(opt.id) === desired);
+      const fallback = normalized.length > 0 ? String(normalized[0].id) : '';
+      const targetValue = hasDesired ? desired : fallback;
+      if (audioSelect.value !== targetValue) {
+        audioSelect.value = targetValue;
+      }
+      audioSelect.disabled = normalized.length === 0;
+      return targetValue || null;
+    };
+
+    async function loadState() {
+      try {
+        setStatus('Lade aktuelle Einstellungen …');
+        const resp = await fetch('/api/state');
+        if (!resp.ok) {
+          throw new Error(`Status ${resp.status}`);
+        }
+        const data = await resp.json();
+        const selected = typeof data.audio_device === 'string' ? data.audio_device : null;
+        const current = syncAudioSelection(data.audio_outputs, selected);
+        if (current) {
+          setStatus('Aktuelles Ausgabegerät ausgewählt.');
+        } else {
+          setStatus('Keine Audio-Ausgabegeräte verfügbar.', 'error');
+        }
+      } catch (err) {
+        console.error('Laden fehlgeschlagen', err);
+        setStatus('Konnte Einstellungen nicht laden.', 'error');
+        audioSelect.disabled = true;
+      }
+    }
+
+    async function saveSelection(deviceId) {
+      if (!deviceId) {
+        return;
+      }
+      try {
+        setStatus('Speichere …');
+        const resp = await fetch('/api/control', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ audio_device: deviceId })
+        });
+        if (!resp.ok) {
+          throw new Error(`Status ${resp.status}`);
+        }
+        setStatus('Audio-Ausgabe gespeichert.', 'success');
+      } catch (err) {
+        console.error('Speichern fehlgeschlagen', err);
+        setStatus('Speichern fehlgeschlagen.', 'error');
+      }
+    }
+
+    audioSelect.addEventListener('change', () => {
+      const value = audioSelect.value;
+      if (value) {
+        saveSelection(value);
+      }
+    });
+
+    loadState();
+  </script>
+</body>
+</html>"""
+
     def _write_response(self, status, body, content_type="text/html; charset=utf-8"):
         encoded = body.encode("utf-8")
         self.send_response(status)
@@ -819,6 +1088,9 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path == "/":
             self._write_response(200, self.HTML_PAGE)
+            return
+        if self.path == "/settings":
+            self._write_response(200, self.SETTINGS_PAGE)
             return
         if self.path.startswith("/api/state"):
             state = self.control_state.snapshot() if self.control_state else {}
