@@ -185,11 +185,14 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
     .joystick-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1.5rem; margin-top: 1.5rem; align-items: start; }
     .joystick-card { background: rgba(255,255,255,0.04); border-radius: 14px; padding: 1.2rem; display: flex; flex-direction: column; gap: 1rem; }
     .joystick-card h2 { margin: 0; font-size: 1.1rem; font-weight: 600; }
-    .joystick { position: relative; border-radius: 18px; border: 2px solid rgba(255,255,255,0.08); background: radial-gradient(circle at center, rgba(229,9,20,0.28) 0%, rgba(229,9,20,0.08) 60%, rgba(229,9,20,0.0) 100%); padding-top: 100%; touch-action: none; user-select: none; transition: border-color 0.2s ease; }
+    .joystick { position: relative; border-radius: 18px; border: 2px solid rgba(255,255,255,0.08); background: radial-gradient(circle at center, rgba(229,9,20,0.28) 0%, rgba(229,9,20,0.08) 60%, rgba(229,9,20,0.0) 100%); width: 100%; aspect-ratio: 1 / 1; min-height: 180px; touch-action: none; user-select: none; transition: border-color 0.2s ease; }
+    @supports not (aspect-ratio: 1) {
+      .joystick { padding-top: 100%; min-height: 0; }
+    }
     .joystick::after { content: ""; position: absolute; inset: 16%; border: 1px dashed rgba(255,255,255,0.08); border-radius: 50%; pointer-events: none; }
     .joystick.axis-x::before { content: ""; position: absolute; left: 50%; top: 12%; bottom: 12%; width: 1px; background: rgba(255,255,255,0.12); transform: translateX(-50%); pointer-events: none; }
     .joystick.axis-y::before { content: ""; position: absolute; top: 50%; left: 12%; right: 12%; height: 1px; background: rgba(255,255,255,0.12); transform: translateY(-50%); pointer-events: none; }
-    .joystick .knob { position: absolute; top: 50%; left: 50%; width: 38%; height: 38%; border-radius: 50%; background: radial-gradient(circle at 30% 30%, #ff3f4a, #b30009); box-shadow: 0 10px 22px rgba(229,9,20,0.45); transform: translate(-50%, -50%) translate(var(--tx, 0%), var(--ty, 0%)); transition: transform 90ms ease-out; }
+    .joystick .knob { position: absolute; top: 50%; left: 50%; width: 38%; height: 38%; border-radius: 50%; background: radial-gradient(circle at 30% 30%, #ff3f4a, #b30009); box-shadow: 0 10px 22px rgba(229,9,20,0.45); transform: translate(-50%, -50%) translate(var(--tx, 0%), var(--ty, 0%)); transition: transform 90ms ease-out; will-change: transform; }
     .joystick.active { border-color: rgba(229,9,20,0.5); }
     .joystick.active .knob { transition: none; }
     .value { font-variant-numeric: tabular-nums; font-size: 0.95rem; color: #bbb; }
@@ -225,12 +228,24 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
       }
       .joystick-grid {
         margin-top: 0;
-        grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+        grid-template-columns: minmax(0, 1fr) minmax(0, 0.9fr) minmax(0, 1fr);
         gap: 0.9rem;
       }
       .joystick-card { padding: 0.9rem; gap: 0.7rem; }
-      .joystick { padding-top: 68%; }
+      .joystick { min-height: 150px; }
       .card footer { margin-top: 0.5rem; }
+    }
+    @media (orientation: landscape) and (max-height: 430px) {
+      body { padding: 0.6rem; }
+      .card {
+        gap: 0.8rem;
+      }
+      .joystick-grid {
+        grid-template-columns: minmax(0, 1fr) minmax(220px, 0.85fr) minmax(0, 1fr);
+        align-items: stretch;
+      }
+      .joystick-card { min-height: 0; }
+      .joystick { min-height: 130px; }
     }
   </style>
 </head>
