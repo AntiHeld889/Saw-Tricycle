@@ -127,9 +127,10 @@ class WebControlState:
         self._override = False
         self._motor = 0.0
         self._steering = 0.0
+        self._head = 0.0
         self._last_update = 0.0
 
-    def update(self, *, override=None, motor=None, steering=None):
+    def update(self, *, override=None, motor=None, steering=None, head=None):
         with self._lock:
             if override is not None:
                 self._override = bool(override)
@@ -141,6 +142,11 @@ class WebControlState:
             if steering is not None:
                 try:
                     self._steering = clamp(float(steering), -1.0, 1.0)
+                except (TypeError, ValueError):
+                    pass
+            if head is not None:
+                try:
+                    self._head = clamp(float(head), -1.0, 1.0)
                 except (TypeError, ValueError):
                     pass
             self._last_update = time.time()
@@ -155,6 +161,7 @@ class WebControlState:
             "override": self._override,
             "motor": self._motor,
             "steering": self._steering,
+            "head": self._head,
             "last_update": self._last_update,
         }
 
@@ -174,8 +181,6 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
     :root { color-scheme: dark; }
     * { box-sizing: border-box; }
     body { font-family: 'Segoe UI', sans-serif; background: #0d0d0d; color: #f2f2f2; margin: 0; padding: 1.5rem; display: flex; justify-content: center; }
-    h1 { margin-top: 0; font-weight: 600; }
-    p { line-height: 1.5; color: #cfcfcf; }
     .card { width: 100%; max-width: 760px; background: #151515; border-radius: 16px; padding: 1.6rem; box-shadow: 0 0 40px rgba(0,0,0,0.45); }
     .joystick-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1.5rem; margin-top: 1.5rem; }
     .joystick-card { background: rgba(255,255,255,0.04); border-radius: 14px; padding: 1.2rem; display: flex; flex-direction: column; gap: 1rem; }
@@ -196,6 +201,11 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
     button:hover { background: #ff1a25; }
     button:active { transform: translateY(1px); }
     button:disabled { opacity: 0.55; cursor: not-allowed; }
+    .head-controls { display: flex; gap: 0.75rem; }
+    .head-controls button { flex: 1; padding: 0.65rem 0.8rem; }
+    button.ghost { background: rgba(229,9,20,0.16); border: 1px solid rgba(229,9,20,0.32); border-radius: 12px; }
+    button.ghost:hover { background: rgba(229,9,20,0.28); }
+    button.ghost.active { background: #e50914; border-color: #e50914; box-shadow: 0 0 18px rgba(229,9,20,0.35); }
     input[type="checkbox"] { width: 1.2rem; height: 1.2rem; accent-color: #e50914; }
     footer { margin-top: 2rem; font-size: 0.8rem; color: #666; text-align: center; }
     @media (max-width: 540px) {
@@ -206,13 +216,20 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
 </head>
 <body>
   <div class="card">
-    <h1>Websteuerung</h1>
-    <p>Nutze die beiden virtuellen Joysticks für Lenkung und Antrieb. Aktiviere den Override, um das Gamepad zu übersteuern.</p>
     <div class="joystick-grid">
       <div class="joystick-card">
         <h2>Lenkung</h2>
         <div id="steeringStick" class="joystick axis-x"><div class="knob"></div></div>
         <div class="value">Lenkung: <strong><span id="steeringVal">+0.00</span></strong></div>
+      </div>
+      <div class="joystick-card">
+        <h2>Kopf</h2>
+        <div class="head-controls">
+          <button class="ghost" type="button" data-head-value="-1">Links</button>
+          <button class="ghost" type="button" data-head-value="0">Zentriert</button>
+          <button class="ghost" type="button" data-head-value="1">Rechts</button>
+        </div>
+        <div class="value">Kopf: <strong><span id="headVal">+0.00</span></strong></div>
       </div>
       <div class="joystick-card">
         <h2>Motor</h2>
@@ -238,9 +255,11 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
       return Math.max(-1, Math.min(1, num));
     };
 
-    const state = { steering: 0, motor: 0, override: false };
+    const state = { steering: 0, motor: 0, head: 0, override: false };
     const steeringVal = document.getElementById('steeringVal');
     const motorVal = document.getElementById('motorVal');
+    const headVal = document.getElementById('headVal');
+    const headButtons = Array.from(document.querySelectorAll('[data-head-value]'));
     const override = document.getElementById('override');
     const centerBtn = document.getElementById('center');
 
@@ -252,6 +271,27 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
     const updateLabels = () => {
       steeringVal.textContent = formatValue(state.steering);
       motorVal.textContent = formatValue(state.motor);
+      headVal.textContent = formatValue(state.head);
+    };
+
+    const updateHeadButtons = () => {
+      headButtons.forEach((button) => {
+        const raw = button.dataset.headValue;
+        const value = Number.parseFloat(raw ?? '0');
+        if (!Number.isFinite(value)) {
+          return;
+        }
+        button.classList.toggle('active', Math.abs(state.head - value) < 0.01);
+      });
+    };
+
+    const setHead = (value, emit = true) => {
+      state.head = clampValue(value);
+      updateLabels();
+      updateHeadButtons();
+      if (emit) {
+        sendState();
+      }
     };
 
     function createJoystick(id, axis, onInput) {
@@ -350,10 +390,12 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
       const payload = {
         steering: clampValue(overrides.steering ?? state.steering),
         motor: clampValue(overrides.motor ?? state.motor),
+        head: clampValue(overrides.head ?? state.head),
         override: overrides.override ?? state.override
       };
       state.steering = payload.steering;
       state.motor = payload.motor;
+      state.head = payload.head;
       state.override = payload.override;
       try {
         await fetch('/api/control', {
@@ -378,6 +420,17 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
       sendState();
     });
 
+    headButtons.forEach((button) => {
+      button.addEventListener('click', () => {
+        const raw = button.dataset.headValue;
+        const value = Number.parseFloat(raw ?? '0');
+        if (!Number.isFinite(value)) {
+          return;
+        }
+        setHead(value);
+      });
+    });
+
     override.addEventListener('change', () => {
       state.override = override.checked;
       sendState();
@@ -388,8 +441,8 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
       state.motor = 0;
       steeringStick.reset();
       motorStick.reset();
-      updateLabels();
-      sendState({ steering: 0, motor: 0 });
+      setHead(0, false);
+      sendState({ steering: 0, motor: 0, head: 0 });
     });
 
     async function pollState() {
@@ -401,6 +454,7 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
         const data = await resp.json();
         const remoteSteering = clampValue(data.steering ?? 0);
         const remoteMotor = clampValue(data.motor ?? 0);
+        const remoteHead = clampValue(data.head ?? 0);
         const remoteOverride = Boolean(data.override);
 
         if (!steeringStick.active) {
@@ -411,8 +465,10 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
           state.motor = remoteMotor;
           motorStick.setValue(remoteMotor);
         }
+        state.head = remoteHead;
         state.override = remoteOverride;
         override.checked = remoteOverride;
+        updateHeadButtons();
         updateLabels();
       } catch (err) {
         console.error('Poll fehlgeschlagen', err);
@@ -420,6 +476,7 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
     }
 
     updateLabels();
+    updateHeadButtons();
     pollState();
     setInterval(pollState, 1500);
   </script>
@@ -465,6 +522,7 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
                 override=data.get("override"),
                 motor=data.get("motor"),
                 steering=data.get("steering"),
+                head=data.get("head"),
             )
 
         body = json.dumps(state)
@@ -546,6 +604,15 @@ def axis_to_deg_lenkung(ax):
     else:
         span = MID_DEG - LEFT_MAX_DEG
         return clamp(MID_DEG + ax * span, LEFT_MAX_DEG, RIGHT_MAX_DEG)
+
+
+def axis_to_deg_head(ax):
+    ax = clamp(ax, -1.0, +1.0)
+    if ax >= 0:
+        span = HEAD_RIGHT_DEG - HEAD_CENTER_DEG
+        return clamp(HEAD_CENTER_DEG + ax * span, HEAD_MIN_DEG, HEAD_MAX_DEG)
+    span = HEAD_CENTER_DEG - HEAD_LEFT_DEG
+    return clamp(HEAD_CENTER_DEG + ax * span, HEAD_MIN_DEG, HEAD_MAX_DEG)
 
 
 # --------- Audio-Helper ---------
@@ -989,6 +1056,13 @@ def main():
                 motor_speed = max(motor_speed, -MOTOR_LIMIT_REV)
 
             set_motor(pi, motor_speed)
+
+            if control_snapshot.get("override"):
+                if now >= safe_start_head_until:
+                    head_override = clamp(control_snapshot.get("head", 0.0), -1.0, +1.0)
+                    head_target = axis_to_deg_head(head_override)
+                else:
+                    head_target = HEAD_CENTER_DEG
 
             # ===== Kopf-Servo (latchend) =====
             head_target = clamp(head_target, HEAD_MIN_DEG, HEAD_MAX_DEG)
