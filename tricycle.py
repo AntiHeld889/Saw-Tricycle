@@ -194,8 +194,6 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
     .joystick.active .knob { transition: none; }
     .value { font-variant-numeric: tabular-nums; font-size: 0.95rem; color: #bbb; }
     .value strong { color: #fff; }
-    .controls { display: flex; flex-wrap: wrap; gap: 1rem; align-items: center; margin-top: 1.6rem; }
-    .toggle { display: flex; align-items: center; gap: 0.6rem; }
     label { font-size: 0.95rem; }
     button { background: #e50914; border: none; color: #fff; padding: 0.65rem 1.6rem; border-radius: 999px; font-size: 1rem; cursor: pointer; transition: background 0.2s ease, transform 0.2s ease; }
     button:hover { background: #ff1a25; }
@@ -203,6 +201,9 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
     button:disabled { opacity: 0.55; cursor: not-allowed; }
     .head-controls { display: flex; gap: 0.5rem; }
     .head-controls button { flex: 1; padding: 0.45rem 0.6rem; font-size: 0.85rem; }
+    .head-actions { display: flex; flex-wrap: wrap; gap: 0.6rem; align-items: center; margin-top: 0.6rem; }
+    .head-actions button { flex: 0 1 auto; }
+    .override-toggle { display: inline-flex; align-items: center; gap: 0.4rem; }
     button.ghost { background: rgba(229,9,20,0.16); border: 1px solid rgba(229,9,20,0.32); border-radius: 12px; }
     button.ghost:hover { background: rgba(229,9,20,0.28); }
     button.ghost.active { background: #e50914; border-color: #e50914; box-shadow: 0 0 18px rgba(229,9,20,0.35); }
@@ -229,9 +230,6 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
       }
       .joystick-card { padding: 0.9rem; gap: 0.7rem; }
       .joystick { padding-top: 68%; }
-      .controls { flex-direction: row; align-items: center; justify-content: flex-start; }
-      .controls button { flex: 1 1 160px; }
-      .toggle { flex: 1 1 180px; }
       .card footer { margin-top: 0.5rem; }
     }
   </style>
@@ -251,6 +249,13 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
           <button class="ghost" type="button" data-head-value="0" title="Kopf zentrieren" aria-label="Kopf zentrieren">Z</button>
           <button class="ghost" type="button" data-head-value="1" title="Kopf nach rechts" aria-label="Kopf nach rechts">R</button>
         </div>
+        <div class="head-actions">
+          <div class="override-toggle">
+            <input id="override" type="checkbox">
+            <label for="override">Web-Override aktivieren</label>
+          </div>
+          <button id="center" type="button">Zentrieren</button>
+        </div>
         <div class="value">Kopf: <strong><span id="headVal">+0.00</span></strong></div>
       </div>
       <div class="joystick-card">
@@ -258,13 +263,6 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
         <div id="steeringStick" class="joystick axis-x"><div class="knob"></div></div>
         <div class="value">Lenkung: <strong><span id="steeringVal">+0.00</span></strong></div>
       </div>
-    </div>
-    <div class="controls">
-      <div class="toggle">
-        <input id="override" type="checkbox">
-        <label for="override">Web-Override aktivieren</label>
-      </div>
-      <button id="center" type="button">Zentrieren</button>
     </div>
     <footer>Läuft auf Port 8081 · Ziehen/Tippen zum Steuern</footer>
   </div>
