@@ -42,6 +42,21 @@ AUDIO_OUTPUTS = [
         "label": "USB-Soundkarte",
         "alsa_device": ALSA_USB_DEVICE,
         "setup_commands": [],
+        "volume": {
+            "min": 0,
+            "max": 100,
+            "step": 1,
+            "default": 100,
+            "command": [
+                "amixer",
+                "-q",
+                "-D",
+                ALSA_USB_DEVICE,
+                "sset",
+                "PCM",
+                "{volume}%",
+            ],
+        },
     },
     {
         "id": "system",
