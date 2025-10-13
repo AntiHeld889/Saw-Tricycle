@@ -997,6 +997,8 @@ def main():
                 if now >= safe_start_servo_until:
                     steer_armed = True
                 ax_val_servo = clamp(control_snapshot.get("steering", 0.0), -1.0, +1.0)
+                if INVERT_SERVO:
+                    ax_val_servo = -ax_val_servo
                 target_deg = axis_to_deg_lenkung(ax_val_servo)
                 last_active_ts = now
                 last_zero_ts = None
