@@ -213,14 +213,26 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
       .card { padding: 1.3rem; }
     }
     @media (orientation: landscape) and (max-height: 520px) {
-      body { padding: 0.8rem; align-items: stretch; }
-      .card { padding: 1.1rem; display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 1rem; }
-      .joystick-grid { margin-top: 0; grid-template-columns: repeat(3, minmax(140px, 1fr)); gap: 1rem; }
-      .joystick-card { padding: 1rem; gap: 0.8rem; }
-      .joystick { padding-top: 72%; }
-      .controls { flex-direction: column; align-items: stretch; justify-content: flex-start; }
-      .controls button, .toggle { width: 100%; }
-      .card footer { grid-column: 1 / -1; margin-top: 1rem; }
+      body { padding: 0.8rem; align-items: flex-start; }
+      .card {
+        padding: 1.1rem;
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+        max-height: calc(100vh - 1.6rem);
+        overflow-y: auto;
+      }
+      .joystick-grid {
+        margin-top: 0;
+        grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+        gap: 0.9rem;
+      }
+      .joystick-card { padding: 0.9rem; gap: 0.7rem; }
+      .joystick { padding-top: 68%; }
+      .controls { flex-direction: row; align-items: center; justify-content: flex-start; }
+      .controls button { flex: 1 1 160px; }
+      .toggle { flex: 1 1 180px; }
+      .card footer { margin-top: 0.5rem; }
     }
   </style>
 </head>
