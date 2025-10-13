@@ -103,7 +103,11 @@ PRINT_EVERY_S        = 0.3
 import os
 import sys
 import time
+import json
+import threading
 import subprocess
+
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from evdev import InputDevice, ecodes, list_devices
 import pigpio
@@ -112,6 +116,214 @@ import pigpio
 # === Laufzeit-Handle für exklusives MP3-Playback ===
 CURRENT_PLAYER_PROC = None
 CURRENT_PLAYER_PATH = None
+
+
+# === Websteuerungszustand ===
+class WebControlState:
+    """Thread-sicherer Zustand für Web-Eingaben."""
+
+    def __init__(self):
+        self._lock = threading.Lock()
+        self._override = False
+        self._motor = 0.0
+        self._steering = 0.0
+        self._last_update = 0.0
+
+    def update(self, *, override=None, motor=None, steering=None):
+        with self._lock:
+            if override is not None:
+                self._override = bool(override)
+            if motor is not None:
+                try:
+                    self._motor = clamp(float(motor), -1.0, 1.0)
+                except (TypeError, ValueError):
+                    pass
+            if steering is not None:
+                try:
+                    self._steering = clamp(float(steering), -1.0, 1.0)
+                except (TypeError, ValueError):
+                    pass
+            self._last_update = time.time()
+            return self.snapshot_locked()
+
+    def snapshot(self):
+        with self._lock:
+            return self.snapshot_locked()
+
+    def snapshot_locked(self):
+        return {
+            "override": self._override,
+            "motor": self._motor,
+            "steering": self._steering,
+            "last_update": self._last_update,
+        }
+
+
+class ControlRequestHandler(BaseHTTPRequestHandler):
+    """HTTP-Endpunkte für die Websteuerung."""
+
+    control_state = None  # wird beim Start gesetzt
+
+    HTML_PAGE = """<!DOCTYPE html>
+<html lang=\"de\">
+<head>
+  <meta charset=\"utf-8\">
+  <title>Saw Tricycle Websteuerung</title>
+  <style>
+    body { font-family: sans-serif; background: #111; color: #eee; margin: 0; padding: 2rem; }
+    h1 { margin-top: 0; }
+    .card { background: #1d1d1d; border-radius: 12px; padding: 1.5rem; max-width: 460px; box-shadow: 0 0 30px rgba(0,0,0,0.4); }
+    label { display: block; margin: 1.2rem 0 0.4rem; font-size: 0.95rem; }
+    input[type=\"range\"] { width: 100%; }
+    .value { font-variant-numeric: tabular-nums; margin-left: 0.4rem; }
+    .toggle { display: flex; align-items: center; gap: 0.6rem; margin-top: 1rem; }
+    button { background: #e50914; border: none; color: #fff; padding: 0.6rem 1.2rem; border-radius: 6px; font-size: 1rem; cursor: pointer; }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    footer { margin-top: 2rem; font-size: 0.8rem; color: #aaa; }
+  </style>
+</head>
+<body>
+  <div class=\"card\">
+    <h1>Websteuerung</h1>
+    <p>Setze Lenkung und Antrieb. Aktiviere den Override, um den Controller zu übersteuern.</p>
+    <label for=\"steering\">Lenkung <span id=\"steeringVal\" class=\"value\">0</span></label>
+    <input id=\"steering\" type=\"range\" min=\"-100\" max=\"100\" value=\"0\" step=\"1\">
+
+    <label for=\"motor\">Motor <span id=\"motorVal\" class=\"value\">0</span></label>
+    <input id=\"motor\" type=\"range\" min=\"-100\" max=\"100\" value=\"0\" step=\"1\">
+
+    <div class=\"toggle\">
+      <input id=\"override\" type=\"checkbox\">
+      <label for=\"override\">Web-Override aktivieren</label>
+    </div>
+    <button id=\"center\">Zentrieren</button>
+  </div>
+  <footer>läuft auf Port 8081</footer>
+
+  <script>
+    const steering = document.getElementById('steering');
+    const motor = document.getElementById('motor');
+    const steeringVal = document.getElementById('steeringVal');
+    const motorVal = document.getElementById('motorVal');
+    const override = document.getElementById('override');
+    const centerBtn = document.getElementById('center');
+
+    function sliderValue(input) {
+      return (parseInt(input.value, 10) / 100).toFixed(2);
+    }
+
+    async function sendState(extra = {}) {
+      const payload = {
+        steering: parseInt(steering.value, 10) / 100,
+        motor: parseInt(motor.value, 10) / 100,
+        override: override.checked,
+        ...extra
+      };
+      try {
+        await fetch('/api/control', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+      } catch (err) {
+        console.error('Senden fehlgeschlagen', err);
+      }
+    }
+
+    function refreshLabels() {
+      steeringVal.textContent = sliderValue(steering);
+      motorVal.textContent = sliderValue(motor);
+    }
+
+    steering.addEventListener('input', () => { refreshLabels(); sendState(); });
+    motor.addEventListener('input', () => { refreshLabels(); sendState(); });
+    override.addEventListener('change', () => sendState());
+    centerBtn.addEventListener('click', () => {
+      steering.value = 0;
+      motor.value = 0;
+      refreshLabels();
+      sendState({ steering: 0, motor: 0 });
+    });
+
+    async function pollState() {
+      try {
+        const resp = await fetch('/api/state');
+        if (!resp.ok) return;
+        const data = await resp.json();
+        steering.value = Math.round((data.steering || 0) * 100);
+        motor.value = Math.round((data.motor || 0) * 100);
+        override.checked = Boolean(data.override);
+        refreshLabels();
+      } catch (err) {
+        console.error('Poll fehlgeschlagen', err);
+      }
+    }
+
+    refreshLabels();
+    pollState();
+    setInterval(pollState, 1500);
+  </script>
+</body>
+</html>"""
+
+    def _write_response(self, status, body, content_type="text/html; charset=utf-8"):
+        encoded = body.encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(encoded)))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(encoded)
+
+    def do_GET(self):
+        if self.path == "/":
+            self._write_response(200, self.HTML_PAGE)
+            return
+        if self.path.startswith("/api/state"):
+            state = self.control_state.snapshot() if self.control_state else {}
+            body = json.dumps(state)
+            self._write_response(200, body, "application/json")
+            return
+        self._write_response(404, "Not found", "text/plain; charset=utf-8")
+
+    def do_POST(self):
+        if not self.path.startswith("/api/control"):
+            self._write_response(404, "Not found", "text/plain; charset=utf-8")
+            return
+
+        length = int(self.headers.get("Content-Length", "0"))
+        raw = self.rfile.read(length) if length > 0 else b""
+        try:
+            data = json.loads(raw.decode("utf-8")) if raw else {}
+        except json.JSONDecodeError:
+            self._write_response(400, "Ungültiges JSON", "text/plain; charset=utf-8")
+            return
+
+        state = {}
+        if self.control_state:
+            state = self.control_state.update(
+                override=data.get("override"),
+                motor=data.get("motor"),
+                steering=data.get("steering"),
+            )
+
+        body = json.dumps(state)
+        self._write_response(200, body, "application/json")
+
+    def log_message(self, format, *args):  # noqa: A003 - Überschreibt BaseHTTPRequestHandler
+        # Unterdrückt Standard-Logging, um die Konsole sauber zu halten.
+        return
+
+
+def start_webserver(state):
+    """Startet den HTTP-Server für die Websteuerung auf Port 8081."""
+
+    ControlRequestHandler.control_state = state
+    server = ThreadingHTTPServer(("0.0.0.0", 8081), ControlRequestHandler)
+
+    thread = threading.Thread(target=server.serve_forever, name="web-control", daemon=True)
+    thread.start()
+    return server
 
 
 # --------- Validierung & Hilfsfunktionen ---------
@@ -359,6 +571,17 @@ def main():
     safe_start_servo_until = time.monotonic() + SERVO_SAFE_START_S
     safe_start_head_until  = time.monotonic() + HEAD_SAFE_START_S
 
+    # Webserver für Remote-Steuerung
+    web_state = WebControlState()
+    web_server = None
+    try:
+        web_server = start_webserver(web_state)
+        print("Websteuerung aktiv: http://<IP>:8081/ (Override schaltet Gamepad aus)")
+    except Exception as exc:
+        print(f"Webserver konnte nicht gestartet werden: {exc}", file=sys.stderr)
+        web_server = None
+    
+
     # Gamepad
     dev = find_gamepad()
 
@@ -422,6 +645,8 @@ def main():
             now = time.monotonic()
             dt = max(0.001, min(0.05, now - last_loop_ts))
             last_loop_ts = now
+
+            control_snapshot = web_state.snapshot()
 
             # Events (Buttons & Kopfsteuerung)
             try:
@@ -506,6 +731,15 @@ def main():
                     if abs(ax_val_servo) > 0.01:
                         last_active_ts = now
 
+            if control_snapshot.get("override"):
+                if now >= safe_start_servo_until:
+                    steer_armed = True
+                ax_val_servo = clamp(control_snapshot.get("steering", 0.0), -1.0, +1.0)
+                target_deg = axis_to_deg_lenkung(ax_val_servo)
+                last_active_ts = now
+                last_zero_ts = None
+                in_deadzone_hold = False
+
             # Auto-Zentrierung nach Inaktivität
             if (now - last_active_ts) > NEUTRAL_HOLD_S:
                 target_deg = MID_DEG
@@ -552,6 +786,11 @@ def main():
                     brake = norm_axis_trigger(raw_b, lo_b, hi_b)  # 0..1
 
             y_total = clamp(y_centered + gas - brake, -1.0, +1.0)
+
+            if control_snapshot.get("override"):
+                if now >= safe_start_motor_until:
+                    motor_armed = True
+                y_total = clamp(control_snapshot.get("motor", 0.0), -1.0, +1.0)
 
             # Arming & Deadzone
             if abs(y_total) <= MOTOR_NEUTRAL_THRESH:
@@ -623,6 +862,11 @@ def main():
             pass
         stop_current_sound()
         pi.stop()
+        try:
+            web_server.shutdown()
+            web_server.server_close()
+        except Exception:
+            pass
 
 
 if __name__ == "__main__":
