@@ -137,11 +137,52 @@ import time
 import json
 import threading
 import subprocess
+from pathlib import Path
 
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from evdev import InputDevice, ecodes, list_devices
 import pigpio
+
+
+def _default_state_dir():
+    env_path = os.environ.get("SAW_TRICYCLE_STATE_DIR")
+    if env_path:
+        return Path(env_path)
+    return Path.home() / ".config" / "saw-tricycle"
+
+
+STATE_DIR = _default_state_dir()
+AUDIO_SELECTION_FILE = STATE_DIR / "audio-selection.json"
+
+
+def load_persisted_audio_output(default_id=DEFAULT_AUDIO_OUTPUT_ID):
+    try:
+        with AUDIO_SELECTION_FILE.open("r", encoding="utf-8") as fh:
+            data = json.load(fh)
+    except FileNotFoundError:
+        return default_id
+    except Exception:
+        return default_id
+
+    audio_id = data.get("audio_device")
+    if audio_id in _AUDIO_OUTPUT_MAP:
+        return audio_id
+    return default_id
+
+
+def persist_audio_output(audio_id):
+    if audio_id not in _AUDIO_OUTPUT_MAP:
+        return False
+    try:
+        STATE_DIR.mkdir(parents=True, exist_ok=True)
+        tmp_path = AUDIO_SELECTION_FILE.with_suffix(".tmp")
+        with tmp_path.open("w", encoding="utf-8") as fh:
+            json.dump({"audio_device": audio_id}, fh)
+        os.replace(tmp_path, AUDIO_SELECTION_FILE)
+        return True
+    except Exception:
+        return False
 
 
 # === Laufzeit-Handle für exklusives MP3-Playback ===
@@ -153,17 +194,21 @@ CURRENT_PLAYER_PATH = None
 class WebControlState:
     """Thread-sicherer Zustand für Web-Eingaben."""
 
-    def __init__(self):
+    def __init__(self, *, initial_audio_device=None):
         self._lock = threading.Lock()
         self._override = False
         self._motor = 0.0
         self._steering = 0.0
         self._head = 0.0
         self._last_update = 0.0
-        self._audio_device = DEFAULT_AUDIO_OUTPUT_ID
+        if initial_audio_device in _AUDIO_OUTPUT_MAP:
+            self._audio_device = initial_audio_device
+        else:
+            self._audio_device = DEFAULT_AUDIO_OUTPUT_ID
 
     def update(self, *, override=None, motor=None, steering=None, head=None, audio_device=None):
         new_audio_id = None
+        persist_audio_id = None
         with self._lock:
             if override is not None:
                 self._override = bool(override)
@@ -187,8 +232,11 @@ class WebControlState:
                 if audio_id in _AUDIO_OUTPUT_MAP and audio_id != self._audio_device:
                     self._audio_device = audio_id
                     new_audio_id = audio_id
+                    persist_audio_id = audio_id
             self._last_update = time.time()
             snapshot = self.snapshot_locked()
+        if persist_audio_id is not None:
+            persist_audio_output(persist_audio_id)
         if new_audio_id is not None:
             apply_audio_output(new_audio_id)
         return snapshot
@@ -1093,7 +1141,8 @@ def main():
     safe_start_head_until  = time.monotonic() + HEAD_SAFE_START_S
 
     # Webserver für Remote-Steuerung
-    web_state = WebControlState()
+    initial_audio_id = load_persisted_audio_output()
+    web_state = WebControlState(initial_audio_device=initial_audio_id)
     web_server = None
     try:
         web_server = start_webserver(web_state)
