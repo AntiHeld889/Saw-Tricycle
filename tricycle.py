@@ -201,8 +201,8 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
     button:hover { background: #ff1a25; }
     button:active { transform: translateY(1px); }
     button:disabled { opacity: 0.55; cursor: not-allowed; }
-    .head-controls { display: flex; gap: 0.75rem; }
-    .head-controls button { flex: 1; padding: 0.65rem 0.8rem; }
+    .head-controls { display: flex; gap: 0.5rem; }
+    .head-controls button { flex: 1; padding: 0.45rem 0.6rem; font-size: 0.85rem; }
     button.ghost { background: rgba(229,9,20,0.16); border: 1px solid rgba(229,9,20,0.32); border-radius: 12px; }
     button.ghost:hover { background: rgba(229,9,20,0.28); }
     button.ghost.active { background: #e50914; border-color: #e50914; box-shadow: 0 0 18px rgba(229,9,20,0.35); }
@@ -240,23 +240,23 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
   <div class="card">
     <div class="joystick-grid">
       <div class="joystick-card">
-        <h2>Lenkung</h2>
-        <div id="steeringStick" class="joystick axis-x"><div class="knob"></div></div>
-        <div class="value">Lenkung: <strong><span id="steeringVal">+0.00</span></strong></div>
+        <h2>Motor</h2>
+        <div id="motorStick" class="joystick axis-y"><div class="knob"></div></div>
+        <div class="value">Motor: <strong><span id="motorVal">+0.00</span></strong></div>
       </div>
       <div class="joystick-card">
         <h2>Kopf</h2>
         <div class="head-controls">
-          <button class="ghost" type="button" data-head-value="-1">Links</button>
-          <button class="ghost" type="button" data-head-value="0">Zentriert</button>
-          <button class="ghost" type="button" data-head-value="1">Rechts</button>
+          <button class="ghost" type="button" data-head-value="-1" title="Kopf nach links" aria-label="Kopf nach links">L</button>
+          <button class="ghost" type="button" data-head-value="0" title="Kopf zentrieren" aria-label="Kopf zentrieren">Z</button>
+          <button class="ghost" type="button" data-head-value="1" title="Kopf nach rechts" aria-label="Kopf nach rechts">R</button>
         </div>
         <div class="value">Kopf: <strong><span id="headVal">+0.00</span></strong></div>
       </div>
       <div class="joystick-card">
-        <h2>Motor</h2>
-        <div id="motorStick" class="joystick axis-y"><div class="knob"></div></div>
-        <div class="value">Motor: <strong><span id="motorVal">+0.00</span></strong></div>
+        <h2>Lenkung</h2>
+        <div id="steeringStick" class="joystick axis-x"><div class="knob"></div></div>
+        <div class="value">Lenkung: <strong><span id="steeringVal">+0.00</span></strong></div>
       </div>
     </div>
     <div class="controls">
