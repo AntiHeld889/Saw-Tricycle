@@ -9,13 +9,12 @@
 START_MP3_PATH       = "/opt/python/sawsounds/Start.mp3"   # Pfad anpassen falls nötig
 ALSA_HP_DEVICE       = "plughw:0,0"           # Analoger Kopfhörer-Ausgang (mit 'aplay -l' prüfen)
 ALSA_USB_DEVICE      = "plughw:1,0"           # USB-Soundkarte (mit 'aplay -l' prüfen)
-HEADPHONE_VOLUME     = "100%"
+HEADPHONE_VOLUME_DEFAULT = 100
 AUDIO_ROUTE_TIMEOUT  = 3                      # Sekunden für amixer-Kommandos
 
 # Vorkonfigurierte Audioausgänge für Web-Dropdown (ID, Label, ALSA-Device, Setup-Kommandos)
 HEADPHONE_ROUTE_COMMANDS = [
     ["amixer", "-q", "cset", "numid=3", "1"],             # 0=auto, 1=analog, 2=HDMI (älteres RPi-OS)
-    ["amixer", "-q", "sset", "Headphone", HEADPHONE_VOLUME],
 ]
 
 AUDIO_OUTPUTS = [
@@ -24,6 +23,19 @@ AUDIO_OUTPUTS = [
         "label": "Kopfhörerbuchse",
         "alsa_device": ALSA_HP_DEVICE,
         "setup_commands": HEADPHONE_ROUTE_COMMANDS,
+        "volume": {
+            "min": 0,
+            "max": 100,
+            "step": 1,
+            "default": HEADPHONE_VOLUME_DEFAULT,
+            "command": [
+                "amixer",
+                "-q",
+                "sset",
+                "Headphone",
+                "{volume}%",
+            ],
+        },
     },
     {
         "id": "usb",
@@ -156,33 +168,197 @@ STATE_DIR = _default_state_dir()
 AUDIO_SELECTION_FILE = STATE_DIR / "audio-selection.json"
 
 
-def load_persisted_audio_output(default_id=DEFAULT_AUDIO_OUTPUT_ID):
+def _normalize_audio_output_id(audio_id):
+    if audio_id is None:
+        return None
+    audio_id_str = str(audio_id)
+    if audio_id_str in _AUDIO_OUTPUT_MAP:
+        return audio_id_str
+    return None
+
+
+def _coerce_int(value, fallback):
+    if isinstance(value, str):
+        value = value.strip()
+        if value.endswith("%"):
+            value = value[:-1]
+    try:
+        return int(round(float(value)))
+    except (TypeError, ValueError):
+        return fallback
+
+
+def _get_volume_profile(audio_id):
+    profile = _AUDIO_OUTPUT_MAP.get(str(audio_id))
+    if not profile:
+        return None
+    volume_cfg = profile.get("volume")
+    if not isinstance(volume_cfg, dict):
+        return None
+    command = volume_cfg.get("command")
+    if not isinstance(command, (list, tuple)) or not command:
+        return None
+    command = [str(part) for part in command]
+
+    min_val = _coerce_int(volume_cfg.get("min"), 0)
+    max_val = _coerce_int(volume_cfg.get("max"), 100)
+    if max_val < min_val:
+        min_val, max_val = max_val, min_val
+    step_val = _coerce_int(volume_cfg.get("step"), 1)
+    if step_val <= 0:
+        step_val = 1
+    default_val = _coerce_int(volume_cfg.get("default"), max_val)
+    default_val = max(min_val, min(max_val, default_val))
+
+    return {
+        "command": command,
+        "min": min_val,
+        "max": max_val,
+        "step": step_val,
+        "default": default_val,
+    }
+
+
+def _sanitize_volume_value(value, profile):
+    try:
+        vol = float(value)
+    except (TypeError, ValueError):
+        return None
+    min_val = profile["min"]
+    max_val = profile["max"]
+    step_val = profile["step"] or 1
+    if step_val <= 0:
+        step_val = 1
+    if vol < min_val:
+        vol = min_val
+    elif vol > max_val:
+        vol = max_val
+    base = min_val
+    steps = round((vol - base) / step_val)
+    vol = base + steps * step_val
+    if vol < min_val:
+        vol = min_val
+    if vol > max_val:
+        vol = max_val
+    return int(round(vol))
+
+
+def get_default_volume(audio_id):
+    profile = _get_volume_profile(audio_id)
+    if not profile:
+        return None
+    return profile["default"]
+
+
+def load_persisted_audio_state(default_id=DEFAULT_AUDIO_OUTPUT_ID):
+    default_audio = _normalize_audio_output_id(default_id) or DEFAULT_AUDIO_OUTPUT_ID
+    state = {
+        "audio_device": default_audio,
+        "volumes": {},
+    }
     try:
         with AUDIO_SELECTION_FILE.open("r", encoding="utf-8") as fh:
             data = json.load(fh)
     except FileNotFoundError:
-        return default_id
+        return state
     except Exception:
-        return default_id
+        return state
 
-    audio_id = data.get("audio_device")
-    if audio_id in _AUDIO_OUTPUT_MAP:
-        return audio_id
-    return default_id
+    audio_id = _normalize_audio_output_id(data.get("audio_device"))
+    if audio_id:
+        state["audio_device"] = audio_id
+
+    volumes = {}
+    raw_volumes = data.get("audio_volume") or data.get("audio_volumes") or {}
+    if isinstance(raw_volumes, dict):
+        for key, raw_value in raw_volumes.items():
+            profile = _get_volume_profile(key)
+            if not profile:
+                continue
+            sanitized = _sanitize_volume_value(raw_value, profile)
+            if sanitized is None:
+                continue
+            volumes[str(key)] = sanitized
+
+    selected_profile = _get_volume_profile(state["audio_device"])
+    if selected_profile:
+        key = state["audio_device"]
+        if key in volumes:
+            sanitized = _sanitize_volume_value(volumes[key], selected_profile)
+            volumes[key] = sanitized if sanitized is not None else selected_profile["default"]
+        else:
+            volumes[key] = selected_profile["default"]
+
+    state["volumes"] = volumes
+    return state
 
 
-def persist_audio_output(audio_id):
-    if audio_id not in _AUDIO_OUTPUT_MAP:
+def load_persisted_audio_output(default_id=DEFAULT_AUDIO_OUTPUT_ID):
+    return load_persisted_audio_state(default_id).get("audio_device")
+
+
+def load_persisted_audio_volumes():
+    return load_persisted_audio_state().get("volumes", {})
+
+
+def persist_audio_state(*, audio_device=None, volume_updates=None):
+    state = load_persisted_audio_state()
+    changed = False
+
+    if audio_device is not None:
+        normalized = _normalize_audio_output_id(audio_device)
+        if normalized and normalized != state["audio_device"]:
+            state["audio_device"] = normalized
+            changed = True
+
+    if volume_updates:
+        for key, raw_value in volume_updates.items():
+            profile = _get_volume_profile(key)
+            if not profile:
+                continue
+            sanitized = _sanitize_volume_value(raw_value, profile)
+            if sanitized is None:
+                continue
+            key_str = str(key)
+            if state["volumes"].get(key_str) != sanitized:
+                state["volumes"][key_str] = sanitized
+                changed = True
+
+    if not changed:
         return False
+
+    payload = {
+        "audio_device": state["audio_device"],
+        "audio_volume": state["volumes"],
+    }
     try:
         STATE_DIR.mkdir(parents=True, exist_ok=True)
         tmp_path = AUDIO_SELECTION_FILE.with_suffix(".tmp")
         with tmp_path.open("w", encoding="utf-8") as fh:
-            json.dump({"audio_device": audio_id}, fh)
+            json.dump(payload, fh)
         os.replace(tmp_path, AUDIO_SELECTION_FILE)
         return True
     except Exception:
         return False
+
+
+def persist_audio_output(audio_id):
+    return persist_audio_state(audio_device=audio_id)
+
+
+def persist_audio_volumes(volume_updates):
+    return persist_audio_state(volume_updates=volume_updates)
+
+
+def get_audio_volume_profile(audio_id):
+    return _get_volume_profile(audio_id)
+
+
+def sanitize_audio_volume(audio_id, value):
+    profile = _get_volume_profile(audio_id)
+    if not profile:
+        return None
+    return _sanitize_volume_value(value, profile)
 
 
 # === Laufzeit-Handle für exklusives MP3-Playback ===
@@ -194,21 +370,71 @@ CURRENT_PLAYER_PATH = None
 class WebControlState:
     """Thread-sicherer Zustand für Web-Eingaben."""
 
-    def __init__(self, *, initial_audio_device=None):
+    def __init__(self, *, initial_audio_device=None, initial_volume_map=None):
         self._lock = threading.Lock()
         self._override = False
         self._motor = 0.0
         self._steering = 0.0
         self._head = 0.0
         self._last_update = 0.0
-        if initial_audio_device in _AUDIO_OUTPUT_MAP:
-            self._audio_device = initial_audio_device
-        else:
-            self._audio_device = DEFAULT_AUDIO_OUTPUT_ID
+        normalized_device = _normalize_audio_output_id(initial_audio_device)
+        self._audio_device = normalized_device or DEFAULT_AUDIO_OUTPUT_ID
+        self._audio_volumes = {}
+        if isinstance(initial_volume_map, dict):
+            for key, value in initial_volume_map.items():
+                sanitized = sanitize_audio_volume(key, value)
+                if sanitized is None:
+                    continue
+                key_str = str(key)
+                self._audio_volumes[key_str] = sanitized
+        self._ensure_volume_defaults_locked(self._audio_device)
 
-    def update(self, *, override=None, motor=None, steering=None, head=None, audio_device=None):
+    def _ensure_volume_defaults_locked(self, audio_id):
+        profile = get_audio_volume_profile(audio_id)
+        if not profile:
+            return None
+        key = str(audio_id)
+        current = self._audio_volumes.get(key)
+        if current is None:
+            current = profile["default"]
+        else:
+            sanitized = sanitize_audio_volume(key, current)
+            if sanitized is None:
+                current = profile["default"]
+            else:
+                current = sanitized
+        self._audio_volumes[key] = current
+        return current
+
+    def _build_volume_snapshot_locked(self):
+        audio_id = self._audio_device
+        profile = get_audio_volume_profile(audio_id)
+        if not profile:
+            return None
+        key = str(audio_id)
+        value = self._audio_volumes.get(key)
+        if value is None:
+            value = self._ensure_volume_defaults_locked(audio_id)
+        else:
+            sanitized = sanitize_audio_volume(audio_id, value)
+            if sanitized is None:
+                value = self._ensure_volume_defaults_locked(audio_id)
+            else:
+                if sanitized != value:
+                    self._audio_volumes[key] = sanitized
+                value = sanitized
+        return {
+            "value": value,
+            "min": profile["min"],
+            "max": profile["max"],
+            "step": profile["step"],
+        }
+
+    def update(self, *, override=None, motor=None, steering=None, head=None, audio_device=None, audio_volume=None):
         new_audio_id = None
         persist_audio_id = None
+        volume_updates = {}
+        apply_volume_change = None
         with self._lock:
             if override is not None:
                 self._override = bool(override)
@@ -233,12 +459,32 @@ class WebControlState:
                     self._audio_device = audio_id
                     new_audio_id = audio_id
                     persist_audio_id = audio_id
+                    previous_volume = self._audio_volumes.get(audio_id)
+                    volume_value = self._ensure_volume_defaults_locked(audio_id)
+                    if volume_value is not None:
+                        if previous_volume != volume_value:
+                            volume_updates[audio_id] = volume_value
+                        apply_volume_change = (audio_id, volume_value)
+            if audio_volume is not None:
+                target_id = self._audio_device
+                if target_id:
+                    volume_value = sanitize_audio_volume(target_id, audio_volume)
+                    if volume_value is not None:
+                        current_value = self._audio_volumes.get(target_id)
+                        if current_value != volume_value:
+                            self._audio_volumes[target_id] = volume_value
+                            volume_updates[target_id] = volume_value
+                            apply_volume_change = (target_id, volume_value)
             self._last_update = time.time()
             snapshot = self.snapshot_locked()
         if persist_audio_id is not None:
             persist_audio_output(persist_audio_id)
+        if volume_updates:
+            persist_audio_volumes(volume_updates)
         if new_audio_id is not None:
             apply_audio_output(new_audio_id)
+        if apply_volume_change is not None:
+            apply_audio_volume(*apply_volume_change)
         return snapshot
 
     def snapshot(self):
@@ -256,6 +502,7 @@ class WebControlState:
                 {"id": cfg["id"], "label": cfg["label"]}
                 for cfg in AUDIO_OUTPUTS
             ],
+            "audio_volume": self._build_volume_snapshot_locked(),
             "last_update": self._last_update,
         }
 
@@ -270,7 +517,10 @@ class WebControlState:
     def apply_current_audio_output(self):
         with self._lock:
             audio_id = self._audio_device
+            volume_value = self._ensure_volume_defaults_locked(audio_id)
         apply_audio_output(audio_id)
+        if volume_value is not None:
+            apply_audio_volume(audio_id, volume_value)
 
 
 class ControlRequestHandler(BaseHTTPRequestHandler):
@@ -562,7 +812,7 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
       return Math.max(-1, Math.min(1, num));
     };
 
-    const state = { steering: 0, motor: 0, head: 0, override: false, audioDevice: null };
+    const state = { steering: 0, motor: 0, head: 0, override: false, audioDevice: null, audioVolume: null };
     const steeringVal = document.getElementById('steeringVal');
     const motorVal = document.getElementById('motorVal');
     const headVal = document.getElementById('headVal');
@@ -748,6 +998,12 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
         payload.audio_device = audioDevice;
         state.audioDevice = audioDevice;
       }
+      const audioVolume = overrides.audioVolume ?? state.audioVolume;
+      if (Number.isFinite(audioVolume)) {
+        const normalized = Math.max(0, Math.min(100, audioVolume));
+        payload.audio_volume = Math.round(normalized);
+        state.audioVolume = normalized;
+      }
       try {
         await fetch('/api/control', {
           method: 'POST',
@@ -834,6 +1090,11 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
         updateHeadButtons();
         updateLabels();
         syncAudioSelection(remoteAudioOutputs, remoteAudioDevice);
+        if (data.audio_volume && Number.isFinite(data.audio_volume.value)) {
+          state.audioVolume = data.audio_volume.value;
+        } else {
+          state.audioVolume = null;
+        }
       } catch (err) {
         console.error('Poll fehlgeschlagen', err);
       }
@@ -945,6 +1206,25 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
       border-color: rgba(229,9,20,0.55);
       box-shadow: 0 0 0 3px rgba(229,9,20,0.2);
     }
+    .audio-volume {
+      display: flex;
+      flex-direction: column;
+      gap: 0.55rem;
+    }
+    .slider-row {
+      display: flex;
+      align-items: center;
+      gap: 0.9rem;
+    }
+    input[type="range"] {
+      width: 100%;
+      accent-color: #e50914;
+    }
+    output {
+      min-width: 3ch;
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+    }
     .status {
       font-size: 0.95rem;
       color: #bbb;
@@ -974,14 +1254,31 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
         <label for="audioDevice">Ausgabegerät auswählen</label>
         <select id="audioDevice" aria-label="Audio-Ausgabe auswählen"></select>
       </div>
+      <div class="audio-volume" id="audioVolumeContainer" hidden>
+        <label for="audioVolume">Lautstärke</label>
+        <div class="slider-row">
+          <input id="audioVolume" type="range" min="0" max="100" step="1" aria-label="Lautstärke einstellen">
+          <output id="audioVolumeValue" for="audioVolume">0%</output>
+        </div>
+      </div>
       <p id="status" class="status"></p>
     </section>
   </div>
   <script>
     const audioSelect = document.getElementById('audioDevice');
     const statusEl = document.getElementById('status');
+    const volumeContainer = document.getElementById('audioVolumeContainer');
+    const volumeSlider = document.getElementById('audioVolume');
+    const volumeValue = document.getElementById('audioVolumeValue');
     audioSelect.disabled = true;
     let audioOptionsSignature = '';
+    let volumeConfig = null;
+    if (volumeSlider) {
+      volumeSlider.disabled = true;
+    }
+    if (volumeContainer) {
+      volumeContainer.hidden = true;
+    }
 
     const setStatus = (message, tone = '') => {
       statusEl.textContent = message ?? '';
@@ -1021,6 +1318,55 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
       return targetValue || null;
     };
 
+    const formatVolume = (value) => `${Math.round(Number.parseFloat(value) || 0)}%`;
+
+    const clampVolume = (raw) => {
+      if (!volumeConfig) {
+        return null;
+      }
+      const { min, max, step } = volumeConfig;
+      const numeric = Number.parseFloat(raw);
+      if (!Number.isFinite(numeric)) {
+        return null;
+      }
+      const limited = Math.max(min, Math.min(max, numeric));
+      const steps = Math.round((limited - min) / step);
+      return min + steps * step;
+    };
+
+    const syncVolume = (info) => {
+      if (!volumeSlider || !volumeValue || !volumeContainer) {
+        return null;
+      }
+      if (!info || !Number.isFinite(info.value)) {
+        volumeConfig = null;
+        volumeContainer.hidden = true;
+        volumeSlider.disabled = true;
+        volumeValue.textContent = '–';
+        return null;
+      }
+      const min = Number.isFinite(info.min) ? info.min : 0;
+      const max = Number.isFinite(info.max) ? info.max : 100;
+      const step = Number.isFinite(info.step) && info.step > 0 ? info.step : 1;
+      volumeConfig = { min, max, step };
+      volumeSlider.min = String(min);
+      volumeSlider.max = String(max);
+      volumeSlider.step = String(step);
+      const value = clampVolume(info.value);
+      if (value === null) {
+        volumeConfig = null;
+        volumeContainer.hidden = true;
+        volumeSlider.disabled = true;
+        volumeValue.textContent = '–';
+        return null;
+      }
+      volumeSlider.value = String(value);
+      volumeSlider.disabled = false;
+      volumeContainer.hidden = false;
+      volumeValue.textContent = formatVolume(value);
+      return value;
+    };
+
     async function loadState() {
       try {
         setStatus('Lade aktuelle Einstellungen …');
@@ -1031,8 +1377,13 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
         const data = await resp.json();
         const selected = typeof data.audio_device === 'string' ? data.audio_device : null;
         const current = syncAudioSelection(data.audio_outputs, selected);
+        const volumeValue = syncVolume(data.audio_volume);
         if (current) {
-          setStatus('Aktuelles Ausgabegerät ausgewählt.');
+          if (volumeValue !== null) {
+            setStatus('Ausgabegerät und Lautstärke geladen.');
+          } else {
+            setStatus('Ausgabegerät geladen (keine Lautstärke-Steuerung verfügbar).');
+          }
         } else {
           setStatus('Keine Audio-Ausgabegeräte verfügbar.', 'error');
         }
@@ -1057,10 +1408,54 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
         if (!resp.ok) {
           throw new Error(`Status ${resp.status}`);
         }
-        setStatus('Audio-Ausgabe gespeichert.', 'success');
+        const data = await resp.json();
+        syncAudioSelection(data.audio_outputs, data.audio_device);
+        const volumeValue = syncVolume(data.audio_volume);
+        if (volumeValue !== null) {
+          setStatus('Audio-Ausgabe und Lautstärke gespeichert.', 'success');
+        } else {
+          setStatus('Audio-Ausgabe gespeichert.', 'success');
+        }
       } catch (err) {
         console.error('Speichern fehlgeschlagen', err);
         setStatus('Speichern fehlgeschlagen.', 'error');
+      }
+    }
+
+    async function saveVolume(rawValue) {
+      if (!volumeConfig) {
+        return;
+      }
+      const value = clampVolume(rawValue);
+      if (value === null) {
+        return;
+      }
+      try {
+        setStatus('Speichere Lautstärke …');
+        const payload = { audio_volume: value };
+        const currentDevice = audioSelect.value;
+        if (currentDevice) {
+          payload.audio_device = currentDevice;
+        }
+        const resp = await fetch('/api/control', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        if (!resp.ok) {
+          throw new Error(`Status ${resp.status}`);
+        }
+        const data = await resp.json();
+        syncAudioSelection(data.audio_outputs, data.audio_device);
+        const updated = syncVolume(data.audio_volume);
+        if (updated !== null) {
+          setStatus('Lautstärke gespeichert.', 'success');
+        } else {
+          setStatus('Keine Lautstärke-Steuerung verfügbar.', 'error');
+        }
+      } catch (err) {
+        console.error('Speichern der Lautstärke fehlgeschlagen', err);
+        setStatus('Speichern der Lautstärke fehlgeschlagen.', 'error');
       }
     }
 
@@ -1070,6 +1465,18 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
         saveSelection(value);
       }
     });
+
+    if (volumeSlider) {
+      volumeSlider.addEventListener('input', () => {
+        volumeValue.textContent = formatVolume(volumeSlider.value);
+      });
+      volumeSlider.addEventListener('change', () => {
+        const value = clampVolume(volumeSlider.value);
+        if (value !== null) {
+          saveVolume(value);
+        }
+      });
+    }
 
     loadState();
   </script>
@@ -1120,6 +1527,7 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
                 steering=data.get("steering"),
                 head=data.get("head"),
                 audio_device=data.get("audio_device"),
+                audio_volume=data.get("audio_volume"),
             )
 
         body = json.dumps(state)
@@ -1241,6 +1649,21 @@ def apply_audio_output(audio_id):
         return False
     run_audio_setup(profile.get("setup_commands", []))
     return True
+
+
+def apply_audio_volume(audio_id, volume):
+    profile = get_audio_volume_profile(audio_id)
+    if not profile:
+        return False
+    sanitized = sanitize_audio_volume(audio_id, volume)
+    if sanitized is None:
+        return False
+    command = [str(part).format(volume=sanitized) for part in profile["command"]]
+    try:
+        subprocess.run(command, check=False, timeout=AUDIO_ROUTE_TIMEOUT)
+        return True
+    except Exception:
+        return False
 
 def _start_player_async(path, alsa_dev=ALSA_HP_DEVICE):
     """Starte mpg123 bevorzugt, fallback ffplay. Liefert (Popen, playername) oder (None, None)."""
@@ -1413,8 +1836,11 @@ def main():
     safe_start_head_until  = time.monotonic() + HEAD_SAFE_START_S
 
     # Webserver für Remote-Steuerung
-    initial_audio_id = load_persisted_audio_output()
-    web_state = WebControlState(initial_audio_device=initial_audio_id)
+    persisted_audio = load_persisted_audio_state()
+    web_state = WebControlState(
+        initial_audio_device=persisted_audio.get("audio_device"),
+        initial_volume_map=persisted_audio.get("volumes"),
+    )
     web_server = None
     try:
         web_server = start_webserver(web_state)
