@@ -11,6 +11,30 @@ ALSA_HP_DEVICE       = "plughw:0,0"           # Analoger Kopfhörer-Ausgang (mit
 HEADPHONE_VOLUME     = "100%"
 AUDIO_ROUTE_TIMEOUT  = 3                      # Sekunden für amixer-Kommandos
 
+# Vorkonfigurierte Audioausgänge für Web-Dropdown (ID, Label, ALSA-Device, Setup-Kommandos)
+HEADPHONE_ROUTE_COMMANDS = [
+    ["amixer", "-q", "cset", "numid=3", "1"],             # 0=auto, 1=analog, 2=HDMI (älteres RPi-OS)
+    ["amixer", "-q", "sset", "Headphone", HEADPHONE_VOLUME],
+]
+
+AUDIO_OUTPUTS = [
+    {
+        "id": "headphones",
+        "label": "Kopfhörerbuchse",
+        "alsa_device": ALSA_HP_DEVICE,
+        "setup_commands": HEADPHONE_ROUTE_COMMANDS,
+    },
+    {
+        "id": "system",
+        "label": "System-Standard",
+        "alsa_device": "default",
+        "setup_commands": [],
+    },
+]
+
+_AUDIO_OUTPUT_MAP = {cfg["id"]: cfg for cfg in AUDIO_OUTPUTS}
+DEFAULT_AUDIO_OUTPUT_ID = AUDIO_OUTPUTS[0]["id"] if AUDIO_OUTPUTS else None
+
 # Gleiches File bei erneutem Tastendruck neu starten?
 RESTART_SAME_TRACK   = True
 
@@ -129,8 +153,10 @@ class WebControlState:
         self._steering = 0.0
         self._head = 0.0
         self._last_update = 0.0
+        self._audio_device = DEFAULT_AUDIO_OUTPUT_ID
 
-    def update(self, *, override=None, motor=None, steering=None, head=None):
+    def update(self, *, override=None, motor=None, steering=None, head=None, audio_device=None):
+        new_audio_id = None
         with self._lock:
             if override is not None:
                 self._override = bool(override)
@@ -149,8 +175,16 @@ class WebControlState:
                     self._head = clamp(float(head), -1.0, 1.0)
                 except (TypeError, ValueError):
                     pass
+            if audio_device is not None:
+                audio_id = str(audio_device)
+                if audio_id in _AUDIO_OUTPUT_MAP and audio_id != self._audio_device:
+                    self._audio_device = audio_id
+                    new_audio_id = audio_id
             self._last_update = time.time()
-            return self.snapshot_locked()
+            snapshot = self.snapshot_locked()
+        if new_audio_id is not None:
+            apply_audio_output(new_audio_id)
+        return snapshot
 
     def snapshot(self):
         with self._lock:
@@ -162,8 +196,26 @@ class WebControlState:
             "motor": self._motor,
             "steering": self._steering,
             "head": self._head,
+            "audio_device": self._audio_device,
+            "audio_outputs": [
+                {"id": cfg["id"], "label": cfg["label"]}
+                for cfg in AUDIO_OUTPUTS
+            ],
             "last_update": self._last_update,
         }
+
+    def get_selected_alsa_device(self):
+        with self._lock:
+            audio_id = self._audio_device
+        profile = get_audio_output(audio_id)
+        if profile and profile.get("alsa_device"):
+            return profile["alsa_device"]
+        return ALSA_HP_DEVICE
+
+    def apply_current_audio_output(self):
+        with self._lock:
+            audio_id = self._audio_device
+        apply_audio_output(audio_id)
 
 
 class ControlRequestHandler(BaseHTTPRequestHandler):
@@ -274,6 +326,21 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
     button.ghost:hover { background: rgba(229,9,20,0.28); }
     button.ghost.active { background: #e50914; border-color: #e50914; box-shadow: 0 0 18px rgba(229,9,20,0.35); }
     input[type="checkbox"] { width: 1.2rem; height: 1.2rem; accent-color: #e50914; }
+    .audio-output { display: flex; flex-direction: column; gap: 0.4rem; }
+    select {
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.12);
+      color: #fff;
+      padding: 0.55rem 0.75rem;
+      border-radius: 12px;
+      font-size: 0.95rem;
+      min-height: 44px;
+    }
+    select:focus {
+      outline: none;
+      border-color: rgba(229,9,20,0.55);
+      box-shadow: 0 0 0 2px rgba(229,9,20,0.2);
+    }
     footer { margin-top: 2rem; font-size: 0.8rem; color: #666; text-align: center; }
     @media (max-width: 900px) {
       body {
@@ -304,7 +371,7 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
         font-size: 1rem;
         padding-block: 0.65rem;
       }
-      .head-actions {
+      .head-actions { 
         flex-direction: column;
         align-items: stretch;
       }
@@ -314,6 +381,7 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
       .override-toggle {
         justify-content: space-between;
       }
+      .audio-output { width: 100%; }
     }
     @media (orientation: landscape) and (max-height: 520px) {
       body { padding: 0.8rem; align-items: flex-start; }
@@ -376,6 +444,10 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
           </div>
           <button id="center" type="button">Zentrieren</button>
         </div>
+        <div class="audio-output">
+          <label for="audioDevice">Audio-Ausgabe</label>
+          <select id="audioDevice" aria-label="Audio-Ausgabe auswählen"></select>
+        </div>
         <div class="value">Kopf: <strong><span id="headVal">+0.00</span></strong></div>
       </div>
       <div class="joystick-card">
@@ -395,13 +467,18 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
       return Math.max(-1, Math.min(1, num));
     };
 
-    const state = { steering: 0, motor: 0, head: 0, override: false };
+    const state = { steering: 0, motor: 0, head: 0, override: false, audioDevice: null };
     const steeringVal = document.getElementById('steeringVal');
     const motorVal = document.getElementById('motorVal');
     const headVal = document.getElementById('headVal');
     const headButtons = Array.from(document.querySelectorAll('[data-head-value]'));
     const override = document.getElementById('override');
     const centerBtn = document.getElementById('center');
+    const audioSelect = document.getElementById('audioDevice');
+    let audioOptionsSignature = '';
+    if (audioSelect) {
+      audioSelect.disabled = true;
+    }
 
     const formatValue = (value) => {
       const rounded = clampValue(value);
@@ -423,6 +500,37 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
         }
         button.classList.toggle('active', Math.abs(state.head - value) < 0.01);
       });
+    };
+
+    const syncAudioSelection = (options, selectedId) => {
+      if (!audioSelect) {
+        return;
+      }
+      const normalized = Array.isArray(options)
+        ? options
+            .map((opt) => ({ id: opt?.id ?? '', label: opt?.label ?? String(opt?.id ?? '') }))
+            .filter((opt) => String(opt.id).length > 0)
+        : [];
+      const signature = JSON.stringify(normalized);
+      if (signature !== audioOptionsSignature) {
+        audioOptionsSignature = signature;
+        audioSelect.innerHTML = '';
+        normalized.forEach((opt) => {
+          const option = document.createElement('option');
+          option.value = String(opt.id);
+          option.textContent = opt.label;
+          audioSelect.append(option);
+        });
+      }
+      const desired = String(selectedId ?? '');
+      const hasDesired = normalized.some((opt) => String(opt.id) === desired);
+      const fallback = normalized.length > 0 ? String(normalized[0].id) : '';
+      const targetValue = hasDesired ? desired : fallback;
+      if (audioSelect.value !== targetValue) {
+        audioSelect.value = targetValue;
+      }
+      audioSelect.disabled = normalized.length === 0;
+      state.audioDevice = targetValue || null;
     };
 
     const setHead = (value, emit = true) => {
@@ -540,6 +648,11 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
       state.motor = payload.motor;
       state.head = payload.head;
       state.override = payload.override;
+      const audioDevice = overrides.audioDevice ?? state.audioDevice;
+      if (typeof audioDevice === 'string' && audioDevice.length > 0) {
+        payload.audio_device = audioDevice;
+        state.audioDevice = audioDevice;
+      }
       try {
         await fetch('/api/control', {
           method: 'POST',
@@ -588,6 +701,16 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
       sendState({ steering: 0, motor: 0, head: 0 });
     });
 
+    if (audioSelect) {
+      audioSelect.addEventListener('change', () => {
+        const value = audioSelect.value;
+        state.audioDevice = value || null;
+        if (state.audioDevice) {
+          sendState({ audioDevice: state.audioDevice });
+        }
+      });
+    }
+
     async function pollState() {
       try {
         const resp = await fetch('/api/state');
@@ -599,6 +722,8 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
         const remoteMotor = clampValue(data.motor ?? 0);
         const remoteHead = clampValue(data.head ?? 0);
         const remoteOverride = Boolean(data.override);
+        const remoteAudioDevice = typeof data.audio_device === 'string' ? data.audio_device : null;
+        const remoteAudioOutputs = Array.isArray(data.audio_outputs) ? data.audio_outputs : [];
 
         if (!steeringStick.active) {
           state.steering = remoteSteering;
@@ -613,6 +738,7 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
         override.checked = remoteOverride;
         updateHeadButtons();
         updateLabels();
+        syncAudioSelection(remoteAudioOutputs, remoteAudioDevice);
       } catch (err) {
         console.error('Poll fehlgeschlagen', err);
       }
@@ -666,6 +792,7 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
                 motor=data.get("motor"),
                 steering=data.get("steering"),
                 head=data.get("head"),
+                audio_device=data.get("audio_device"),
             )
 
         body = json.dumps(state)
@@ -711,6 +838,9 @@ def validate_configuration():
 
     if SERVO_ARM_NEUTRAL_MS <= 0 or MOTOR_ARM_NEUTRAL_MS <= 0:
         raise ValueError("ARM_NEUTRAL_MS Werte müssen positiv sein")
+
+    if not AUDIO_OUTPUTS:
+        raise ValueError("AUDIO_OUTPUTS darf nicht leer sein")
 
 
 # --------- Hilfsfunktionen: Mathe/Mapping ---------
@@ -759,17 +889,31 @@ def axis_to_deg_head(ax):
 
 
 # --------- Audio-Helper ---------
-def route_audio_to_headphones():
-    """Route Audio → Kopfhörerbuchse & setze Lautstärke."""
-    cmds = [
-        ["amixer", "-q", "cset", "numid=3", "1"],             # 0=auto, 1=analog, 2=HDMI (älteres RPi-OS)
-        ["amixer", "-q", "sset", "Headphone", HEADPHONE_VOLUME],
-    ]
-    for cmd in cmds:
+def get_audio_output(audio_id):
+    if audio_id is None:
+        return None
+    return _AUDIO_OUTPUT_MAP.get(str(audio_id))
+
+
+def run_audio_setup(commands):
+    for cmd in commands or []:
         try:
             subprocess.run(cmd, check=False, timeout=AUDIO_ROUTE_TIMEOUT)
         except Exception:
             pass
+
+
+def route_audio_to_headphones():
+    """Route Audio → Kopfhörerbuchse & setze Lautstärke."""
+    run_audio_setup(HEADPHONE_ROUTE_COMMANDS)
+
+
+def apply_audio_output(audio_id):
+    profile = get_audio_output(audio_id)
+    if not profile:
+        return False
+    run_audio_setup(profile.get("setup_commands", []))
+    return True
 
 def _start_player_async(path, alsa_dev=ALSA_HP_DEVICE):
     """Starte mpg123 bevorzugt, fallback ffplay. Liefert (Popen, playername) oder (None, None)."""
@@ -950,14 +1094,14 @@ def main():
     except Exception as exc:
         print(f"Webserver konnte nicht gestartet werden: {exc}", file=sys.stderr)
         web_server = None
-    
+
 
     # Gamepad
     dev = find_gamepad()
 
     # Startsound nach erfolgreicher Verbindung
-    route_audio_to_headphones()
-    play_sound_switch(START_MP3_PATH, ALSA_HP_DEVICE)
+    web_state.apply_current_audio_output()
+    play_sound_switch(START_MP3_PATH, web_state.get_selected_alsa_device())
 
     caps = dev.capabilities()
     if ecodes.EV_ABS not in caps:
@@ -1029,7 +1173,7 @@ def main():
                         elif e.code == BTN_QUIT:
                             raise KeyboardInterrupt
                         elif e.code in SOUND_KEY_MAP:
-                            play_sound_switch(SOUND_KEY_MAP[e.code], ALSA_HP_DEVICE)
+                            play_sound_switch(SOUND_KEY_MAP[e.code], web_state.get_selected_alsa_device())
                         elif e.code == REBOOT_KEY_CODE:
                             print("[REBOOT] Stoppe Motor/Servos und starte Neustart …")
                             try:
