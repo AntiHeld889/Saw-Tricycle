@@ -165,60 +165,196 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
     control_state = None  # wird beim Start gesetzt
 
     HTML_PAGE = """<!DOCTYPE html>
-<html lang=\"de\">
+<html lang="de">
 <head>
-  <meta charset=\"utf-8\">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Saw Tricycle Websteuerung</title>
   <style>
-    body { font-family: sans-serif; background: #111; color: #eee; margin: 0; padding: 2rem; }
-    h1 { margin-top: 0; }
-    .card { background: #1d1d1d; border-radius: 12px; padding: 1.5rem; max-width: 460px; box-shadow: 0 0 30px rgba(0,0,0,0.4); }
-    label { display: block; margin: 1.2rem 0 0.4rem; font-size: 0.95rem; }
-    input[type=\"range\"] { width: 100%; }
-    .value { font-variant-numeric: tabular-nums; margin-left: 0.4rem; }
-    .toggle { display: flex; align-items: center; gap: 0.6rem; margin-top: 1rem; }
-    button { background: #e50914; border: none; color: #fff; padding: 0.6rem 1.2rem; border-radius: 6px; font-size: 1rem; cursor: pointer; }
-    button:disabled { opacity: 0.5; cursor: not-allowed; }
-    footer { margin-top: 2rem; font-size: 0.8rem; color: #aaa; }
+    :root { color-scheme: dark; }
+    * { box-sizing: border-box; }
+    body { font-family: 'Segoe UI', sans-serif; background: #0d0d0d; color: #f2f2f2; margin: 0; padding: 1.5rem; display: flex; justify-content: center; }
+    h1 { margin-top: 0; font-weight: 600; }
+    p { line-height: 1.5; color: #cfcfcf; }
+    .card { width: 100%; max-width: 760px; background: #151515; border-radius: 16px; padding: 1.6rem; box-shadow: 0 0 40px rgba(0,0,0,0.45); }
+    .joystick-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1.5rem; margin-top: 1.5rem; }
+    .joystick-card { background: rgba(255,255,255,0.04); border-radius: 14px; padding: 1.2rem; display: flex; flex-direction: column; gap: 1rem; }
+    .joystick-card h2 { margin: 0; font-size: 1.1rem; font-weight: 600; }
+    .joystick { position: relative; border-radius: 18px; border: 2px solid rgba(255,255,255,0.08); background: radial-gradient(circle at center, rgba(229,9,20,0.28) 0%, rgba(229,9,20,0.08) 60%, rgba(229,9,20,0.0) 100%); padding-top: 100%; touch-action: none; user-select: none; transition: border-color 0.2s ease; }
+    .joystick::after { content: ""; position: absolute; inset: 16%; border: 1px dashed rgba(255,255,255,0.08); border-radius: 50%; pointer-events: none; }
+    .joystick.axis-x::before { content: ""; position: absolute; left: 50%; top: 12%; bottom: 12%; width: 1px; background: rgba(255,255,255,0.12); transform: translateX(-50%); pointer-events: none; }
+    .joystick.axis-y::before { content: ""; position: absolute; top: 50%; left: 12%; right: 12%; height: 1px; background: rgba(255,255,255,0.12); transform: translateY(-50%); pointer-events: none; }
+    .joystick .knob { position: absolute; top: 50%; left: 50%; width: 38%; height: 38%; border-radius: 50%; background: radial-gradient(circle at 30% 30%, #ff3f4a, #b30009); box-shadow: 0 10px 22px rgba(229,9,20,0.45); transform: translate(-50%, -50%) translate(var(--tx, 0%), var(--ty, 0%)); transition: transform 90ms ease-out; }
+    .joystick.active { border-color: rgba(229,9,20,0.5); }
+    .joystick.active .knob { transition: none; }
+    .value { font-variant-numeric: tabular-nums; font-size: 0.95rem; color: #bbb; }
+    .value strong { color: #fff; }
+    .controls { display: flex; flex-wrap: wrap; gap: 1rem; align-items: center; margin-top: 1.6rem; }
+    .toggle { display: flex; align-items: center; gap: 0.6rem; }
+    label { font-size: 0.95rem; }
+    button { background: #e50914; border: none; color: #fff; padding: 0.65rem 1.6rem; border-radius: 999px; font-size: 1rem; cursor: pointer; transition: background 0.2s ease, transform 0.2s ease; }
+    button:hover { background: #ff1a25; }
+    button:active { transform: translateY(1px); }
+    button:disabled { opacity: 0.55; cursor: not-allowed; }
+    input[type="checkbox"] { width: 1.2rem; height: 1.2rem; accent-color: #e50914; }
+    footer { margin-top: 2rem; font-size: 0.8rem; color: #666; text-align: center; }
+    @media (max-width: 540px) {
+      body { padding: 1rem; }
+      .card { padding: 1.3rem; }
+    }
   </style>
 </head>
 <body>
-  <div class=\"card\">
+  <div class="card">
     <h1>Websteuerung</h1>
-    <p>Setze Lenkung und Antrieb. Aktiviere den Override, um den Controller zu übersteuern.</p>
-    <label for=\"steering\">Lenkung <span id=\"steeringVal\" class=\"value\">0</span></label>
-    <input id=\"steering\" type=\"range\" min=\"-100\" max=\"100\" value=\"0\" step=\"1\">
-
-    <label for=\"motor\">Motor <span id=\"motorVal\" class=\"value\">0</span></label>
-    <input id=\"motor\" type=\"range\" min=\"-100\" max=\"100\" value=\"0\" step=\"1\">
-
-    <div class=\"toggle\">
-      <input id=\"override\" type=\"checkbox\">
-      <label for=\"override\">Web-Override aktivieren</label>
+    <p>Nutze die beiden virtuellen Joysticks für Lenkung und Antrieb. Aktiviere den Override, um das Gamepad zu übersteuern.</p>
+    <div class="joystick-grid">
+      <div class="joystick-card">
+        <h2>Lenkung</h2>
+        <div id="steeringStick" class="joystick axis-x"><div class="knob"></div></div>
+        <div class="value">Lenkung: <strong><span id="steeringVal">+0.00</span></strong></div>
+      </div>
+      <div class="joystick-card">
+        <h2>Motor</h2>
+        <div id="motorStick" class="joystick axis-y"><div class="knob"></div></div>
+        <div class="value">Motor: <strong><span id="motorVal">+0.00</span></strong></div>
+      </div>
     </div>
-    <button id=\"center\">Zentrieren</button>
+    <div class="controls">
+      <div class="toggle">
+        <input id="override" type="checkbox">
+        <label for="override">Web-Override aktivieren</label>
+      </div>
+      <button id="center" type="button">Zentrieren</button>
+    </div>
+    <footer>Läuft auf Port 8081 · Ziehen/Tippen zum Steuern</footer>
   </div>
-  <footer>läuft auf Port 8081</footer>
-
   <script>
-    const steering = document.getElementById('steering');
-    const motor = document.getElementById('motor');
+    const clampValue = (value) => {
+      const num = Number.parseFloat(value);
+      if (!Number.isFinite(num)) {
+        return 0;
+      }
+      return Math.max(-1, Math.min(1, num));
+    };
+
+    const state = { steering: 0, motor: 0, override: false };
     const steeringVal = document.getElementById('steeringVal');
     const motorVal = document.getElementById('motorVal');
     const override = document.getElementById('override');
     const centerBtn = document.getElementById('center');
 
-    function sliderValue(input) {
-      return (parseInt(input.value, 10) / 100).toFixed(2);
+    const formatValue = (value) => {
+      const rounded = clampValue(value);
+      return `${rounded >= 0 ? '+' : ''}${rounded.toFixed(2)}`;
+    };
+
+    const updateLabels = () => {
+      steeringVal.textContent = formatValue(state.steering);
+      motorVal.textContent = formatValue(state.motor);
+    };
+
+    function createJoystick(id, axis, onInput) {
+      const pad = document.getElementById(id);
+      let pointerId = null;
+      let active = false;
+      let value = 0;
+      const travel = 42; // Prozentuale Auslenkung für den Knopf
+
+      const render = () => {
+        if (axis === 'x') {
+          pad.style.setProperty('--tx', `${value * travel}%`);
+          pad.style.setProperty('--ty', '0%');
+        } else {
+          pad.style.setProperty('--ty', `${value * -travel}%`);
+          pad.style.setProperty('--tx', '0%');
+        }
+      };
+
+      const applyValue = (next, emit) => {
+        value = clampValue(next);
+        render();
+        if (emit && typeof onInput === 'function') {
+          onInput(value);
+        }
+      };
+
+      const updateFromPointer = (event) => {
+        const rect = pad.getBoundingClientRect();
+        let next = 0;
+        if (axis === 'x') {
+          const centerX = rect.left + rect.width / 2;
+          next = (event.clientX - centerX) / (rect.width / 2);
+        } else {
+          const centerY = rect.top + rect.height / 2;
+          next = (centerY - event.clientY) / (rect.height / 2);
+        }
+        applyValue(next, true);
+      };
+
+      const releasePointer = (event) => {
+        if (event.pointerId !== pointerId) {
+          return;
+        }
+        try {
+          pad.releasePointerCapture(pointerId);
+        } catch (err) {
+          /* ignore */
+        }
+        pointerId = null;
+        active = false;
+        pad.classList.remove('active');
+        applyValue(0, true);
+      };
+
+      pad.addEventListener('pointerdown', (event) => {
+        event.preventDefault();
+        pointerId = event.pointerId;
+        active = true;
+        pad.classList.add('active');
+        try {
+          pad.setPointerCapture(pointerId);
+        } catch (err) {
+          /* ignore */
+        }
+        updateFromPointer(event);
+      });
+
+      pad.addEventListener('pointermove', (event) => {
+        if (!active || event.pointerId !== pointerId) {
+          return;
+        }
+        updateFromPointer(event);
+      });
+
+      pad.addEventListener('pointerup', releasePointer);
+      pad.addEventListener('pointercancel', releasePointer);
+
+      return {
+        setValue(next) {
+          applyValue(next, false);
+        },
+        reset() {
+          applyValue(0, false);
+        },
+        get value() {
+          return value;
+        },
+        get active() {
+          return active;
+        }
+      };
     }
 
-    async function sendState(extra = {}) {
+    async function sendState(overrides = {}) {
       const payload = {
-        steering: parseInt(steering.value, 10) / 100,
-        motor: parseInt(motor.value, 10) / 100,
-        override: override.checked,
-        ...extra
+        steering: clampValue(overrides.steering ?? state.steering),
+        motor: clampValue(overrides.motor ?? state.motor),
+        override: overrides.override ?? state.override
       };
+      state.steering = payload.steering;
+      state.motor = payload.motor;
+      state.override = payload.override;
       try {
         await fetch('/api/control', {
           method: 'POST',
@@ -230,36 +366,60 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
       }
     }
 
-    function refreshLabels() {
-      steeringVal.textContent = sliderValue(steering);
-      motorVal.textContent = sliderValue(motor);
-    }
+    const steeringStick = createJoystick('steeringStick', 'x', (value) => {
+      state.steering = value;
+      updateLabels();
+      sendState();
+    });
 
-    steering.addEventListener('input', () => { refreshLabels(); sendState(); });
-    motor.addEventListener('input', () => { refreshLabels(); sendState(); });
-    override.addEventListener('change', () => sendState());
+    const motorStick = createJoystick('motorStick', 'y', (value) => {
+      state.motor = value;
+      updateLabels();
+      sendState();
+    });
+
+    override.addEventListener('change', () => {
+      state.override = override.checked;
+      sendState();
+    });
+
     centerBtn.addEventListener('click', () => {
-      steering.value = 0;
-      motor.value = 0;
-      refreshLabels();
+      state.steering = 0;
+      state.motor = 0;
+      steeringStick.reset();
+      motorStick.reset();
+      updateLabels();
       sendState({ steering: 0, motor: 0 });
     });
 
     async function pollState() {
       try {
         const resp = await fetch('/api/state');
-        if (!resp.ok) return;
+        if (!resp.ok) {
+          return;
+        }
         const data = await resp.json();
-        steering.value = Math.round((data.steering || 0) * 100);
-        motor.value = Math.round((data.motor || 0) * 100);
-        override.checked = Boolean(data.override);
-        refreshLabels();
+        const remoteSteering = clampValue(data.steering ?? 0);
+        const remoteMotor = clampValue(data.motor ?? 0);
+        const remoteOverride = Boolean(data.override);
+
+        if (!steeringStick.active) {
+          state.steering = remoteSteering;
+          steeringStick.setValue(remoteSteering);
+        }
+        if (!motorStick.active) {
+          state.motor = remoteMotor;
+          motorStick.setValue(remoteMotor);
+        }
+        state.override = remoteOverride;
+        override.checked = remoteOverride;
+        updateLabels();
       } catch (err) {
         console.error('Poll fehlgeschlagen', err);
       }
     }
 
-    refreshLabels();
+    updateLabels();
     pollState();
     setInterval(pollState, 1500);
   </script>
