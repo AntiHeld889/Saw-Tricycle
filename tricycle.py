@@ -8,6 +8,7 @@
 # ---- Audio & Dateien ----
 START_MP3_PATH       = "/opt/python/sawsounds/Start.mp3"   # Pfad anpassen falls nötig
 ALSA_HP_DEVICE       = "plughw:0,0"           # Analoger Kopfhörer-Ausgang (mit 'aplay -l' prüfen)
+ALSA_USB_DEVICE      = "plughw:1,0"           # USB-Soundkarte (mit 'aplay -l' prüfen)
 HEADPHONE_VOLUME     = "100%"
 AUDIO_ROUTE_TIMEOUT  = 3                      # Sekunden für amixer-Kommandos
 
@@ -23,6 +24,12 @@ AUDIO_OUTPUTS = [
         "label": "Kopfhörerbuchse",
         "alsa_device": ALSA_HP_DEVICE,
         "setup_commands": HEADPHONE_ROUTE_COMMANDS,
+    },
+    {
+        "id": "usb",
+        "label": "USB-Soundkarte",
+        "alsa_device": ALSA_USB_DEVICE,
+        "setup_commands": [],
     },
     {
         "id": "system",
