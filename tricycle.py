@@ -502,6 +502,7 @@ class BatteryMonitor:
             "status": "unavailable",
             "voltage": None,
             "current": None,
+            "power": None,
             "percent": None,
             "charging": False,
             "timestamp": None,
@@ -570,6 +571,14 @@ class BatteryMonitor:
                 voltage = float(self._sensor.voltage)  # type: ignore[attr-defined]
                 current_ma = float(self._sensor.current)  # type: ignore[attr-defined]
                 current_a = current_ma / 1000.0
+                power_w = None
+                try:
+                    power_raw = float(self._sensor.power)  # type: ignore[attr-defined]
+                except Exception:
+                    power_raw = None
+                if power_raw is not None and math.isfinite(power_raw):
+                    # Laut Datenblatt liefert der INA260 die Leistung in Milliwatt.
+                    power_w = power_raw / 1000.0
                 percent = self._estimate_percent(voltage)
                 percent_clamped = None
                 if percent is not None and math.isfinite(percent):
@@ -585,6 +594,7 @@ class BatteryMonitor:
                     "status": status,
                     "voltage": round(voltage, 3),
                     "current": round(current_a, 3),
+                    "power": round(power_w, 3) if power_w is not None else None,
                     "percent": round(percent_clamped, 1) if percent_clamped is not None else None,
                     "charging": charging,
                     "timestamp": time.time(),
@@ -601,6 +611,7 @@ class BatteryMonitor:
                         "status": "error",
                         "voltage": None,
                         "current": None,
+                        "power": None,
                         "percent": None,
                         "charging": False,
                         "timestamp": time.time(),
@@ -818,6 +829,14 @@ class WebControlState:
                 snapshot["battery"] = {"status": "error"}
         return snapshot
 
+    def get_battery_state(self):
+        if not self._battery_monitor:
+            return None
+        try:
+            return self._battery_monitor.get_state()
+        except Exception:
+            return {"status": "error"}
+
     def get_selected_alsa_device(self):
         with self._lock:
             audio_id = self._audio_device
@@ -931,6 +950,8 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
       line-height: 1;
       color: #f2f2f2;
       transition: background 0.2s ease, border-color 0.2s ease;
+      text-decoration: none;
+      cursor: pointer;
     }
     .battery-indicator svg {
       width: 34px;
@@ -1136,14 +1157,14 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
     <div class="card-header">
       <h1>Saw Tricycle</h1>
       <div class="card-actions">
-        <div id="batteryIndicator" class="battery-indicator unavailable" aria-live="polite" title="Akkustand unbekannt">
+        <a id="batteryIndicator" class="battery-indicator unavailable" aria-live="polite" title="Akkustand unbekannt" href="/battery">
           <svg viewBox="0 0 46 24" aria-hidden="true" focusable="false">
             <rect class="battery-body" x="1" y="5" width="36" height="14" rx="3" ry="3" />
             <rect class="battery-cap" x="38" y="9" width="6" height="6" rx="1.5" ry="1.5" />
             <rect id="batteryFill" class="battery-fill" x="3" y="7" width="0" height="10" rx="2" ry="2" />
           </svg>
           <span id="batteryLabel">--%</span>
-        </div>
+        </a>
         <a class="settings-button" href="/settings" title="Einstellungen" aria-label="Einstellungen öffnen">
           <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
             <path d="M19.14 12.94c.04-.31.06-.63.06-.94s-.02-.63-.06-.94l2.03-1.58a.5.5 0 0 0 .12-.64l-1.92-3.32a.5.5 0 0 0-.6-.22l-2.39.96a7.1 7.1 0 0 0-1.62-.94l-.36-2.54A.5.5 0 0 0 14.92 2h-3.84a.5.5 0 0 0-.5.43l-.36 2.54a7.1 7.1 0 0 0-1.62.94l-2.39-.96a.5.5 0 0 0-.6.22L3.69 8.45a.5.5 0 0 0 .12.64l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94l-2.03 1.58a.5.5 0 0 0-.12.64l1.92 3.32c.14.24.43.33.68.22l2.39-.96c.49.39 1.04.71 1.62.94l.36 2.54c.04.25.25.43.5.43h3.84c.25 0 .46-.18.5-.43l.36-2.54c.58-.23 1.13-.55 1.62-.94l2.39.96c.25.11.54.02.68-.22l1.92-3.32a.5.5 0 0 0-.12-.64zm-7.14 2.56a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z"/>
@@ -1231,6 +1252,8 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
       const voltage = Number.isFinite(voltageRaw) ? voltageRaw : null;
       const currentRaw = Number(info.current);
       const current = Number.isFinite(currentRaw) ? currentRaw : null;
+      const powerRaw = Number(info.power);
+      const power = Number.isFinite(powerRaw) ? powerRaw : null;
       const status = typeof info.status === 'string' ? info.status : 'unknown';
 
       if (percent === null) {
@@ -1272,6 +1295,10 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
       if (current !== null) {
         const sign = current >= 0 ? '+' : '';
         parts.push(`${sign}${current.toFixed(2)} A`);
+      }
+      if (power !== null) {
+        const sign = power >= 0 ? '+' : '';
+        parts.push(`${sign}${power.toFixed(2)} W`);
       }
       if (status === 'charging') {
         parts.push('lädt');
@@ -2158,6 +2185,299 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
 </body>
 </html>"""
 
+    BATTERY_PAGE = """<!DOCTYPE html>
+<html lang=\"de\">
+<head>
+  <meta charset=\"utf-8\">
+  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1, viewport-fit=cover\">
+  <title>Akku-Details · Saw Tricycle</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --safe-top: env(safe-area-inset-top, 0px);
+      --safe-bottom: env(safe-area-inset-bottom, 0px);
+      --safe-left: env(safe-area-inset-left, 0px);
+      --safe-right: env(safe-area-inset-right, 0px);
+    }
+    * { box-sizing: border-box; }
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background: #0d0d0d;
+      color: #f2f2f2;
+      margin: 0;
+      min-height: 100vh;
+      min-height: 100dvh;
+      padding: calc(1.4rem + var(--safe-top)) calc(1.4rem + var(--safe-right)) calc(1.4rem + var(--safe-bottom)) calc(1.4rem + var(--safe-left));
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      -webkit-text-size-adjust: 100%;
+      touch-action: manipulation;
+    }
+    .card {
+      width: 100%;
+      max-width: 520px;
+      background: rgba(21, 21, 21, 0.95);
+      border-radius: 18px;
+      padding: clamp(1.4rem, 4vw + 0.6rem, 2rem);
+      box-shadow: 0 0 40px rgba(0,0,0,0.45);
+      display: flex;
+      flex-direction: column;
+      gap: 1.2rem;
+    }
+    .card-header {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
+    .back-button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 42px;
+      height: 42px;
+      border-radius: 999px;
+      border: 1px solid rgba(255,255,255,0.15);
+      background: rgba(255,255,255,0.04);
+      color: #f2f2f2;
+      cursor: pointer;
+      text-decoration: none;
+      transition: background 0.2s ease, border-color 0.2s ease, transform 0.15s ease;
+    }
+    .back-button:hover {
+      background: rgba(255,255,255,0.08);
+      border-color: rgba(255,255,255,0.22);
+    }
+    .back-button:active {
+      transform: scale(0.96);
+    }
+    .back-button svg {
+      width: 22px;
+      height: 22px;
+      fill: currentColor;
+    }
+    h1 {
+      font-size: clamp(1.4rem, 4vw + 0.2rem, 1.85rem);
+      margin: 0;
+    }
+    .status {
+      padding: 0.9rem 1rem;
+      border-radius: 12px;
+      font-size: 0.95rem;
+      line-height: 1.4;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.08);
+    }
+    .status.status-error {
+      background: rgba(255, 59, 48, 0.12);
+      border-color: rgba(255, 59, 48, 0.35);
+      color: #ff6b60;
+    }
+    .status.status-success {
+      background: rgba(54, 212, 106, 0.12);
+      border-color: rgba(54, 212, 106, 0.35);
+      color: #73ff9b;
+    }
+    .status.status-info {
+      background: rgba(51, 166, 255, 0.12);
+      border-color: rgba(51, 166, 255, 0.35);
+      color: #7fc8ff;
+    }
+    dl {
+      margin: 0;
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 0.9rem 1.2rem;
+    }
+    dt {
+      font-size: 0.85rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: rgba(242,242,242,0.7);
+      margin: 0;
+    }
+    dd {
+      margin: 0.15rem 0 0;
+      font-size: 1.35rem;
+      font-variant-numeric: tabular-nums;
+    }
+    .timestamp {
+      margin: 0.4rem 0 0;
+      font-size: 0.85rem;
+      color: rgba(242,242,242,0.7);
+    }
+    @media (max-width: 480px) {
+      dl {
+        grid-template-columns: minmax(0, 1fr);
+      }
+      dd {
+        font-size: 1.2rem;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class=\"card\">
+    <div class=\"card-header\">
+      <a class=\"back-button\" href=\"/\" aria-label=\"Zurück zur Steuerung\">
+        <svg viewBox=\"0 0 24 24\" aria-hidden=\"true\" focusable=\"false\"><path d=\"M15.41 16.59L10.83 12l4.58-4.59L14 6l-6 6 6 6z\"/></svg>
+      </a>
+      <h1>Akku-Details</h1>
+    </div>
+    <div id=\"status\" class=\"status status-info\" role=\"status\">Werte werden geladen …</div>
+    <dl>
+      <div>
+        <dt>Status</dt>
+        <dd id=\"valueStatus\">–</dd>
+      </div>
+      <div>
+        <dt>Akkuladung</dt>
+        <dd id=\"valuePercent\">-- %</dd>
+      </div>
+      <div>
+        <dt>Spannung</dt>
+        <dd id=\"valueVoltage\">-- V</dd>
+      </div>
+      <div>
+        <dt>Strom</dt>
+        <dd id=\"valueCurrent\">-- A</dd>
+      </div>
+      <div>
+        <dt>Leistung</dt>
+        <dd id=\"valuePower\">-- W</dd>
+      </div>
+      <div>
+        <dt>Ladezustand</dt>
+        <dd id=\"valueCharging\">–</dd>
+      </div>
+    </dl>
+    <p class=\"timestamp\">Zuletzt aktualisiert: <span id=\"valueTimestamp\">--</span></p>
+  </div>
+  <script>
+    const statusEl = document.getElementById('status');
+    const valueStatus = document.getElementById('valueStatus');
+    const valuePercent = document.getElementById('valuePercent');
+    const valueVoltage = document.getElementById('valueVoltage');
+    const valueCurrent = document.getElementById('valueCurrent');
+    const valuePower = document.getElementById('valuePower');
+    const valueCharging = document.getElementById('valueCharging');
+    const valueTimestamp = document.getElementById('valueTimestamp');
+
+    const STATUS_LABELS = {
+      charging: 'Lädt',
+      discharging: 'Entlädt',
+      idle: 'Ruhezustand',
+      error: 'Sensorfehler',
+      initializing: 'Initialisierung',
+      unavailable: 'Nicht verfügbar',
+      unknown: 'Unbekannt'
+    };
+
+    function setStatus(message, tone = 'info') {
+      statusEl.textContent = message;
+      statusEl.classList.remove('status-error', 'status-success', 'status-info');
+      statusEl.classList.add(`status-${tone}`);
+    }
+
+    function formatNumber(value, unit, digits = 2) {
+      if (!Number.isFinite(value)) {
+        return `--\u00A0${unit}`;
+      }
+      return `${value.toFixed(digits)}\u00A0${unit}`;
+    }
+
+    function formatPercent(value) {
+      if (!Number.isFinite(value)) {
+        return '--\u00A0%';
+      }
+      return `${Math.round(Math.max(0, Math.min(100, value)))}\u00A0%`;
+    }
+
+    function describeCharging(flag, status) {
+      if (typeof flag !== 'boolean') {
+        if (status === 'charging') {
+          return 'Ja';
+        }
+        if (status === 'discharging') {
+          return 'Nein';
+        }
+        return '–';
+      }
+      return flag ? 'Ja' : 'Nein';
+    }
+
+    function formatTimestamp(value) {
+      if (!Number.isFinite(value) || value <= 0) {
+        return '--';
+      }
+      try {
+        const date = new Date(value * 1000);
+        return date.toLocaleString('de-DE', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      } catch (err) {
+        return '--';
+      }
+    }
+
+    function updateView(payload) {
+      if (!payload || typeof payload !== 'object') {
+        valueStatus.textContent = 'Nicht verfügbar';
+        valuePercent.textContent = '--\u00A0%';
+        valueVoltage.textContent = '--\u00A0V';
+        valueCurrent.textContent = '--\u00A0A';
+        valuePower.textContent = '--\u00A0W';
+        valueCharging.textContent = '–';
+        valueTimestamp.textContent = '--';
+        setStatus('Akku-Daten sind nicht verfügbar.', 'error');
+        return;
+      }
+
+      const percent = Number(payload.percent);
+      const voltage = Number(payload.voltage);
+      const current = Number(payload.current);
+      const power = Number(payload.power);
+      const status = typeof payload.status === 'string' ? payload.status : 'unknown';
+      const chargingFlag = typeof payload.charging === 'boolean' ? payload.charging : null;
+      const timestamp = Number(payload.timestamp);
+
+      valueStatus.textContent = STATUS_LABELS[status] ?? STATUS_LABELS.unknown;
+      valuePercent.textContent = formatPercent(percent);
+      valueVoltage.textContent = formatNumber(voltage, 'V', 2);
+      valueCurrent.textContent = formatNumber(current, 'A', 2);
+      valuePower.textContent = formatNumber(power, 'W', 2);
+      valueCharging.textContent = describeCharging(chargingFlag, status);
+      valueTimestamp.textContent = formatTimestamp(timestamp);
+
+      if (status === 'error') {
+        setStatus('Sensorfehler – bitte Verkabelung und Stromversorgung prüfen.', 'error');
+      } else if (status === 'initializing') {
+        setStatus('Sensor initialisiert … bitte warten.', 'info');
+      } else if (status === 'unavailable') {
+        setStatus('Akku-Daten stehen nicht zur Verfügung.', 'error');
+      } else {
+        setStatus('Akku-Daten aktualisiert.', 'success');
+      }
+    }
+
+    async function pollBattery() {
+      try {
+        const response = await fetch('/api/battery');
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+        const data = await response.json();
+        updateView(data);
+      } catch (error) {
+        console.error('Abfrage der Akku-Daten fehlgeschlagen', error);
+        updateView(null);
+      }
+    }
+
+    pollBattery();
+    setInterval(pollBattery, 2000);
+  </script>
+</body>
+</html>"""
+
     def _write_response(self, status, body, content_type="text/html; charset=utf-8"):
         encoded = body.encode("utf-8")
         self.send_response(status)
@@ -2174,9 +2494,21 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
         if self.path == "/settings":
             self._write_response(200, self.SETTINGS_PAGE)
             return
+        if self.path == "/battery":
+            self._write_response(200, self.BATTERY_PAGE)
+            return
         if self.path.startswith("/api/state"):
             state = self.control_state.snapshot() if self.control_state else {}
             body = json.dumps(state)
+            self._write_response(200, body, "application/json")
+            return
+        if self.path.startswith("/api/battery"):
+            payload = {"status": "unavailable"}
+            if self.control_state:
+                state = self.control_state.get_battery_state()
+                if state:
+                    payload = state
+            body = json.dumps(payload)
             self._write_response(200, body, "application/json")
             return
         self._write_response(404, "Not found", "text/plain; charset=utf-8")
