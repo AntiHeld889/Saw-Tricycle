@@ -170,6 +170,13 @@ import threading
 import subprocess
 from pathlib import Path
 
+try:
+    import board  # type: ignore
+    import adafruit_ina260  # type: ignore
+except Exception:  # pragma: no cover - optional dependency
+    board = None  # type: ignore
+    adafruit_ina260 = None  # type: ignore
+
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from evdev import InputDevice, ecodes, list_devices
@@ -460,17 +467,175 @@ CURRENT_PLAYER_PROC = None
 CURRENT_PLAYER_PATH = None
 
 
+# === Batterieüberwachung ===
+class BatteryMonitor:
+    """Liest den INA260-Sensor aus und schätzt den Ladezustand eines LiFePO4-Akkus."""
+
+    DEFAULT_SOC_CURVE = [
+        (13.6, 100.0),
+        (13.4, 95.0),
+        (13.3, 90.0),
+        (13.2, 80.0),
+        (13.1, 70.0),
+        (13.0, 60.0),
+        (12.9, 50.0),
+        (12.8, 40.0),
+        (12.7, 30.0),
+        (12.6, 20.0),
+        (12.4, 10.0),
+        (12.2, 5.0),
+        (12.0, 0.0),
+        (11.8, 0.0),
+    ]
+
+    def __init__(self, *, sample_interval=5.0, voltage_soc_curve=None):
+        self._lock = threading.Lock()
+        self._stop = threading.Event()
+        self._sample_interval = max(1.0, float(sample_interval))
+        self._curve = (
+            list(voltage_soc_curve)
+            if voltage_soc_curve is not None
+            else list(self.DEFAULT_SOC_CURVE)
+        )
+        self._curve.sort(key=lambda item: item[0], reverse=True)
+        self._state = {
+            "status": "unavailable",
+            "voltage": None,
+            "current": None,
+            "percent": None,
+            "charging": False,
+            "timestamp": None,
+        }
+        self._i2c = None
+        self._sensor = None
+        self._thread = None
+        self._error_logged = False
+
+        if board is None or adafruit_ina260 is None:
+            print(
+                "[BatteryMonitor] Adafruit INA260 Bibliothek nicht verfügbar – Akkuanzeige deaktiviert.",
+                file=sys.stderr,
+            )
+            return
+
+        try:
+            self._i2c = board.I2C()  # type: ignore[call-arg]
+            self._sensor = adafruit_ina260.INA260(self._i2c)  # type: ignore[call-arg]
+            try:
+                # Höhere Mittelung sorgt für ein ruhigeres Signal.
+                self._sensor.average_count = adafruit_ina260.AveragingCount.COUNT_16  # type: ignore[attr-defined]
+            except Exception:
+                pass
+            try:
+                self._sensor.mode = adafruit_ina260.Mode.CONTINUOUS  # type: ignore[attr-defined]
+            except Exception:
+                pass
+        except Exception as exc:
+            print(f"[BatteryMonitor] INA260 konnte nicht initialisiert werden: {exc}", file=sys.stderr)
+            self._state["status"] = "error"
+            return
+
+        self._state["status"] = "initializing"
+        self._thread = threading.Thread(
+            target=self._run,
+            name="battery-monitor",
+            daemon=True,
+        )
+        self._thread.start()
+
+    def _estimate_percent(self, voltage):
+        if voltage is None or not math.isfinite(voltage):
+            return None
+        if not self._curve:
+            return None
+        if voltage >= self._curve[0][0]:
+            return self._curve[0][1]
+        if voltage <= self._curve[-1][0]:
+            return self._curve[-1][1]
+        for idx in range(len(self._curve) - 1):
+            v_hi, p_hi = self._curve[idx]
+            v_lo, p_lo = self._curve[idx + 1]
+            if v_hi >= voltage >= v_lo:
+                span = v_hi - v_lo
+                if span <= 0:
+                    return p_lo
+                ratio = (voltage - v_lo) / span
+                return p_lo + ratio * (p_hi - p_lo)
+        return None
+
+    def _run(self):
+        assert self._sensor is not None
+        while not self._stop.is_set():
+            try:
+                voltage = float(self._sensor.voltage)  # type: ignore[attr-defined]
+                current_ma = float(self._sensor.current)  # type: ignore[attr-defined]
+                current_a = current_ma / 1000.0
+                percent = self._estimate_percent(voltage)
+                percent_clamped = None
+                if percent is not None and math.isfinite(percent):
+                    percent_clamped = max(0.0, min(100.0, percent))
+                charging = current_a <= -0.1
+                if charging:
+                    status = "charging"
+                elif current_a >= 0.1:
+                    status = "discharging"
+                else:
+                    status = "idle"
+                snapshot = {
+                    "status": status,
+                    "voltage": round(voltage, 3),
+                    "current": round(current_a, 3),
+                    "percent": round(percent_clamped, 1) if percent_clamped is not None else None,
+                    "charging": charging,
+                    "timestamp": time.time(),
+                }
+                with self._lock:
+                    self._state = snapshot
+                self._error_logged = False
+            except Exception as exc:
+                if not self._error_logged:
+                    print(f"[BatteryMonitor] Messfehler: {exc}", file=sys.stderr)
+                    self._error_logged = True
+                with self._lock:
+                    self._state = {
+                        "status": "error",
+                        "voltage": None,
+                        "current": None,
+                        "percent": None,
+                        "charging": False,
+                        "timestamp": time.time(),
+                    }
+            self._stop.wait(self._sample_interval)
+
+    def get_state(self):
+        with self._lock:
+            return dict(self._state)
+
+    def stop(self):
+        self._stop.set()
+        if self._thread and self._thread.is_alive():
+            self._thread.join(timeout=0.2)
+
+
 # === Websteuerungszustand ===
 class WebControlState:
     """Thread-sicherer Zustand für Web-Eingaben."""
 
-    def __init__(self, *, initial_audio_device=None, initial_volume_map=None, initial_motor_limits=None):
+    def __init__(
+        self,
+        *,
+        initial_audio_device=None,
+        initial_volume_map=None,
+        initial_motor_limits=None,
+        battery_monitor=None,
+    ):
         self._lock = threading.Lock()
         self._override = False
         self._motor = 0.0
         self._steering = 0.0
         self._head = 0.0
         self._last_update = 0.0
+        self._battery_monitor = battery_monitor
         normalized_device = _normalize_audio_output_id(initial_audio_device)
         self._audio_device = normalized_device or DEFAULT_AUDIO_OUTPUT_ID
         self._audio_volumes = {}
@@ -616,11 +781,12 @@ class WebControlState:
             apply_audio_output(new_audio_id)
         if apply_volume_change is not None:
             apply_audio_volume(*apply_volume_change)
-        return snapshot
+        return self._finalize_snapshot(snapshot)
 
     def snapshot(self):
         with self._lock:
-            return self.snapshot_locked()
+            snapshot = self.snapshot_locked()
+        return self._finalize_snapshot(snapshot)
 
     def snapshot_locked(self):
         return {
@@ -643,6 +809,14 @@ class WebControlState:
             "audio_volume": self._build_volume_snapshot_locked(),
             "last_update": self._last_update,
         }
+
+    def _finalize_snapshot(self, snapshot):
+        if self._battery_monitor:
+            try:
+                snapshot["battery"] = self._battery_monitor.get_state()
+            except Exception:
+                snapshot["battery"] = {"status": "error"}
+        return snapshot
 
     def get_selected_alsa_device(self):
         with self._lock:
@@ -715,6 +889,11 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
       font-size: clamp(1.25rem, 2.8vw, 1.6rem);
       font-weight: 600;
     }
+    .card-actions {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+    }
     .settings-button {
       display: inline-flex;
       align-items: center;
@@ -739,6 +918,57 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
       width: 22px;
       height: 22px;
       fill: currentColor;
+    }
+    .battery-indicator {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      padding: 0.25rem 0.6rem 0.25rem 0.4rem;
+      border-radius: 999px;
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.12);
+      font-size: 0.82rem;
+      line-height: 1;
+      color: #f2f2f2;
+      transition: background 0.2s ease, border-color 0.2s ease;
+    }
+    .battery-indicator svg {
+      width: 34px;
+      height: 16px;
+    }
+    .battery-body {
+      fill: none;
+      stroke: rgba(255,255,255,0.75);
+      stroke-width: 2;
+      stroke-linejoin: round;
+    }
+    .battery-cap {
+      fill: rgba(255,255,255,0.75);
+    }
+    .battery-fill {
+      fill: #36d46a;
+      transition: fill 0.2s ease, width 0.2s ease;
+    }
+    .battery-indicator.low .battery-fill {
+      fill: #ff3b30;
+    }
+    .battery-indicator.medium .battery-fill {
+      fill: #ffcc00;
+    }
+    .battery-indicator.charging .battery-fill {
+      fill: #33a6ff;
+    }
+    .battery-indicator.error .battery-fill,
+    .battery-indicator.unavailable .battery-fill {
+      fill: rgba(242,242,242,0.35);
+    }
+    .battery-indicator.unavailable {
+      opacity: 0.7;
+    }
+    .battery-indicator span {
+      min-width: 2.4rem;
+      text-align: right;
+      font-variant-numeric: tabular-nums;
     }
     .joystick-grid {
       display: grid;
@@ -905,11 +1135,21 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
   <div class="card">
     <div class="card-header">
       <h1>Saw Tricycle</h1>
-      <a class="settings-button" href="/settings" title="Einstellungen" aria-label="Einstellungen öffnen">
-        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-          <path d="M19.14 12.94c.04-.31.06-.63.06-.94s-.02-.63-.06-.94l2.03-1.58a.5.5 0 0 0 .12-.64l-1.92-3.32a.5.5 0 0 0-.6-.22l-2.39.96a7.1 7.1 0 0 0-1.62-.94l-.36-2.54A.5.5 0 0 0 14.92 2h-3.84a.5.5 0 0 0-.5.43l-.36 2.54a7.1 7.1 0 0 0-1.62.94l-2.39-.96a.5.5 0 0 0-.6.22L3.69 8.45a.5.5 0 0 0 .12.64l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94l-2.03 1.58a.5.5 0 0 0-.12.64l1.92 3.32c.14.24.43.33.68.22l2.39-.96c.49.39 1.04.71 1.62.94l.36 2.54c.04.25.25.43.5.43h3.84c.25 0 .46-.18.5-.43l.36-2.54c.58-.23 1.13-.55 1.62-.94l2.39.96c.25.11.54.02.68-.22l1.92-3.32a.5.5 0 0 0-.12-.64zm-7.14 2.56a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z"/>
-        </svg>
-      </a>
+      <div class="card-actions">
+        <div id="batteryIndicator" class="battery-indicator unavailable" aria-live="polite" title="Akkustand unbekannt">
+          <svg viewBox="0 0 46 24" aria-hidden="true" focusable="false">
+            <rect class="battery-body" x="1" y="5" width="36" height="14" rx="3" ry="3" />
+            <rect class="battery-cap" x="38" y="9" width="6" height="6" rx="1.5" ry="1.5" />
+            <rect id="batteryFill" class="battery-fill" x="3" y="7" width="0" height="10" rx="2" ry="2" />
+          </svg>
+          <span id="batteryLabel">--%</span>
+        </div>
+        <a class="settings-button" href="/settings" title="Einstellungen" aria-label="Einstellungen öffnen">
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path d="M19.14 12.94c.04-.31.06-.63.06-.94s-.02-.63-.06-.94l2.03-1.58a.5.5 0 0 0 .12-.64l-1.92-3.32a.5.5 0 0 0-.6-.22l-2.39.96a7.1 7.1 0 0 0-1.62-.94l-.36-2.54A.5.5 0 0 0 14.92 2h-3.84a.5.5 0 0 0-.5.43l-.36 2.54a7.1 7.1 0 0 0-1.62.94l-2.39-.96a.5.5 0 0 0-.6.22L3.69 8.45a.5.5 0 0 0 .12.64l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94l-2.03 1.58a.5.5 0 0 0-.12.64l1.92 3.32c.14.24.43.33.68.22l2.39-.96c.49.39 1.04.71 1.62.94l.36 2.54c.04.25.25.43.5.43h3.84c.25 0 .46-.18.5-.43l.36-2.54c.58-.23 1.13-.55 1.62-.94l2.39.96c.25.11.54.02.68-.22l1.92-3.32a.5.5 0 0 0-.12-.64zm-7.14 2.56a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z"/>
+          </svg>
+        </a>
+      </div>
     </div>
     <div class="joystick-grid">
       <div class="joystick-card">
@@ -958,6 +1198,11 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
     const override = document.getElementById('override');
     const centerBtn = document.getElementById('center');
     const audioSelect = document.getElementById('audioDevice');
+    const batteryIndicator = document.getElementById('batteryIndicator');
+    const batteryFill = document.getElementById('batteryFill');
+    const batteryLabel = document.getElementById('batteryLabel');
+    const BATTERY_CLASSES = ['charging', 'low', 'medium', 'error', 'unavailable'];
+    const BATTERY_MAX_WIDTH = 32;
     let audioOptionsSignature = '';
     if (audioSelect) {
       audioSelect.disabled = true;
@@ -966,6 +1211,82 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
     const formatValue = (value) => {
       const rounded = clampValue(value);
       return `${rounded >= 0 ? '+' : ''}${rounded.toFixed(2)}`;
+    };
+
+    const updateBattery = (info) => {
+      if (!batteryIndicator || !batteryFill || !batteryLabel) {
+        return;
+      }
+      batteryIndicator.classList.remove(...BATTERY_CLASSES);
+      if (!info || typeof info !== 'object') {
+        batteryLabel.textContent = '--%';
+        batteryFill.setAttribute('width', '0');
+        batteryIndicator.classList.add('unavailable');
+        batteryIndicator.title = 'Akkustand nicht verfügbar';
+        return;
+      }
+      const percentRaw = Number(info.percent);
+      const percent = Number.isFinite(percentRaw) ? Math.max(0, Math.min(100, percentRaw)) : null;
+      const voltageRaw = Number(info.voltage);
+      const voltage = Number.isFinite(voltageRaw) ? voltageRaw : null;
+      const currentRaw = Number(info.current);
+      const current = Number.isFinite(currentRaw) ? currentRaw : null;
+      const status = typeof info.status === 'string' ? info.status : 'unknown';
+
+      if (percent === null) {
+        batteryLabel.textContent = '--%';
+        batteryFill.setAttribute('width', '0');
+      } else {
+        batteryLabel.textContent = `${Math.round(percent)}%`;
+        const width = (BATTERY_MAX_WIDTH * percent) / 100;
+        batteryFill.setAttribute('width', width > 0 ? width.toFixed(1) : '0');
+      }
+
+      let indicatorClass = null;
+      if (status === 'error') {
+        indicatorClass = 'error';
+      } else if (status === 'charging') {
+        indicatorClass = 'charging';
+      } else if (status === 'initializing') {
+        indicatorClass = 'unavailable';
+      } else if (percent === null) {
+        indicatorClass = 'unavailable';
+      } else if (percent <= 20) {
+        indicatorClass = 'low';
+      } else if (percent <= 50) {
+        indicatorClass = 'medium';
+      }
+      if (indicatorClass) {
+        batteryIndicator.classList.add(indicatorClass);
+      }
+
+      const parts = [];
+      if (percent === null) {
+        parts.push('Akkuladung unbekannt');
+      } else {
+        parts.push(`Akkuladung ${Math.round(percent)}%`);
+      }
+      if (voltage !== null) {
+        parts.push(`${voltage.toFixed(2)} V`);
+      }
+      if (current !== null) {
+        const sign = current >= 0 ? '+' : '';
+        parts.push(`${sign}${current.toFixed(2)} A`);
+      }
+      if (status === 'charging') {
+        parts.push('lädt');
+      } else if (status === 'discharging') {
+        parts.push('entlädt');
+      } else if (status === 'idle') {
+        parts.push('Ruhezustand');
+      } else if (status === 'error') {
+        parts.push('Sensorfehler');
+      } else if (status === 'initializing') {
+        parts.push('Initialisierung läuft');
+      } else if (status === 'unknown') {
+        parts.push('Status unbekannt');
+      }
+      batteryIndicator.title = parts.join(' · ');
     };
 
     const updateLabels = () => {
@@ -1233,6 +1554,7 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
         } else {
           state.audioVolume = null;
         }
+        updateBattery(data.battery ?? null);
       } catch (err) {
         console.error('Poll fehlgeschlagen', err);
       }
@@ -1240,6 +1562,7 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
 
     updateLabels();
     updateHeadButtons();
+    updateBattery(null);
     pollState();
     setInterval(pollState, 1500);
   </script>
@@ -2191,10 +2514,13 @@ def main():
     # Webserver für Remote-Steuerung
     persisted_audio = load_persisted_audio_state()
     persisted_motor_limits = load_persisted_motor_limits()
+    battery_monitor = BatteryMonitor()
+
     web_state = WebControlState(
         initial_audio_device=persisted_audio.get("audio_device"),
         initial_volume_map=persisted_audio.get("volumes"),
         initial_motor_limits=persisted_motor_limits,
+        battery_monitor=battery_monitor,
     )
     web_server = None
     try:
@@ -2508,6 +2834,10 @@ def main():
         try:
             web_server.shutdown()
             web_server.server_close()
+        except Exception:
+            pass
+        try:
+            battery_monitor.stop()
         except Exception:
             pass
 
