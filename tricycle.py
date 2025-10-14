@@ -98,6 +98,14 @@ SERVO_RANGE_DEG      = 270.0
 MID_DEG              = 150.0
 LEFT_MAX_DEG         = 100.0
 RIGHT_MAX_DEG        = 200.0
+STEERING_STEP_DEG    = 0.5
+
+# Standard-Lenkwinkel als Dictionary für Persistenz/Defaults
+DEFAULT_STEERING_ANGLES = {
+    "left": LEFT_MAX_DEG,
+    "mid": MID_DEG,
+    "right": RIGHT_MAX_DEG,
+}
 
 INVERT_SERVO         = True
 DEADZONE_IN          = 0.10
@@ -462,6 +470,66 @@ def persist_motor_limits(*, forward=None, reverse=None):
     return _persist_state(payload)
 
 
+# ---- Lenkungs-Persistenz ----
+def _sanitize_steering_value(value):
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(numeric):
+        return None
+    limited = clamp(numeric, 0.0, SERVO_RANGE_DEG)
+    if STEERING_STEP_DEG > 0:
+        steps = round((limited - 0.0) / STEERING_STEP_DEG)
+        limited = 0.0 + steps * STEERING_STEP_DEG
+    return round(limited, 3)
+
+
+def sanitize_steering_angles(payload):
+    if not isinstance(payload, dict):
+        return None
+    left = _sanitize_steering_value(payload.get("left"))
+    mid = _sanitize_steering_value(payload.get("mid"))
+    right = _sanitize_steering_value(payload.get("right"))
+    if left is None or mid is None or right is None:
+        return None
+    if not (0.0 <= left <= mid <= right <= SERVO_RANGE_DEG):
+        return None
+    return {"left": left, "mid": mid, "right": right}
+
+
+def load_persisted_steering_angles(defaults=None):
+    if defaults is None:
+        defaults = DEFAULT_STEERING_ANGLES
+    data = _load_persisted_state()
+    if isinstance(data, dict):
+        raw = data.get("steering_angles")
+        sanitized = sanitize_steering_angles(raw)
+        if sanitized:
+            return sanitized
+    return dict(defaults)
+
+
+def persist_steering_angles(angles):
+    sanitized = sanitize_steering_angles(angles)
+    if sanitized is None:
+        return False
+    payload = _load_persisted_state()
+    payload["steering_angles"] = sanitized
+    return _persist_state(payload)
+
+
+def apply_steering_angles(angles):
+    sanitized = sanitize_steering_angles(angles)
+    if sanitized is None:
+        return False
+    global LEFT_MAX_DEG, MID_DEG, RIGHT_MAX_DEG
+    LEFT_MAX_DEG = sanitized["left"]
+    MID_DEG = sanitized["mid"]
+    RIGHT_MAX_DEG = sanitized["right"]
+    return True
+
+
 # === Laufzeit-Handle für exklusives MP3-Playback ===
 CURRENT_PLAYER_PROC = None
 CURRENT_PLAYER_PATH = None
@@ -638,6 +706,7 @@ class WebControlState:
         initial_audio_device=None,
         initial_volume_map=None,
         initial_motor_limits=None,
+        initial_steering_angles=None,
         battery_monitor=None,
     ):
         self._lock = threading.Lock()
@@ -667,6 +736,16 @@ class WebControlState:
             reverse = sanitize_motor_limit(initial_motor_limits.get("reverse"))
             if reverse is not None:
                 self._motor_limit_reverse = reverse
+        self._steering_angles = {
+            "left": LEFT_MAX_DEG,
+            "mid": MID_DEG,
+            "right": RIGHT_MAX_DEG,
+        }
+        if isinstance(initial_steering_angles, dict):
+            sanitized = sanitize_steering_angles(initial_steering_angles)
+            if sanitized is not None:
+                self._steering_angles = sanitized
+                apply_steering_angles(sanitized)
 
     def _ensure_volume_defaults_locked(self, audio_id):
         profile = get_audio_volume_profile(audio_id)
@@ -719,12 +798,14 @@ class WebControlState:
         audio_device=None,
         audio_volume=None,
         motor_limits=None,
+        steering_angles=None,
     ):
         new_audio_id = None
         persist_audio_id = None
         volume_updates = {}
         apply_volume_change = None
         motor_limits_to_persist = None
+        steering_angles_to_persist = None
         with self._lock:
             if override is not None:
                 self._override = bool(override)
@@ -780,6 +861,11 @@ class WebControlState:
                         "forward": self._motor_limit_forward,
                         "reverse": self._motor_limit_reverse,
                     }
+            if steering_angles is not None and isinstance(steering_angles, dict):
+                sanitized = sanitize_steering_angles(steering_angles)
+                if sanitized is not None and sanitized != self._steering_angles:
+                    self._steering_angles = sanitized
+                    steering_angles_to_persist = sanitized
             self._last_update = time.time()
             snapshot = self.snapshot_locked()
         if persist_audio_id is not None:
@@ -788,6 +874,9 @@ class WebControlState:
             persist_audio_volumes(volume_updates)
         if motor_limits_to_persist is not None:
             persist_motor_limits(**motor_limits_to_persist)
+        if steering_angles_to_persist is not None:
+            apply_steering_angles(steering_angles_to_persist)
+            persist_steering_angles(steering_angles_to_persist)
         if new_audio_id is not None:
             apply_audio_output(new_audio_id)
         if apply_volume_change is not None:
@@ -811,6 +900,14 @@ class WebControlState:
                 "min": MOTOR_LIMIT_MIN,
                 "max": MOTOR_LIMIT_MAX,
                 "step": MOTOR_LIMIT_STEP,
+            },
+            "steering_angles": {
+                "left": self._steering_angles["left"],
+                "mid": self._steering_angles["mid"],
+                "right": self._steering_angles["right"],
+                "min": 0.0,
+                "max": SERVO_RANGE_DEG,
+                "step": STEERING_STEP_DEG,
             },
             "audio_device": self._audio_device,
             "audio_outputs": [
@@ -1704,6 +1801,52 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
       flex-direction: column;
       gap: 0.55rem;
     }
+    .steering-grid {
+      display: grid;
+      gap: 0.75rem;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    }
+    .steering-grid .field {
+      display: flex;
+      flex-direction: column;
+      gap: 0.45rem;
+    }
+    .number-input {
+      display: flex;
+      align-items: center;
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 12px;
+      padding: 0.35rem 0.6rem;
+      transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    }
+    .number-input input {
+      flex: 1 1 auto;
+      background: transparent;
+      border: none;
+      color: inherit;
+      font: inherit;
+      min-width: 0;
+      padding: 0;
+      -moz-appearance: textfield;
+    }
+    .number-input input:focus {
+      outline: none;
+    }
+    .number-input input::-webkit-outer-spin-button,
+    .number-input input::-webkit-inner-spin-button {
+      -webkit-appearance: none;
+      margin: 0;
+    }
+    .number-input span {
+      margin-left: 0.35rem;
+      opacity: 0.7;
+      font-size: 0.9rem;
+    }
+    .number-input:focus-within {
+      border-color: rgba(229,9,20,0.55);
+      box-shadow: 0 0 0 3px rgba(229,9,20,0.2);
+    }
     .slider-row {
       display: flex;
       align-items: center;
@@ -1762,6 +1905,33 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
       <p id="status" class="status"></p>
     </section>
     <section class="settings-section">
+      <h2>Lenkwinkel</h2>
+      <p class="hint">Definiert Mittelstellung und maximale Ausschläge des Servos.</p>
+      <div class="steering-grid">
+        <div class="field">
+          <label for="steeringLeft">Links (max.)</label>
+          <div class="number-input">
+            <input id="steeringLeft" type="number" inputmode="decimal" min="0" max="270" step="0.5" aria-label="Maximaler Lenkwinkel nach links" autocomplete="off">
+            <span>°</span>
+          </div>
+        </div>
+        <div class="field">
+          <label for="steeringMid">Mitte</label>
+          <div class="number-input">
+            <input id="steeringMid" type="number" inputmode="decimal" min="0" max="270" step="0.5" aria-label="Neutralstellung des Lenkservos" autocomplete="off">
+            <span>°</span>
+          </div>
+        </div>
+        <div class="field">
+          <label for="steeringRight">Rechts (max.)</label>
+          <div class="number-input">
+            <input id="steeringRight" type="number" inputmode="decimal" min="0" max="270" step="0.5" aria-label="Maximaler Lenkwinkel nach rechts" autocomplete="off">
+            <span>°</span>
+          </div>
+        </div>
+      </div>
+    </section>
+    <section class="settings-section">
       <h2>Motorgrenzen</h2>
       <p class="hint">Begrenzt den maximalen PWM-Anteil für den DC-Motor (0–100&nbsp;%).</p>
       <div class="motor-limits">
@@ -1790,10 +1960,15 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
     const motorReverse = document.getElementById('motorReverse');
     const motorForwardValue = document.getElementById('motorForwardValue');
     const motorReverseValue = document.getElementById('motorReverseValue');
+    const steeringLeft = document.getElementById('steeringLeft');
+    const steeringMid = document.getElementById('steeringMid');
+    const steeringRight = document.getElementById('steeringRight');
+    const steeringInputs = [steeringLeft, steeringMid, steeringRight].filter((input) => input);
     audioSelect.disabled = true;
     let audioOptionsSignature = '';
     let volumeConfig = null;
     let motorConfig = null;
+    let steeringConfig = null;
     if (volumeSlider) {
       volumeSlider.disabled = true;
     }
@@ -1813,6 +1988,12 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
     }
     if (motorReverseValue) {
       motorReverseValue.textContent = '–';
+    }
+    if (steeringInputs.length > 0) {
+      steeringInputs.forEach((input) => {
+        input.disabled = true;
+        input.value = '';
+      });
     }
 
     const setStatus = (message, tone = '') => {
@@ -1910,6 +2091,146 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
       return { forward, reverse };
     };
 
+    const determineAnglePrecision = (step) => {
+      if (!Number.isFinite(step) || step <= 0) {
+        return 2;
+      }
+      if (step >= 1) {
+        return 0;
+      }
+      if (step >= 0.1) {
+        return 1;
+      }
+      return 2;
+    };
+
+    const quantizeAngle = (value, min, max, step) => {
+      const numeric = Number.parseFloat(value);
+      if (!Number.isFinite(numeric)) {
+        return null;
+      }
+      const limited = Math.max(min, Math.min(max, numeric));
+      if (!Number.isFinite(step) || step <= 0) {
+        return Number.parseFloat(limited.toFixed(3));
+      }
+      const steps = Math.round((limited - min) / step);
+      const quantized = min + steps * step;
+      const clamped = Math.max(min, Math.min(max, quantized));
+      return Number.parseFloat(clamped.toFixed(3));
+    };
+
+    const formatAngleInput = (value, precision) => {
+      if (!Number.isFinite(value)) {
+        return '';
+      }
+      const digits = Number.isInteger(precision) ? precision : 1;
+      const clampedDigits = Math.max(0, Math.min(3, digits));
+      const normalized = Number.parseFloat(value.toFixed(clampedDigits));
+      return Number.isFinite(normalized) ? String(normalized) : '';
+    };
+
+    const clampSteeringValue = (rawValue) => {
+      if (!steeringConfig) {
+        return null;
+      }
+      if (rawValue === undefined || rawValue === null || rawValue === '') {
+        return null;
+      }
+      const { min, max, step } = steeringConfig;
+      return quantizeAngle(rawValue, min, max, step);
+    };
+
+    const applySteeringInputs = (values) => {
+      if (!steeringConfig) {
+        return;
+      }
+      const precision = steeringConfig.precision ?? 1;
+      if (steeringLeft) {
+        steeringLeft.value = formatAngleInput(values.left, precision);
+      }
+      if (steeringMid) {
+        steeringMid.value = formatAngleInput(values.mid, precision);
+      }
+      if (steeringRight) {
+        steeringRight.value = formatAngleInput(values.right, precision);
+      }
+    };
+
+    const revertSteeringInputs = () => {
+      if (!steeringConfig || !steeringConfig.values) {
+        steeringInputs.forEach((input) => {
+          input.value = '';
+        });
+        return;
+      }
+      applySteeringInputs(steeringConfig.values);
+    };
+
+    const syncSteeringAngles = (info) => {
+      if (steeringInputs.length === 0) {
+        return null;
+      }
+      if (
+        !info ||
+        !Number.isFinite(info.left) ||
+        !Number.isFinite(info.mid) ||
+        !Number.isFinite(info.right)
+      ) {
+        steeringConfig = null;
+        steeringInputs.forEach((input) => {
+          input.disabled = true;
+          input.value = '';
+        });
+        return null;
+      }
+      const min = Number.isFinite(info.min) ? info.min : 0;
+      const max = Number.isFinite(info.max) ? info.max : 270;
+      const step = Number.isFinite(info.step) && info.step > 0 ? info.step : 0.5;
+      const precision = determineAnglePrecision(step);
+      const left = quantizeAngle(info.left, min, max, step);
+      const mid = quantizeAngle(info.mid, min, max, step);
+      const right = quantizeAngle(info.right, min, max, step);
+      if (left === null || mid === null || right === null || !(left <= mid && mid <= right)) {
+        steeringConfig = null;
+        steeringInputs.forEach((input) => {
+          input.disabled = true;
+          input.value = '';
+        });
+        return null;
+      }
+      steeringConfig = {
+        min,
+        max,
+        step,
+        precision,
+        values: { left, mid, right },
+      };
+      steeringInputs.forEach((input) => {
+        input.disabled = false;
+        input.min = String(min);
+        input.max = String(max);
+        input.step = String(step);
+      });
+      applySteeringInputs(steeringConfig.values);
+      return steeringConfig.values;
+    };
+
+    const getCurrentSteeringValues = () => {
+      if (!steeringConfig) {
+        return null;
+      }
+      const left = clampSteeringValue(steeringLeft?.value);
+      const mid = clampSteeringValue(steeringMid?.value);
+      const right = clampSteeringValue(steeringRight?.value);
+      if (left === null || mid === null || right === null) {
+        return null;
+      }
+      if (!(left <= mid && mid <= right)) {
+        return null;
+      }
+      return { left, mid, right };
+    };
+
     const syncAudioSelection = (options, selectedId) => {
       const normalized = Array.isArray(options)
         ? options
@@ -1999,6 +2320,7 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
         const current = syncAudioSelection(data.audio_outputs, selected);
         const volumeValue = syncVolume(data.audio_volume);
         const motorValues = syncMotorLimits(data.motor_limits);
+        const steeringValues = syncSteeringAngles(data.steering_angles);
         const messageParts = [];
         let tone = '';
         if (current) {
@@ -2018,6 +2340,12 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
             tone = 'success';
           }
         }
+        if (steeringValues) {
+          messageParts.push('Lenkwinkel geladen');
+          if (!tone) {
+            tone = 'success';
+          }
+        }
         const message = messageParts.length > 0 ? `${messageParts.join(' · ')}.` : '';
         setStatus(message, tone);
       } catch (err) {
@@ -2025,6 +2353,7 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
         setStatus('Konnte Einstellungen nicht laden.', 'error');
         audioSelect.disabled = true;
         syncMotorLimits(null);
+        syncSteeringAngles(null);
       }
     }
 
@@ -2046,6 +2375,7 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
         syncAudioSelection(data.audio_outputs, data.audio_device);
         const volumeValue = syncVolume(data.audio_volume);
         syncMotorLimits(data.motor_limits);
+        syncSteeringAngles(data.steering_angles);
         if (volumeValue !== null) {
           setStatus('Audio-Ausgabe und Lautstärke gespeichert.', 'success');
         } else {
@@ -2083,6 +2413,7 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
         const data = await resp.json();
         syncAudioSelection(data.audio_outputs, data.audio_device);
         syncMotorLimits(data.motor_limits);
+        syncSteeringAngles(data.steering_angles);
         const updated = syncVolume(data.audio_volume);
         if (updated !== null) {
           setStatus('Lautstärke gespeichert.', 'success');
@@ -2117,11 +2448,48 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
         const data = await resp.json();
         syncAudioSelection(data.audio_outputs, data.audio_device);
         syncMotorLimits(data.motor_limits);
+        syncSteeringAngles(data.steering_angles);
         syncVolume(data.audio_volume);
         setStatus('Motor-Grenzen gespeichert.', 'success');
       } catch (err) {
         console.error('Speichern der Motor-Grenzen fehlgeschlagen', err);
         setStatus('Motor-Grenzen konnten nicht gespeichert werden.', 'error');
+      }
+    }
+
+    async function saveSteeringAngles(values) {
+      if (!values) {
+        return;
+      }
+      try {
+        setStatus('Speichere Lenkwinkel …');
+        const payload = { steering_angles: values };
+        const currentDevice = audioSelect.value;
+        if (currentDevice) {
+          payload.audio_device = currentDevice;
+        }
+        const resp = await fetch('/api/control', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        if (!resp.ok) {
+          throw new Error(`Status ${resp.status}`);
+        }
+        const data = await resp.json();
+        syncAudioSelection(data.audio_outputs, data.audio_device);
+        syncMotorLimits(data.motor_limits);
+        syncVolume(data.audio_volume);
+        const updated = syncSteeringAngles(data.steering_angles);
+        if (updated) {
+          setStatus('Lenkwinkel gespeichert.', 'success');
+        } else {
+          setStatus('Lenkwinkel konnten nicht übernommen werden.', 'error');
+        }
+      } catch (err) {
+        console.error('Speichern der Lenkwinkel fehlgeschlagen', err);
+        revertSteeringInputs();
+        setStatus('Lenkwinkel konnten nicht gespeichert werden.', 'error');
       }
     }
 
@@ -2165,6 +2533,39 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
         motorReverse.value = String(Math.round(values.reverse * 100));
         motorReverseValue.textContent = formatMotorPercent(values.reverse);
         saveMotorLimits(values.forward, values.reverse);
+      });
+    }
+
+    if (steeringInputs.length > 0) {
+      const handleSteeringChange = () => {
+        const values = getCurrentSteeringValues();
+        if (!values) {
+          setStatus('Ungültige Lenkwinkel. Bitte Werte prüfen.', 'error');
+          revertSteeringInputs();
+          return;
+        }
+        if (
+          steeringConfig &&
+          steeringConfig.values &&
+          values.left === steeringConfig.values.left &&
+          values.mid === steeringConfig.values.mid &&
+          values.right === steeringConfig.values.right
+        ) {
+          applySteeringInputs(steeringConfig.values);
+          return;
+        }
+        applySteeringInputs(values);
+        saveSteeringAngles(values);
+      };
+      steeringInputs.forEach((input) => {
+        input.addEventListener('input', () => {
+          const value = clampSteeringValue(input.value);
+          if (value === null || !steeringConfig) {
+            return;
+          }
+          input.value = formatAngleInput(value, steeringConfig.precision);
+        });
+        input.addEventListener('change', handleSteeringChange);
       });
     }
 
@@ -2536,6 +2937,7 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
                 audio_device=data.get("audio_device"),
                 audio_volume=data.get("audio_volume"),
                 motor_limits=data.get("motor_limits"),
+                steering_angles=data.get("steering_angles"),
             )
 
         body = json.dumps(state)
@@ -2821,6 +3223,9 @@ def set_motor(pi, speed_norm):
 
 # --------- Main ---------
 def main():
+    persisted_steering = load_persisted_steering_angles()
+    if not apply_steering_angles(persisted_steering):
+        apply_steering_angles(DEFAULT_STEERING_ANGLES)
     validate_configuration()
 
     # Button-/Achskonstanten aus Namen auflösen
@@ -2852,6 +3257,7 @@ def main():
         initial_audio_device=persisted_audio.get("audio_device"),
         initial_volume_map=persisted_audio.get("volumes"),
         initial_motor_limits=persisted_motor_limits,
+        initial_steering_angles=persisted_steering,
         battery_monitor=battery_monitor,
     )
     web_server = None
