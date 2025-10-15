@@ -1010,6 +1010,9 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
       flex-direction: column;
       gap: 0.8rem;
     }
+    .head-card {
+      gap: 0.8rem;
+    }
     .system-overview {
       display: flex;
       flex-direction: column;
@@ -1210,28 +1213,74 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
       .joystick {
         min-height: clamp(200px, 60vw, 280px);
       }
-      .head-controls button {
-        font-size: 1rem;
-        padding-block: 0.65rem;
-      }
-      .system-status {
-        flex-direction: column;
-        align-items: stretch;
+      .head-card {
+        padding: clamp(0.85rem, 4vw, 1rem);
         gap: 0.6rem;
       }
+      .head-controls button {
+        font-size: 0.95rem;
+        padding-block: 0.55rem;
+        min-height: 44px;
+      }
+      .system-card {
+        padding: clamp(0.85rem, 4vw, 1rem);
+        gap: 0.65rem;
+      }
+      .system-overview {
+        gap: 0.65rem;
+      }
+      .system-status {
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.5rem;
+      }
       .system-status .battery-indicator {
+        flex: 1 1 55%;
         justify-content: center;
-        width: 100%;
       }
       .system-status .settings-button {
-        width: 100%;
-        height: 48px;
+        flex: 0 0 auto;
+        width: 46px;
+        height: 46px;
         border-radius: 12px;
       }
       .override-toggle {
         justify-content: space-between;
+        font-size: 0.95rem;
       }
       .audio-output { width: 100%; }
+    }
+    @media (max-width: 520px) {
+      .card {
+        padding: clamp(0.85rem, 5vw, 1.1rem);
+      }
+      .joystick-card {
+        padding: clamp(0.75rem, 4vw, 0.95rem);
+        gap: 0.75rem;
+      }
+      .joystick-card h2 {
+        font-size: 1rem;
+      }
+      .head-controls button {
+        font-size: 0.92rem;
+        padding-block: 0.5rem;
+      }
+      .system-status {
+        gap: 0.45rem;
+      }
+      .system-status .battery-indicator {
+        transform: scale(0.94);
+        transform-origin: left center;
+      }
+      .settings-button {
+        width: 42px;
+        height: 42px;
+      }
+      .settings-button svg {
+        width: 20px;
+        height: 20px;
+      }
     }
     @media (orientation: landscape) and (max-height: 520px) {
       body { padding: 0.8rem; align-items: flex-start; }
@@ -1283,7 +1332,7 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
         <div id="motorStick" class="joystick axis-y"><div class="knob"></div></div>
         <div class="value">Motor: <strong><span id="motorVal">+0.00</span></strong></div>
       </div>
-      <div class="joystick-card">
+      <div class="joystick-card head-card">
         <h2>Kopf</h2>
         <div class="head-controls">
           <button class="ghost" type="button" data-head-value="-1" title="Kopf nach links" aria-label="Kopf nach links">L</button>
