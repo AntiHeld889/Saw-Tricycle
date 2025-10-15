@@ -1291,11 +1291,6 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
           <button class="ghost" type="button" data-head-value="1" title="Kopf nach rechts" aria-label="Kopf nach rechts">R</button>
         </div>
       </div>
-      <div class="joystick-card">
-        <h2>Lenkung</h2>
-        <div id="steeringStick" class="joystick axis-x"><div class="knob"></div></div>
-        <div class="value">Lenkung: <strong><span id="steeringVal">+0.00</span></strong></div>
-      </div>
       <div class="joystick-card system-card">
         <h2>System</h2>
         <div class="system-overview">
@@ -1319,6 +1314,11 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
             </a>
           </div>
         </div>
+      </div>
+      <div class="joystick-card">
+        <h2>Lenkung</h2>
+        <div id="steeringStick" class="joystick axis-x"><div class="knob"></div></div>
+        <div class="value">Lenkung: <strong><span id="steeringVal">+0.00</span></strong></div>
       </div>
     </div>
     <footer>Läuft auf Port 8081 · Ziehen/Tippen zum Steuern</footer>
