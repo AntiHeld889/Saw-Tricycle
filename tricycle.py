@@ -1283,21 +1283,27 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
       }
     }
     @media (orientation: landscape) and (max-height: 520px) {
-      body { padding: 0.75rem; align-items: flex-start; }
+      body {
+        padding: calc(0.65rem + var(--safe-top)) calc(0.7rem + var(--safe-right)) calc(0.65rem + var(--safe-bottom)) calc(0.7rem + var(--safe-left));
+        align-items: stretch;
+        justify-content: center;
+        gap: 0.7rem;
+      }
       .card {
-        padding: 1rem;
+        padding: 0.95rem;
         display: flex;
         flex-direction: column;
-        gap: 0.85rem;
-        max-height: calc(100vh - 1.4rem);
+        gap: 0.75rem;
+        max-height: calc(100dvh - var(--safe-top) - var(--safe-bottom) - 1.1rem);
         overflow-y: auto;
+        overscroll-behavior: contain;
       }
       .card-header h1 {
-        font-size: 1.2rem;
+        font-size: 1.18rem;
       }
       .joystick-grid {
-        margin-top: 0;
-        gap: 0.75rem;
+        margin-top: 0.15rem;
+        gap: 0.7rem;
         grid-template-columns: repeat(2, minmax(0, 1fr));
         grid-template-areas:
           "motor steering"
@@ -1305,63 +1311,65 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
         align-items: stretch;
       }
       .joystick-card {
-        padding: 0.8rem;
-        gap: 0.6rem;
+        padding: 0.75rem;
+        gap: 0.55rem;
         min-height: 0;
       }
       .joystick-card:nth-child(1) { grid-area: motor; }
       .joystick-card.head-card { grid-area: head; }
       .joystick-card.system-card { grid-area: system; }
       .joystick-card:last-child { grid-area: steering; }
-      .joystick { min-height: 140px; }
+      .joystick {
+        min-height: clamp(110px, calc((100dvh - var(--safe-top) - var(--safe-bottom)) * 0.32), 150px);
+      }
       .head-card {
         display: grid;
         grid-template-columns: auto 1fr;
         align-items: center;
-        gap: 0.6rem;
+        gap: 0.55rem;
       }
       .head-card h2 {
         margin: 0;
-        font-size: 0.95rem;
+        font-size: 0.92rem;
       }
       .head-controls {
         justify-content: flex-end;
-        gap: 0.4rem;
+        gap: 0.35rem;
       }
       .head-controls button {
         min-height: 40px;
-        padding: 0.45rem 0.5rem;
-        font-size: 0.9rem;
+        padding: 0.42rem 0.5rem;
+        font-size: 0.88rem;
       }
       .system-card {
         display: grid;
         grid-template-columns: auto 1fr;
         align-items: center;
-        gap: 0.6rem;
+        gap: 0.55rem;
       }
       .system-card h2 {
         margin: 0;
-        font-size: 0.95rem;
+        font-size: 0.92rem;
       }
       .system-overview {
         display: flex;
         align-items: center;
         justify-content: space-between;
-        gap: 0.5rem 0.75rem;
+        gap: 0.45rem 0.7rem;
         flex-wrap: wrap;
       }
       .override-toggle {
-        font-size: 0.9rem;
-        gap: 0.45rem;
+        font-size: 0.88rem;
+        gap: 0.4rem;
       }
       .system-status {
         flex-wrap: nowrap;
         justify-content: flex-end;
-        gap: 0.45rem;
+        gap: 0.4rem;
       }
       .system-status .battery-indicator {
         flex: 0 1 auto;
-        transform: scale(0.94);
+        transform: scale(0.92);
         transform-origin: left center;
       }
       .system-status .settings-button {
@@ -1369,18 +1377,30 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
         height: 40px;
         border-radius: 10px;
       }
-      .card footer { margin-top: 0.4rem; font-size: 0.72rem; }
+      .card footer {
+        margin-top: 0.35rem;
+        font-size: 0.7rem;
+      }
     }
     @media (orientation: landscape) and (max-height: 430px) {
-      body { padding: 0.55rem; }
-      .card {
-        gap: 0.7rem;
-        padding: 0.85rem;
-      }
-      .joystick-grid {
+      body {
+        padding: calc(0.55rem + var(--safe-top)) calc(0.6rem + var(--safe-right)) calc(0.55rem + var(--safe-bottom)) calc(0.6rem + var(--safe-left));
         gap: 0.6rem;
       }
-      .joystick { min-height: 120px; }
+      .card {
+        padding: 0.8rem;
+        gap: 0.6rem;
+      }
+      .joystick-grid {
+        gap: 0.55rem;
+      }
+      .joystick {
+        min-height: clamp(100px, calc((100dvh - var(--safe-top) - var(--safe-bottom)) * 0.28), 130px);
+      }
+      .head-controls button {
+        min-height: 38px;
+        font-size: 0.85rem;
+      }
     }
     @media (pointer: coarse) {
       button { font-size: 1.05rem; }
@@ -2009,6 +2029,41 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
       }
       .settings-card {
         border-radius: 12px;
+      }
+    }
+    @media (orientation: landscape) and (max-height: 520px) {
+      body {
+        padding: calc(0.7rem + var(--safe-top)) calc(0.75rem + var(--safe-right)) calc(0.7rem + var(--safe-bottom)) calc(0.75rem + var(--safe-left));
+        align-items: stretch;
+      }
+      .settings-card {
+        padding: 0.95rem;
+        gap: 1rem;
+        max-height: calc(100dvh - var(--safe-top) - var(--safe-bottom) - 1.2rem);
+        overflow-y: auto;
+        overscroll-behavior: contain;
+      }
+      .settings-section {
+        padding: 1rem;
+        gap: 0.75rem;
+      }
+      .slider-row {
+        gap: 0.7rem;
+      }
+    }
+    @media (orientation: landscape) and (max-height: 430px) {
+      body {
+        padding: calc(0.6rem + var(--safe-top)) calc(0.65rem + var(--safe-right)) calc(0.6rem + var(--safe-bottom)) calc(0.65rem + var(--safe-left));
+      }
+      .settings-card {
+        padding: 0.8rem;
+        gap: 0.85rem;
+      }
+      .settings-section {
+        padding: 0.85rem;
+      }
+      .slider-row {
+        gap: 0.6rem;
       }
     }
   </style>
@@ -2843,6 +2898,37 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
       }
       dd {
         font-size: 1.2rem;
+      }
+    }
+    @media (orientation: landscape) and (max-height: 520px) {
+      body {
+        padding: calc(0.7rem + var(--safe-top)) calc(0.75rem + var(--safe-right)) calc(0.7rem + var(--safe-bottom)) calc(0.75rem + var(--safe-left));
+        align-items: stretch;
+      }
+      .card {
+        padding: 1rem;
+        gap: 1rem;
+        max-height: calc(100dvh - var(--safe-top) - var(--safe-bottom) - 1.2rem);
+        overflow-y: auto;
+        overscroll-behavior: contain;
+      }
+      dl {
+        gap: 0.8rem 1rem;
+      }
+      dd {
+        font-size: 1.2rem;
+      }
+    }
+    @media (orientation: landscape) and (max-height: 430px) {
+      body {
+        padding: calc(0.6rem + var(--safe-top)) calc(0.65rem + var(--safe-right)) calc(0.6rem + var(--safe-bottom)) calc(0.65rem + var(--safe-left));
+      }
+      .card {
+        padding: 0.85rem;
+        gap: 0.85rem;
+      }
+      dl {
+        gap: 0.75rem 0.9rem;
       }
     }
   </style>
