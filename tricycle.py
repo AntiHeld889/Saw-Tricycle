@@ -161,6 +161,7 @@ HEAD_RIGHT_DEG       = 150.0
 HEAD_SMOOTH_A        = 0.8
 HEAD_RATE_DEG_S      = 100.0
 HEAD_SAFE_START_S    = 0.8
+HEAD_UPDATE_HYSTERESIS_DEG = 0.2
 
 # ---- Debug/Output ----
 PRINT_EVERY_S        = 0.3
@@ -3542,8 +3543,9 @@ def main():
     steer_armed        = False
     neutral_ok_since_s = None
 
-    head_current = clamp(HEAD_CENTER_DEG, HEAD_MIN_DEG, HEAD_MAX_DEG)
-    head_target  = head_current
+    head_current     = clamp(HEAD_CENTER_DEG, HEAD_MIN_DEG, HEAD_MAX_DEG)
+    head_target      = head_current
+    head_last_sent   = head_current
     pi.set_servo_pulsewidth(GPIO_PIN_HEAD, deg_to_us_unclamped(head_current))
 
     print("Bereit. A = Zentrieren, Start = Beenden. D-Pad L/R setzt Kopf, D-Pad ↑ zentriert (latchend).")
@@ -3766,7 +3768,10 @@ def main():
             head_max_step = HEAD_RATE_DEG_S * dt
             head_step     = clamp(head_filtered - head_current, -head_max_step, +head_max_step)
             head_current += head_step
-            pi.set_servo_pulsewidth(GPIO_PIN_HEAD, deg_to_us_unclamped(head_current))
+
+            if abs(head_current - head_last_sent) >= HEAD_UPDATE_HYSTERESIS_DEG:
+                pi.set_servo_pulsewidth(GPIO_PIN_HEAD, deg_to_us_unclamped(head_current))
+                head_last_sent = head_current
 
             # Debug-Ausgabe
             if (now - last_print_ts) > PRINT_EVERY_S:
