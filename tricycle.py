@@ -1400,47 +1400,16 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
         gap: 0.6rem;
       }
       .joystick-grid {
-        gap: 0.65rem;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        grid-auto-rows: minmax(0, 1fr);
-        grid-template-areas:
-          "motor steering"
-          "head system";
+        gap: 0.55rem;
+        grid-template-columns: minmax(0, 1.15fr) repeat(2, minmax(0, 0.85fr)) minmax(0, 1.15fr);
+        grid-template-areas: "motor head system steering";
       }
-      .joystick-card {
-        justify-content: center;
-      }
-      .joystick-card:nth-child(1) { grid-area: motor; }
-      .joystick-card.head-card { grid-area: head; }
-      .joystick-card.system-card { grid-area: system; }
-      .joystick-card:last-child { grid-area: steering; }
       .joystick {
-        min-height: clamp(120px, calc((100dvh - var(--safe-top) - var(--safe-bottom)) * 0.34), 160px);
+        min-height: clamp(100px, calc((100dvh - var(--safe-top) - var(--safe-bottom)) * 0.28), 130px);
       }
-      .head-card {
-        align-items: stretch;
-      }
-      .head-card h2 {
-        font-size: 0.94rem;
-      }
-      .system-card {
-        align-items: stretch;
-      }
-      .system-card h2 {
-        font-size: 0.94rem;
-      }
-      .system-status {
-        justify-content: space-between;
-      }
-      .system-status .battery-indicator {
-        transform: none;
-      }
-      .system-status .settings-button {
-        width: 42px;
-        height: 42px;
-      }
-      footer {
-        margin-top: 0.15rem;
+      .head-controls button {
+        min-height: 38px;
+        font-size: 0.85rem;
       }
     }
     @media (pointer: coarse) {
