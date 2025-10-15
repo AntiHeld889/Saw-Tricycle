@@ -1304,10 +1304,9 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
       .joystick-grid {
         margin-top: 0.15rem;
         gap: 0.7rem;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        grid-template-areas:
-          "motor steering"
-          "head system";
+        grid-template-columns: minmax(0, 1.15fr) repeat(2, minmax(0, 0.85fr)) minmax(0, 1.15fr);
+        grid-template-areas: "motor head system steering";
+        grid-auto-rows: minmax(0, 1fr);
         align-items: stretch;
       }
       .joystick-card {
@@ -1323,29 +1322,34 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
         min-height: clamp(110px, calc((100dvh - var(--safe-top) - var(--safe-bottom)) * 0.32), 150px);
       }
       .head-card {
-        display: grid;
-        grid-template-columns: auto 1fr;
-        align-items: center;
-        gap: 0.55rem;
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+        justify-content: center;
+        gap: 0.5rem;
+        text-align: center;
       }
       .head-card h2 {
         margin: 0;
         font-size: 0.92rem;
       }
       .head-controls {
-        justify-content: flex-end;
+        justify-content: center;
         gap: 0.35rem;
       }
       .head-controls button {
         min-height: 40px;
         padding: 0.42rem 0.5rem;
         font-size: 0.88rem;
+        flex: 1 1 0;
       }
       .system-card {
-        display: grid;
-        grid-template-columns: auto 1fr;
-        align-items: center;
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+        justify-content: center;
         gap: 0.55rem;
+        text-align: center;
       }
       .system-card h2 {
         margin: 0;
@@ -1353,24 +1357,25 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
       }
       .system-overview {
         display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 0.45rem 0.7rem;
-        flex-wrap: wrap;
+        flex-direction: column;
+        align-items: stretch;
+        justify-content: center;
+        gap: 0.5rem;
       }
       .override-toggle {
         font-size: 0.88rem;
         gap: 0.4rem;
+        justify-content: center;
       }
       .system-status {
-        flex-wrap: nowrap;
-        justify-content: flex-end;
+        flex-wrap: wrap;
+        justify-content: center;
         gap: 0.4rem;
       }
       .system-status .battery-indicator {
         flex: 0 1 auto;
         transform: scale(0.92);
-        transform-origin: left center;
+        transform-origin: center;
       }
       .system-status .settings-button {
         width: 40px;
@@ -1393,6 +1398,8 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
       }
       .joystick-grid {
         gap: 0.55rem;
+        grid-template-columns: minmax(0, 1.15fr) repeat(2, minmax(0, 0.85fr)) minmax(0, 1.15fr);
+        grid-template-areas: "motor head system steering";
       }
       .joystick {
         min-height: clamp(100px, calc((100dvh - var(--safe-top) - var(--safe-bottom)) * 0.28), 130px);
