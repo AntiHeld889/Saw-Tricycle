@@ -1283,35 +1283,104 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
       }
     }
     @media (orientation: landscape) and (max-height: 520px) {
-      body { padding: 0.8rem; align-items: flex-start; }
+      body { padding: 0.75rem; align-items: flex-start; }
       .card {
-        padding: 1.1rem;
+        padding: 1rem;
         display: flex;
         flex-direction: column;
-        gap: 1rem;
-        max-height: calc(100vh - 1.6rem);
+        gap: 0.85rem;
+        max-height: calc(100vh - 1.4rem);
         overflow-y: auto;
+      }
+      .card-header h1 {
+        font-size: 1.2rem;
       }
       .joystick-grid {
         margin-top: 0;
-        grid-template-columns: minmax(0, 1fr) minmax(0, 0.9fr) minmax(0, 1fr);
-        gap: 0.9rem;
-      }
-      .joystick-card { padding: 0.9rem; gap: 0.7rem; }
-      .joystick { min-height: 150px; }
-      .card footer { margin-top: 0.5rem; }
-    }
-    @media (orientation: landscape) and (max-height: 430px) {
-      body { padding: 0.6rem; }
-      .card {
-        gap: 0.8rem;
-      }
-      .joystick-grid {
-        grid-template-columns: minmax(0, 1fr) minmax(220px, 0.85fr) minmax(0, 1fr);
+        gap: 0.75rem;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        grid-template-areas:
+          "motor steering"
+          "head system";
         align-items: stretch;
       }
-      .joystick-card { min-height: 0; }
-      .joystick { min-height: 130px; }
+      .joystick-card {
+        padding: 0.8rem;
+        gap: 0.6rem;
+        min-height: 0;
+      }
+      .joystick-card:nth-child(1) { grid-area: motor; }
+      .joystick-card.head-card { grid-area: head; }
+      .joystick-card.system-card { grid-area: system; }
+      .joystick-card:last-child { grid-area: steering; }
+      .joystick { min-height: 140px; }
+      .head-card {
+        display: grid;
+        grid-template-columns: auto 1fr;
+        align-items: center;
+        gap: 0.6rem;
+      }
+      .head-card h2 {
+        margin: 0;
+        font-size: 0.95rem;
+      }
+      .head-controls {
+        justify-content: flex-end;
+        gap: 0.4rem;
+      }
+      .head-controls button {
+        min-height: 40px;
+        padding: 0.45rem 0.5rem;
+        font-size: 0.9rem;
+      }
+      .system-card {
+        display: grid;
+        grid-template-columns: auto 1fr;
+        align-items: center;
+        gap: 0.6rem;
+      }
+      .system-card h2 {
+        margin: 0;
+        font-size: 0.95rem;
+      }
+      .system-overview {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.5rem 0.75rem;
+        flex-wrap: wrap;
+      }
+      .override-toggle {
+        font-size: 0.9rem;
+        gap: 0.45rem;
+      }
+      .system-status {
+        flex-wrap: nowrap;
+        justify-content: flex-end;
+        gap: 0.45rem;
+      }
+      .system-status .battery-indicator {
+        flex: 0 1 auto;
+        transform: scale(0.94);
+        transform-origin: left center;
+      }
+      .system-status .settings-button {
+        width: 40px;
+        height: 40px;
+        border-radius: 10px;
+      }
+      .card footer { margin-top: 0.4rem; font-size: 0.72rem; }
+    }
+    @media (orientation: landscape) and (max-height: 430px) {
+      body { padding: 0.55rem; }
+      .card {
+        gap: 0.7rem;
+        padding: 0.85rem;
+      }
+      .joystick-grid {
+        gap: 0.6rem;
+      }
+      .joystick { min-height: 120px; }
     }
     @media (pointer: coarse) {
       button { font-size: 1.05rem; }
