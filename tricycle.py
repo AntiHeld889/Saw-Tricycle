@@ -1005,10 +1005,19 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
       font-size: clamp(1.25rem, 2.8vw, 1.6rem);
       font-weight: 600;
     }
-    .card-actions {
+    .system-status {
+      margin-top: 1.1rem;
       display: flex;
       align-items: center;
-      gap: 0.6rem;
+      justify-content: flex-start;
+      gap: 0.8rem;
+      flex-wrap: wrap;
+    }
+    .system-status .battery-indicator {
+      flex: 0 1 auto;
+    }
+    .system-status .settings-button {
+      flex: 0 0 auto;
     }
     .settings-button {
       display: inline-flex;
@@ -1198,12 +1207,26 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
         font-size: 1rem;
         padding-block: 0.65rem;
       }
-      .head-actions { 
+      .head-actions {
         flex-direction: column;
         align-items: stretch;
       }
       .head-actions button {
         width: 100%;
+      }
+      .system-status {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 0.6rem;
+      }
+      .system-status .battery-indicator {
+        justify-content: center;
+        width: 100%;
+      }
+      .system-status .settings-button {
+        width: 100%;
+        height: 48px;
+        border-radius: 12px;
       }
       .override-toggle {
         justify-content: space-between;
@@ -1253,21 +1276,6 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
   <div class="card">
     <div class="card-header">
       <h1>Saw Tricycle</h1>
-      <div class="card-actions">
-        <a id="batteryIndicator" class="battery-indicator unavailable" aria-live="polite" title="Akkustand unbekannt" href="/battery">
-          <svg viewBox="0 0 46 24" aria-hidden="true" focusable="false">
-            <rect class="battery-body" x="1" y="5" width="36" height="14" rx="3" ry="3" />
-            <rect class="battery-cap" x="38" y="9" width="6" height="6" rx="1.5" ry="1.5" />
-            <rect id="batteryFill" class="battery-fill" x="3" y="7" width="0" height="10" rx="2" ry="2" />
-          </svg>
-          <span id="batteryLabel">--%</span>
-        </a>
-        <a class="settings-button" href="/settings" title="Einstellungen" aria-label="Einstellungen öffnen">
-          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-            <path d="M19.14 12.94c.04-.31.06-.63.06-.94s-.02-.63-.06-.94l2.03-1.58a.5.5 0 0 0 .12-.64l-1.92-3.32a.5.5 0 0 0-.6-.22l-2.39.96a7.1 7.1 0 0 0-1.62-.94l-.36-2.54A.5.5 0 0 0 14.92 2h-3.84a.5.5 0 0 0-.5.43l-.36 2.54a7.1 7.1 0 0 0-1.62.94l-2.39-.96a.5.5 0 0 0-.6.22L3.69 8.45a.5.5 0 0 0 .12.64l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94l-2.03 1.58a.5.5 0 0 0-.12.64l1.92 3.32c.14.24.43.33.68.22l2.39-.96c.49.39 1.04.71 1.62.94l.36 2.54c.04.25.25.43.5.43h3.84c.25 0 .46-.18.5-.43l.36-2.54c.58-.23 1.13-.55 1.62-.94l2.39.96c.25.11.54.02.68-.22l1.92-3.32a.5.5 0 0 0-.12-.64zm-7.14 2.56a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z"/>
-          </svg>
-        </a>
-      </div>
     </div>
     <div class="joystick-grid">
       <div class="joystick-card">
@@ -1287,6 +1295,21 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
             <input id="override" type="checkbox">
             <label for="override">Web-Override aktivieren</label>
           </div>
+        </div>
+        <div class="system-status">
+          <a id="batteryIndicator" class="battery-indicator unavailable" aria-live="polite" title="Akkustand unbekannt" href="/battery">
+            <svg viewBox="0 0 46 24" aria-hidden="true" focusable="false">
+              <rect class="battery-body" x="1" y="5" width="36" height="14" rx="3" ry="3" />
+              <rect class="battery-cap" x="38" y="9" width="6" height="6" rx="1.5" ry="1.5" />
+              <rect id="batteryFill" class="battery-fill" x="3" y="7" width="0" height="10" rx="2" ry="2" />
+            </svg>
+            <span id="batteryLabel">--%</span>
+          </a>
+          <a class="settings-button" href="/settings" title="Einstellungen" aria-label="Einstellungen öffnen">
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <path d="M19.14 12.94c.04-.31.06-.63.06-.94s-.02-.63-.06-.94l2.03-1.58a.5.5 0 0 0 .12-.64l-1.92-3.32a.5.5 0 0 0-.6-.22l-2.39.96a7.1 7.1 0 0 0-1.62-.94l-.36-2.54A.5.5 0 0 0 14.92 2h-3.84a.5.5 0 0 0-.5.43l-.36 2.54a7.1 7.1 0 0 0-1.62.94l-2.39-.96a.5.5 0 0 0-.6.22L3.69 8.45a.5.5 0 0 0 .12.64l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94l-2.03 1.58a.5.5 0 0 0-.12.64l1.92 3.32c.14.24.43.33.68.22l2.39-.96c.49.39 1.04.71 1.62.94l.36 2.54c.04.25.25.43.5.43h3.84c.25 0 .46-.18.5-.43l.36-2.54c.58-.23 1.13-.55 1.62-.94l2.39.96c.25.11.54.02.68-.22l1.92-3.32a.5.5 0 0 0-.12-.64zm-7.14 2.56a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z"/>
+            </svg>
+          </a>
         </div>
       </div>
       <div class="joystick-card">
