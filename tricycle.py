@@ -1287,9 +1287,7 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
             <input id="override" type="checkbox">
             <label for="override">Web-Override aktivieren</label>
           </div>
-          <button id="center" type="button">Zentrieren</button>
         </div>
-        <div class="value">Kopf: <strong><span id="headVal">+0.00</span></strong></div>
       </div>
       <div class="joystick-card">
         <h2>Lenkung</h2>
@@ -1311,10 +1309,8 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
     const state = { steering: 0, motor: 0, head: 0, override: false, audioDevice: null, audioVolume: null };
     const steeringVal = document.getElementById('steeringVal');
     const motorVal = document.getElementById('motorVal');
-    const headVal = document.getElementById('headVal');
     const headButtons = Array.from(document.querySelectorAll('[data-head-value]'));
     const override = document.getElementById('override');
-    const centerBtn = document.getElementById('center');
     const audioSelect = document.getElementById('audioDevice');
     const batteryIndicator = document.getElementById('batteryIndicator');
     const batteryFill = document.getElementById('batteryFill');
@@ -1416,7 +1412,6 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
     const updateLabels = () => {
       steeringVal.textContent = formatValue(state.steering);
       motorVal.textContent = formatValue(state.motor);
-      headVal.textContent = formatValue(state.head);
     };
 
     const updateHeadButtons = () => {
@@ -1624,15 +1619,6 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
     override.addEventListener('change', () => {
       state.override = override.checked;
       sendState();
-    });
-
-    centerBtn.addEventListener('click', () => {
-      state.steering = 0;
-      state.motor = 0;
-      steeringStick.reset();
-      motorStick.reset();
-      setHead(0, false);
-      sendState({ steering: 0, motor: 0, head: 0 });
     });
 
     if (audioSelect) {
