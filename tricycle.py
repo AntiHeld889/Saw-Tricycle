@@ -140,7 +140,8 @@ INVERT_MOTOR         = True
 DEADZONE_MOTOR       = 0.12
 EXPO_MOTOR           = 0.25
 SMOOTH_A_MOTOR       = 0.25
-RATE_UNITS_S         = 3.0
+RATE_ACCEL_UNITS_S   = 3.0
+RATE_DECEL_UNITS_S   = 5.0
 
 MOTOR_LIMIT_FWD      = 0.60
 MOTOR_LIMIT_REV      = 0.50
@@ -150,6 +151,7 @@ MOTOR_LIMIT_STEP     = 0.01
 MOTOR_SAFE_START_S   = 1.0
 MOTOR_ARM_NEUTRAL_MS = 500
 MOTOR_NEUTRAL_THRESH = 0.08
+MOTOR_DIR_SWITCH_PAUSE_S = 0.005
 
 # ---- Servo 2 (Kopf per D-Pad, LATCHEND) ----
 GPIO_PIN_HEAD        = 24
@@ -3434,15 +3436,30 @@ def setup_motor_pins(pi):
     pi.write(GPIO_PIN_MOTOR_DIR, 0)
     pi.hardware_PWM(GPIO_PIN_MOTOR_PWM, PWM_FREQ_HZ, 0)
 
+_last_motor_direction = None
+
+
 def set_motor(pi, speed_norm):
+    global _last_motor_direction
+
     s = clamp(speed_norm, -1.0, +1.0)
     if abs(s) < 1e-3:
         pi.hardware_PWM(GPIO_PIN_MOTOR_PWM, PWM_FREQ_HZ, 0)
+        _last_motor_direction = None
         return
+
     direction = 1 if s > 0 else 0
-    pi.write(GPIO_PIN_MOTOR_DIR, direction)
+    if _last_motor_direction is None:
+        pi.write(GPIO_PIN_MOTOR_DIR, direction)
+    elif direction != _last_motor_direction:
+        pi.hardware_PWM(GPIO_PIN_MOTOR_PWM, PWM_FREQ_HZ, 0)
+        if MOTOR_DIR_SWITCH_PAUSE_S > 0:
+            time.sleep(MOTOR_DIR_SWITCH_PAUSE_S)
+        pi.write(GPIO_PIN_MOTOR_DIR, direction)
+
     duty = int(abs(s) * 1_000_000)   # pigpio hardware_PWM erwartet 0..1_000_000
     pi.hardware_PWM(GPIO_PIN_MOTOR_PWM, PWM_FREQ_HZ, duty)
+    _last_motor_direction = direction
 
 
 # --------- Main ---------
@@ -3545,6 +3562,11 @@ def main():
 
     head_current     = clamp(HEAD_CENTER_DEG, HEAD_MIN_DEG, HEAD_MAX_DEG)
     head_target      = head_current
+    head_filtered    = head_current
+    head_motion_start = head_current
+    head_motion_end   = head_current
+    head_motion_start_ts = time.monotonic()
+    head_motion_duration = 0.0
     head_last_sent   = head_current
     pi.set_servo_pulsewidth(GPIO_PIN_HEAD, deg_to_us_unclamped(head_current))
 
@@ -3728,8 +3750,10 @@ def main():
 
             # Filter + Safe-Start
             filtered_motor = motor_speed + (motor_target - motor_speed) * SMOOTH_A_MOTOR
-            max_du = RATE_UNITS_S * dt
-            step_u = clamp(filtered_motor - motor_speed, -max_du, +max_du)
+            delta_u = filtered_motor - motor_speed
+            max_rate = RATE_ACCEL_UNITS_S if delta_u >= 0 else RATE_DECEL_UNITS_S
+            max_du = max_rate * dt
+            step_u = clamp(delta_u, -max_du, +max_du)
             motor_speed += step_u
 
             if now < safe_start_motor_until:
@@ -3764,10 +3788,28 @@ def main():
 
             # ===== Kopf-Servo (latchend) =====
             head_target = clamp(head_target, HEAD_MIN_DEG, HEAD_MAX_DEG)
-            head_filtered = head_current + (head_target - head_current) * HEAD_SMOOTH_A
-            head_max_step = HEAD_RATE_DEG_S * dt
-            head_step     = clamp(head_filtered - head_current, -head_max_step, +head_max_step)
-            head_current += head_step
+            head_filtered += (head_target - head_filtered) * HEAD_SMOOTH_A
+
+            if abs(head_filtered - head_motion_end) > 1e-4:
+                head_motion_start = head_current
+                head_motion_end = head_filtered
+                head_motion_start_ts = now
+                distance = abs(head_motion_end - head_motion_start)
+                if HEAD_RATE_DEG_S > 0:
+                    head_motion_duration = max(distance / HEAD_RATE_DEG_S, dt)
+                else:
+                    head_motion_duration = 0.0
+
+            if head_motion_duration <= 0.0 or abs(head_motion_end - head_motion_start) <= 1e-6:
+                head_current = head_motion_end
+            else:
+                progress = clamp((now - head_motion_start_ts) / head_motion_duration, 0.0, 1.0)
+                eased = progress * progress * (3.0 - 2.0 * progress)
+                head_current = head_motion_start + (head_motion_end - head_motion_start) * eased
+
+                if progress >= 1.0:
+                    head_motion_start = head_motion_end
+                    head_motion_duration = 0.0
 
             if abs(head_current - head_last_sent) >= HEAD_UPDATE_HYSTERESIS_DEG:
                 pi.set_servo_pulsewidth(GPIO_PIN_HEAD, deg_to_us_unclamped(head_current))
