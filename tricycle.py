@@ -1005,8 +1005,17 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
       font-size: clamp(1.25rem, 2.8vw, 1.6rem);
       font-weight: 600;
     }
+    .system-card {
+      display: flex;
+      flex-direction: column;
+      gap: 0.8rem;
+    }
+    .system-overview {
+      display: flex;
+      flex-direction: column;
+      gap: 0.9rem;
+    }
     .system-status {
-      margin-top: 1.1rem;
       display: flex;
       align-items: center;
       justify-content: flex-start;
@@ -1155,8 +1164,6 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
     button:disabled { opacity: 0.55; cursor: not-allowed; }
     .head-controls { display: flex; gap: 0.5rem; }
     .head-controls button { flex: 1; padding: 0.55rem 0.6rem; font-size: 0.9rem; }
-    .head-actions { display: flex; flex-wrap: wrap; gap: 0.6rem; align-items: center; margin-top: 0.6rem; }
-    .head-actions button { flex: 0 1 auto; }
     .override-toggle { display: inline-flex; align-items: center; gap: 0.4rem; }
     button.ghost { background: rgba(229,9,20,0.16); border: 1px solid rgba(229,9,20,0.32); border-radius: 12px; }
     button.ghost:hover { background: rgba(229,9,20,0.28); }
@@ -1206,13 +1213,6 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
       .head-controls button {
         font-size: 1rem;
         padding-block: 0.65rem;
-      }
-      .head-actions {
-        flex-direction: column;
-        align-items: stretch;
-      }
-      .head-actions button {
-        width: 100%;
       }
       .system-status {
         flex-direction: column;
@@ -1290,32 +1290,35 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
           <button class="ghost" type="button" data-head-value="0" title="Kopf zentrieren" aria-label="Kopf zentrieren">Z</button>
           <button class="ghost" type="button" data-head-value="1" title="Kopf nach rechts" aria-label="Kopf nach rechts">R</button>
         </div>
-        <div class="head-actions">
-          <div class="override-toggle">
-            <input id="override" type="checkbox">
-            <label for="override">Web-Override aktivieren</label>
-          </div>
-        </div>
-        <div class="system-status">
-          <a id="batteryIndicator" class="battery-indicator unavailable" aria-live="polite" title="Akkustand unbekannt" href="/battery">
-            <svg viewBox="0 0 46 24" aria-hidden="true" focusable="false">
-              <rect class="battery-body" x="1" y="5" width="36" height="14" rx="3" ry="3" />
-              <rect class="battery-cap" x="38" y="9" width="6" height="6" rx="1.5" ry="1.5" />
-              <rect id="batteryFill" class="battery-fill" x="3" y="7" width="0" height="10" rx="2" ry="2" />
-            </svg>
-            <span id="batteryLabel">--%</span>
-          </a>
-          <a class="settings-button" href="/settings" title="Einstellungen" aria-label="Einstellungen öffnen">
-            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-              <path d="M19.14 12.94c.04-.31.06-.63.06-.94s-.02-.63-.06-.94l2.03-1.58a.5.5 0 0 0 .12-.64l-1.92-3.32a.5.5 0 0 0-.6-.22l-2.39.96a7.1 7.1 0 0 0-1.62-.94l-.36-2.54A.5.5 0 0 0 14.92 2h-3.84a.5.5 0 0 0-.5.43l-.36 2.54a7.1 7.1 0 0 0-1.62.94l-2.39-.96a.5.5 0 0 0-.6.22L3.69 8.45a.5.5 0 0 0 .12.64l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94l-2.03 1.58a.5.5 0 0 0-.12.64l1.92 3.32c.14.24.43.33.68.22l2.39-.96c.49.39 1.04.71 1.62.94l.36 2.54c.04.25.25.43.5.43h3.84c.25 0 .46-.18.5-.43l.36-2.54c.58-.23 1.13-.55 1.62-.94l2.39.96c.25.11.54.02.68-.22l1.92-3.32a.5.5 0 0 0-.12-.64zm-7.14 2.56a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z"/>
-            </svg>
-          </a>
-        </div>
       </div>
       <div class="joystick-card">
         <h2>Lenkung</h2>
         <div id="steeringStick" class="joystick axis-x"><div class="knob"></div></div>
         <div class="value">Lenkung: <strong><span id="steeringVal">+0.00</span></strong></div>
+      </div>
+      <div class="joystick-card system-card">
+        <h2>System</h2>
+        <div class="system-overview">
+          <div class="override-toggle">
+            <input id="override" type="checkbox">
+            <label for="override">Web-Override aktivieren</label>
+          </div>
+          <div class="system-status">
+            <a id="batteryIndicator" class="battery-indicator unavailable" aria-live="polite" title="Akkustand unbekannt" href="/battery">
+              <svg viewBox="0 0 46 24" aria-hidden="true" focusable="false">
+                <rect class="battery-body" x="1" y="5" width="36" height="14" rx="3" ry="3" />
+                <rect class="battery-cap" x="38" y="9" width="6" height="6" rx="1.5" ry="1.5" />
+                <rect id="batteryFill" class="battery-fill" x="3" y="7" width="0" height="10" rx="2" ry="2" />
+              </svg>
+              <span id="batteryLabel">--%</span>
+            </a>
+            <a class="settings-button" href="/settings" title="Einstellungen" aria-label="Einstellungen öffnen">
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path d="M19.14 12.94c.04-.31.06-.63.06-.94s-.02-.63-.06-.94l2.03-1.58a.5.5 0 0 0 .12-.64l-1.92-3.32a.5.5 0 0 0-.6-.22l-2.39.96a7.1 7.1 0 0 0-1.62-.94l-.36-2.54A.5.5 0 0 0 14.92 2h-3.84a.5.5 0 0 0-.5.43l-.36 2.54a7.1 7.1 0 0 0-1.62.94l-2.39-.96a.5.5 0 0 0-.6.22L3.69 8.45a.5.5 0 0 0 .12.64l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94l-2.03 1.58a.5.5 0 0 0-.12.64l1.92 3.32c.14.24.43.33.68.22l2.39-.96c.49.39 1.04.71 1.62.94l.36 2.54c.04.25.25.43.5.43h3.84c.25 0 .46-.18.5-.43l.36-2.54c.58-.23 1.13-.55 1.62-.94l2.39.96c.25.11.54.02.68-.22l1.92-3.32a.5.5 0 0 0-.12-.64zm-7.14 2.56a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z"/>
+              </svg>
+            </a>
+          </div>
+        </div>
       </div>
     </div>
     <footer>Läuft auf Port 8081 · Ziehen/Tippen zum Steuern</footer>
