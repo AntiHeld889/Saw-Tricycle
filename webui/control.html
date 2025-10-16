@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>Einstellungen · Saw Tricycle</title>
+  <title>Saw Tricycle Websteuerung</title>
   <style>
     :root {
       color-scheme: dark;
@@ -26,67 +26,195 @@
       align-items: center;
       -webkit-text-size-adjust: 100%;
       touch-action: manipulation;
+      gap: 1.2rem;
     }
-    .settings-card {
+    .card {
       width: 100%;
-      max-width: 520px;
+      max-width: 860px;
       background: #151515;
       border-radius: 16px;
-      padding: clamp(1.2rem, 4vw + 0.4rem, 1.8rem);
+      padding: clamp(1.2rem, 3vw + 0.4rem, 1.8rem);
       box-shadow: 0 0 40px rgba(0,0,0,0.45);
-      display: flex;
-      flex-direction: column;
-      gap: 1.4rem;
     }
-    .settings-header {
+    .card-header {
       display: flex;
       align-items: center;
+      justify-content: space-between;
       gap: 1rem;
     }
-    .back-button {
+    .card-header h1 {
+      margin: 0;
+      font-size: clamp(1.25rem, 2.8vw, 1.6rem);
+      font-weight: 600;
+    }
+    .system-card {
+      display: flex;
+      flex-direction: column;
+      gap: 0.8rem;
+    }
+    .head-card {
+      gap: 0.8rem;
+    }
+    .system-overview {
+      display: flex;
+      flex-direction: column;
+      gap: 0.9rem;
+    }
+    .system-status {
+      display: flex;
+      align-items: center;
+      justify-content: flex-start;
+      gap: 0.8rem;
+      flex-wrap: wrap;
+    }
+    .system-overview > .battery-indicator {
+      align-self: flex-start;
+    }
+    .system-status .settings-button {
+      flex: 0 0 auto;
+    }
+    .settings-button {
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      width: 42px;
-      height: 42px;
-      border-radius: 12px;
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
       background: rgba(229,9,20,0.16);
       border: 1px solid rgba(229,9,20,0.3);
       color: #fff;
       text-decoration: none;
       transition: background 0.2s ease, transform 0.2s ease, border-color 0.2s ease;
     }
-    .back-button:hover {
+    .settings-button:hover {
       background: rgba(229,9,20,0.28);
       border-color: rgba(229,9,20,0.55);
     }
-    .back-button:active {
-      transform: translateY(1px);
+    .settings-button:active {
+      transform: scale(0.96);
     }
-    .settings-header h1 {
-      margin: 0;
-      font-size: clamp(1.25rem, 3vw, 1.7rem);
-      font-weight: 600;
+    .settings-button svg {
+      width: 22px;
+      height: 22px;
+      fill: currentColor;
     }
-    .settings-section {
+    .battery-indicator {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      padding: 0.25rem 0.6rem 0.25rem 0.4rem;
+      border-radius: 999px;
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.12);
+      font-size: 0.82rem;
+      line-height: 1;
+      color: #f2f2f2;
+      transition: background 0.2s ease, border-color 0.2s ease;
+      text-decoration: none;
+      cursor: pointer;
+    }
+    .battery-indicator svg {
+      width: 34px;
+      height: 16px;
+    }
+    .battery-body {
+      fill: none;
+      stroke: rgba(255,255,255,0.75);
+      stroke-width: 2;
+      stroke-linejoin: round;
+    }
+    .battery-cap {
+      fill: rgba(255,255,255,0.75);
+    }
+    .battery-fill {
+      fill: #36d46a;
+      transition: fill 0.2s ease, width 0.2s ease;
+    }
+    .battery-indicator.low .battery-fill {
+      fill: #ff3b30;
+    }
+    .battery-indicator.medium .battery-fill {
+      fill: #ffcc00;
+    }
+    .battery-indicator.charging .battery-fill {
+      fill: #33a6ff;
+    }
+    .battery-indicator.error .battery-fill,
+    .battery-indicator.unavailable .battery-fill {
+      fill: rgba(242,242,242,0.35);
+    }
+    .battery-indicator.unavailable {
+      opacity: 0.7;
+    }
+    .battery-indicator span {
+      min-width: 2.4rem;
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+    }
+    .joystick-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 1.5rem;
+      margin-top: 1.5rem;
+      align-items: start;
+    }
+    .joystick-card {
       background: rgba(255,255,255,0.04);
       border-radius: 14px;
       padding: 1.2rem;
       display: flex;
       flex-direction: column;
-      gap: 0.9rem;
+      gap: 1rem;
     }
-    .settings-section h2 {
-      margin: 0;
-      font-size: 1.1rem;
-      font-weight: 600;
+    .joystick-card h2 { margin: 0; font-size: 1.1rem; font-weight: 600; }
+    .joystick {
+      position: relative;
+      border-radius: 18px;
+      border: 2px solid rgba(255,255,255,0.08);
+      background: radial-gradient(circle at center, rgba(229,9,20,0.28) 0%, rgba(229,9,20,0.08) 60%, rgba(229,9,20,0.0) 100%);
+      width: 100%;
+      aspect-ratio: 1 / 1;
+      min-height: 180px;
+      touch-action: none;
+      user-select: none;
+      transition: border-color 0.2s ease;
     }
-    .field {
-      display: flex;
-      flex-direction: column;
-      gap: 0.45rem;
+    @supports not (aspect-ratio: 1) {
+      .joystick { padding-top: 100%; min-height: 0; }
     }
+    .joystick::after { content: ""; position: absolute; inset: 16%; border: 1px dashed rgba(255,255,255,0.08); border-radius: 50%; pointer-events: none; }
+    .joystick.axis-x::before { content: ""; position: absolute; left: 50%; top: 12%; bottom: 12%; width: 1px; background: rgba(255,255,255,0.12); transform: translateX(-50%); pointer-events: none; }
+    .joystick.axis-y::before { content: ""; position: absolute; top: 50%; left: 12%; right: 12%; height: 1px; background: rgba(255,255,255,0.12); transform: translateY(-50%); pointer-events: none; }
+    .joystick .knob { position: absolute; top: 50%; left: 50%; width: 38%; height: 38%; border-radius: 50%; background: radial-gradient(circle at 30% 30%, #ff3f4a, #b30009); box-shadow: 0 10px 22px rgba(229,9,20,0.45); transform: translate(-50%, -50%) translate(var(--tx, 0%), var(--ty, 0%)); transition: transform 90ms ease-out; will-change: transform; }
+    .joystick.active { border-color: rgba(229,9,20,0.5); }
+    .joystick.active .knob { transition: none; }
+    .value { font-variant-numeric: tabular-nums; font-size: 0.95rem; color: #bbb; }
+    .value strong { color: #fff; }
     label { font-size: 0.95rem; }
+    button {
+      background: #e50914;
+      border: none;
+      color: #fff;
+      padding: 0.65rem 1.6rem;
+      border-radius: 999px;
+      font-size: 1rem;
+      cursor: pointer;
+      transition: background 0.2s ease, transform 0.2s ease;
+      touch-action: manipulation;
+      min-height: 44px;
+      -webkit-tap-highlight-color: transparent;
+    }
+    button:hover { background: #ff1a25; }
+    button:active { transform: translateY(1px); }
+    button:disabled { opacity: 0.55; cursor: not-allowed; }
+    .head-controls { display: flex; gap: 0.5rem; }
+    .head-controls button { flex: 1; padding: 0.55rem 0.6rem; font-size: 0.9rem; }
+    .override-toggle { display: inline-flex; align-items: center; gap: 0.4rem; }
+    button.ghost { background: rgba(229,9,20,0.16); border: 1px solid rgba(229,9,20,0.32); border-radius: 12px; }
+    button.ghost:hover { background: rgba(229,9,20,0.28); }
+    button.ghost.active { background: #e50914; border-color: #e50914; box-shadow: 0 0 18px rgba(229,9,20,0.35); }
+    input[type="checkbox"] { width: 1.2rem; height: 1.2rem; accent-color: #e50914; }
+    .audio-output { display: flex; flex-direction: column; gap: 0.4rem; }
     select {
       background: rgba(255,255,255,0.05);
       border: 1px solid rgba(255,255,255,0.12);
@@ -99,970 +227,336 @@
     select:focus {
       outline: none;
       border-color: rgba(229,9,20,0.55);
-      box-shadow: 0 0 0 3px rgba(229,9,20,0.2);
+      box-shadow: 0 0 0 2px rgba(229,9,20,0.2);
     }
-    .audio-volume {
-      display: flex;
-      flex-direction: column;
-      gap: 0.55rem;
-    }
-    .motor-limits {
-      display: flex;
-      flex-direction: column;
-      gap: 0.55rem;
-    }
-    .steering-grid {
-      display: grid;
-      gap: 0.75rem;
-      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-    }
-    .steering-grid .field {
-      display: flex;
-      flex-direction: column;
-      gap: 0.45rem;
-    }
-    .number-input {
-      display: flex;
-      align-items: center;
-      background: rgba(255,255,255,0.06);
-      border: 1px solid rgba(255,255,255,0.12);
-      border-radius: 12px;
-      padding: 0.35rem 0.6rem;
-      transition: border-color 0.2s ease, box-shadow 0.2s ease;
-    }
-    .number-input input {
-      flex: 1 1 auto;
-      background: transparent;
-      border: none;
-      color: inherit;
-      font: inherit;
-      min-width: 0;
-      padding: 0;
-      -moz-appearance: textfield;
-    }
-    .number-input input:focus {
-      outline: none;
-    }
-    .number-input input::-webkit-outer-spin-button,
-    .number-input input::-webkit-inner-spin-button {
-      -webkit-appearance: none;
-      margin: 0;
-    }
-    .number-input span {
-      margin-left: 0.35rem;
-      opacity: 0.7;
-      font-size: 0.9rem;
-    }
-    .number-input:focus-within {
-      border-color: rgba(229,9,20,0.55);
-      box-shadow: 0 0 0 3px rgba(229,9,20,0.2);
-    }
-    .slider-row {
-      display: flex;
-      align-items: center;
-      gap: 0.9rem;
-    }
-    .text-input {
-      display: flex;
-      align-items: center;
-      background: rgba(255,255,255,0.06);
-      border: 1px solid rgba(255,255,255,0.12);
-      border-radius: 12px;
-      padding: 0.45rem 0.6rem;
-      transition: border-color 0.2s ease, box-shadow 0.2s ease;
-    }
-    .text-input:focus-within {
-      border-color: rgba(229,9,20,0.55);
-      box-shadow: 0 0 0 3px rgba(229,9,20,0.2);
-    }
-    .text-input input {
-      flex: 1 1 auto;
-      background: transparent;
-      border: none;
-      color: inherit;
-      font: inherit;
-      padding: 0;
-      min-width: 0;
-    }
-    .text-input input:focus {
-      outline: none;
-    }
-    .text-input input::placeholder {
-      color: rgba(255,255,255,0.45);
-    }
-    .button-row {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 0.6rem;
-    }
-    .button {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      padding: 0.55rem 1.1rem;
-      border-radius: 12px;
-      border: 1px solid rgba(229,9,20,0.4);
-      background: rgba(229,9,20,0.16);
-      color: #fff;
-      font-size: 0.95rem;
-      font-weight: 600;
-      cursor: pointer;
-      transition: background 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
-    }
-    .button:hover:not(:disabled) {
-      background: rgba(229,9,20,0.28);
-      border-color: rgba(229,9,20,0.55);
-    }
-    .button:active:not(:disabled) {
-      transform: translateY(1px);
-    }
-    .button:disabled {
-      opacity: 0.6;
-      cursor: not-allowed;
-    }
-    .sound-row {
-      display: flex;
-      gap: 0.6rem;
-      align-items: center;
-    }
-    .sound-row select {
-      flex: 1 1 auto;
-    }
-    .button-actions {
-      display: flex;
-      flex-direction: column;
-      gap: 0.9rem;
-    }
-    .button-action {
-      gap: 0.45rem;
-    }
-    .button-action-row {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 0.6rem;
-      align-items: center;
-    }
-    .button-action-row [hidden] {
-      display: none !important;
-    }
-    .button-action-row select,
-    .button-action-row .text-input {
-      flex: 1 1 180px;
-    }
-    .button-action-row select.button-action-mode {
-      flex: 0 0 180px;
-      min-width: 150px;
-    }
-    .button-action-mp3 {
-      flex: 1 1 220px;
-    }
-    .button-action-mp3 select {
-      width: 100%;
-    }
-    .button-action-command {
-      flex: 1 1 220px;
-    }
-    .button-action-command input {
-      width: 100%;
-    }
-    .sound-preview-button {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      padding: 0;
-      width: 44px;
-      height: 44px;
-      border-radius: 12px;
-      border: 1px solid rgba(229,9,20,0.4);
-      background: rgba(229,9,20,0.12);
-      color: #fff;
-      font-size: 1rem;
-      font-weight: 600;
-      cursor: pointer;
-      transition: background 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
-    }
-    .sound-preview-button:hover:not(:disabled) {
-      background: rgba(229,9,20,0.24);
-      border-color: rgba(229,9,20,0.55);
-    }
-    .sound-preview-button:active:not(:disabled) {
-      transform: translateY(1px);
-    }
-    .sound-preview-button:disabled {
-      opacity: 0.6;
-      cursor: not-allowed;
-    }
-    .sound-preview-button span[aria-hidden="true"] {
-      font-size: 1rem;
-      line-height: 1;
-    }
-    input[type="range"] {
-      width: 100%;
-      accent-color: #e50914;
-    }
-    output {
-      min-width: 3ch;
-      text-align: right;
-      font-variant-numeric: tabular-nums;
-    }
-    .settings-section p.hint {
-      margin: 0;
-      color: #bbb;
-      font-size: 0.9rem;
-    }
-    .status {
-      font-size: 0.95rem;
-      color: #bbb;
-      min-height: 1.2em;
-    }
-    .status.success { color: #63f58c; }
-    .status.error { color: #ff7a7a; }
-    @media (max-width: 640px) {
+    footer { margin-top: 2rem; font-size: 0.8rem; color: #666; text-align: center; }
+    @media (max-width: 900px) {
       body {
-        padding: calc(1rem + var(--safe-top)) calc(1rem + var(--safe-right)) calc(1rem + var(--safe-bottom)) calc(1rem + var(--safe-left));
+        padding: calc(1.1rem + var(--safe-top)) calc(1.1rem + var(--safe-right)) calc(1.1rem + var(--safe-bottom)) calc(1.1rem + var(--safe-left));
+        align-items: stretch;
       }
-      .settings-card {
+      .card {
+        margin: 0 auto;
+        border-radius: 14px;
+      }
+    }
+    @media (max-width: 720px) {
+      body {
+        padding: calc(0.9rem + var(--safe-top)) calc(0.9rem + var(--safe-right)) calc(1rem + var(--safe-bottom)) calc(0.9rem + var(--safe-left));
+      }
+      .card {
         border-radius: 12px;
+        padding: clamp(1rem, 5vw + 0.3rem, 1.4rem);
+      }
+      .joystick-grid {
+        grid-template-columns: minmax(0, 1fr);
+        gap: 1.2rem;
+      }
+      .joystick {
+        min-height: clamp(200px, 60vw, 280px);
+      }
+      .head-card {
+        padding: clamp(0.85rem, 4vw, 1rem);
+        gap: 0.6rem;
+      }
+      .head-controls button {
+        font-size: 0.95rem;
+        padding-block: 0.55rem;
+        min-height: 44px;
+      }
+      .system-card {
+        padding: clamp(0.85rem, 4vw, 1rem);
+        gap: 0.65rem;
+      }
+      .system-overview {
+        gap: 0.65rem;
+      }
+      .system-status {
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.5rem;
+      }
+      .system-status .battery-indicator {
+        flex: 1 1 55%;
+        justify-content: center;
+      }
+      .system-status .settings-button {
+        flex: 0 0 auto;
+        width: 46px;
+        height: 46px;
+        border-radius: 12px;
+      }
+      .override-toggle {
+        justify-content: space-between;
+        font-size: 0.95rem;
+      }
+      .audio-output { width: 100%; }
+    }
+    @media (max-width: 520px) {
+      .card {
+        padding: clamp(0.85rem, 5vw, 1.1rem);
+      }
+      .joystick-card {
+        padding: clamp(0.75rem, 4vw, 0.95rem);
+        gap: 0.75rem;
+      }
+      .joystick-card h2 {
+        font-size: 1rem;
+      }
+      .head-controls button {
+        font-size: 0.92rem;
+        padding-block: 0.5rem;
+      }
+      .system-status {
+        gap: 0.45rem;
+      }
+      .system-status .battery-indicator {
+        transform: scale(0.94);
+        transform-origin: left center;
+      }
+      .settings-button {
+        width: 42px;
+        height: 42px;
+      }
+      .settings-button svg {
+        width: 20px;
+        height: 20px;
       }
     }
     @media (orientation: landscape) and (max-height: 520px) {
       body {
-        padding: calc(0.7rem + var(--safe-top)) calc(0.75rem + var(--safe-right)) calc(0.7rem + var(--safe-bottom)) calc(0.75rem + var(--safe-left));
+        padding: calc(0.65rem + var(--safe-top)) calc(0.7rem + var(--safe-right)) calc(0.65rem + var(--safe-bottom)) calc(0.7rem + var(--safe-left));
         align-items: stretch;
+        justify-content: center;
+        gap: 0.7rem;
       }
-      .settings-card {
+      .card {
         padding: 0.95rem;
-        gap: 1rem;
-        max-height: calc(100dvh - var(--safe-top) - var(--safe-bottom) - 1.2rem);
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+        max-height: calc(100dvh - var(--safe-top) - var(--safe-bottom) - 1.1rem);
         overflow-y: auto;
         overscroll-behavior: contain;
       }
-      .settings-section {
-        padding: 1rem;
-        gap: 0.75rem;
+      .card-header h1 {
+        font-size: 1.18rem;
       }
-      .slider-row {
+      .joystick-grid {
+        margin-top: 0.15rem;
         gap: 0.7rem;
+        grid-template-columns: minmax(0, 1.15fr) repeat(2, minmax(0, 0.85fr)) minmax(0, 1.15fr);
+        grid-template-areas: "motor head system steering";
+        grid-auto-rows: minmax(0, 1fr);
+        align-items: stretch;
+      }
+      .joystick-card {
+        padding: 0.75rem;
+        gap: 0.55rem;
+        min-height: 0;
+      }
+      .joystick-card:nth-child(1) { grid-area: motor; }
+      .joystick-card.head-card { grid-area: head; }
+      .joystick-card.system-card { grid-area: system; }
+      .joystick-card:last-child { grid-area: steering; }
+      .joystick {
+        min-height: clamp(110px, calc((100dvh - var(--safe-top) - var(--safe-bottom)) * 0.32), 150px);
+      }
+      .head-card {
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+        justify-content: center;
+        gap: 0.5rem;
+        text-align: center;
+      }
+      .head-card h2 {
+        margin: 0;
+        font-size: 0.92rem;
+      }
+      .head-controls {
+        justify-content: center;
+        gap: 0.35rem;
+      }
+      .head-controls button {
+        min-height: 40px;
+        padding: 0.42rem 0.5rem;
+        font-size: 0.88rem;
+        flex: 1 1 0;
+      }
+      .system-card {
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+        justify-content: center;
+        gap: 0.55rem;
+        text-align: center;
+      }
+      .system-card h2 {
+        margin: 0;
+        font-size: 0.92rem;
+      }
+      .system-overview {
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+        justify-content: center;
+        gap: 0.5rem;
+      }
+      .override-toggle {
+        font-size: 0.88rem;
+        gap: 0.4rem;
+        justify-content: center;
+      }
+      .system-status {
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 0.4rem;
+      }
+      .system-status .battery-indicator {
+        flex: 0 1 auto;
+        transform: scale(0.92);
+        transform-origin: center;
+      }
+      .system-status .settings-button {
+        width: 40px;
+        height: 40px;
+        border-radius: 10px;
+      }
+      .card footer {
+        margin-top: 0.35rem;
+        font-size: 0.7rem;
       }
     }
     @media (orientation: landscape) and (max-height: 430px) {
       body {
-        padding: calc(0.6rem + var(--safe-top)) calc(0.65rem + var(--safe-right)) calc(0.6rem + var(--safe-bottom)) calc(0.65rem + var(--safe-left));
-      }
-      .settings-card {
-        padding: 0.8rem;
-        gap: 0.85rem;
-      }
-      .settings-section {
-        padding: 0.85rem;
-      }
-      .slider-row {
+        padding: calc(0.55rem + var(--safe-top)) calc(0.6rem + var(--safe-right)) calc(0.55rem + var(--safe-bottom)) calc(0.6rem + var(--safe-left));
         gap: 0.6rem;
       }
-    }
-    @media (max-width: 420px) {
-      .sound-preview-button {
-        width: 42px;
-        height: 42px;
+      .card {
+        padding: 0.8rem;
+        gap: 0.6rem;
       }
+      .joystick-grid {
+        gap: 0.55rem;
+        grid-template-columns: minmax(0, 1.15fr) repeat(2, minmax(0, 0.85fr)) minmax(0, 1.15fr);
+        grid-template-areas: "motor head system steering";
+      }
+      .joystick {
+        min-height: clamp(100px, calc((100dvh - var(--safe-top) - var(--safe-bottom)) * 0.28), 130px);
+      }
+      .head-controls button {
+        min-height: 38px;
+        font-size: 0.85rem;
+      }
+    }
+    @media (pointer: coarse) {
+      button { font-size: 1.05rem; }
+      .head-controls button { font-size: 1.05rem; }
+      .value { font-size: 1.05rem; }
+      label { font-size: 1.05rem; }
     }
   </style>
 </head>
 <body>
-  <div class="settings-card">
-    <div class="settings-header">
-      <a class="back-button" href="/" aria-label="Zurück zur Steuerung" title="Zurück">⟵</a>
-      <h1>Einstellungen</h1>
+  <div class="card">
+    <div class="card-header">
+      <h1>Saw Tricycle</h1>
     </div>
-    <section class="settings-section">
-      <h2>Audio-Ausgabe</h2>
-      <div class="audio-output">
-        <label for="audioDevice">Ausgabegerät auswählen</label>
-        <select id="audioDevice" aria-label="Audio-Ausgabe auswählen"></select>
+    <div class="joystick-grid">
+      <div class="joystick-card">
+        <h2>Motor</h2>
+        <div id="motorStick" class="joystick axis-y"><div class="knob"></div></div>
+        <div class="value">Motor: <strong><span id="motorVal">+0.00</span></strong></div>
       </div>
-      <div class="audio-volume" id="audioVolumeContainer" hidden>
-        <label for="audioVolume">Lautstärke</label>
-        <div class="slider-row">
-          <input id="audioVolume" type="range" min="0" max="100" step="1" aria-label="Lautstärke einstellen">
-          <output id="audioVolumeValue" for="audioVolume">0%</output>
-        </div>
-      </div>
-      <p id="status" class="status"></p>
-    </section>
-    <section class="settings-section">
-      <h2>Sounds</h2>
-      <div class="field">
-        <label for="soundDirectory">MP3-Verzeichnis</label>
-        <div class="text-input">
-          <input id="soundDirectory" type="text" inputmode="text" autocomplete="off" placeholder="/opt/python/sawsounds" aria-label="Pfad zum MP3-Verzeichnis">
-        </div>
-        <div class="button-row">
-          <button type="button" class="button" id="soundDirectorySave">Pfad speichern</button>
-        </div>
-        <p class="hint">Alle MP3-Dateien aus diesem Ordner stehen für den Startsound zur Auswahl.</p>
-      </div>
-      <div class="field">
-        <label for="soundboardPort">Soundboard URL PORT</label>
-        <div class="text-input">
-          <input id="soundboardPort" type="text" inputmode="numeric" pattern="[0-9]*" autocomplete="off" placeholder="3000" aria-label="Port für das Soundboard">
-        </div>
-        <div class="button-row">
-          <button type="button" class="button" id="soundboardPortSave">Port speichern</button>
+      <div class="joystick-card head-card">
+        <h2>Kopf</h2>
+        <div class="head-controls">
+          <button class="ghost" type="button" data-head-value="-1" title="Kopf nach links" aria-label="Kopf nach links">L</button>
+          <button class="ghost" type="button" data-head-value="0" title="Kopf zentrieren" aria-label="Kopf zentrieren">Z</button>
+          <button class="ghost" type="button" data-head-value="1" title="Kopf nach rechts" aria-label="Kopf nach rechts">R</button>
         </div>
       </div>
-      <div class="field">
-        <label for="startSound">Startsound</label>
-        <div class="sound-row">
-          <select id="startSound" aria-label="Startsound auswählen"></select>
-          <button type="button" class="sound-preview-button" data-sound-preview="start" aria-label="Startsound probehören">
-            <span aria-hidden="true">▶</span>
-          </button>
-        </div>
-      </div>
-      <div class="field">
-        <label for="connectedSound">Connected Sound</label>
-        <div class="sound-row">
-          <select id="connectedSound" aria-label="Connected Sound auswählen"></select>
-          <button type="button" class="sound-preview-button" data-sound-preview="connected" aria-label="Connected Sound probehören">
-            <span aria-hidden="true">▶</span>
-          </button>
-        </div>
-        <p class="hint">Wird nach erfolgreicher Controller-Verbindung abgespielt.</p>
-      </div>
-    </section>
-    <section class="settings-section">
-      <h2>Gamepad-Tasten</h2>
-      <p class="hint">Wähle pro Taste eine MP3 aus oder hinterlege einen Raspberry&nbsp;Pi Befehl.</p>
-      <div id="buttonActionsContainer" class="button-actions" aria-live="polite"></div>
-      <div class="field">
-        <label for="disconnectCommand">Befehl bei Gamepad-Verlust</label>
-        <div class="text-input">
-          <input id="disconnectCommand" type="text" inputmode="text" autocomplete="off" placeholder="sudo systemctl restart ..." aria-label="Befehl, der bei Gamepad-Trennung ausgeführt wird">
-        </div>
-        <div class="button-row">
-          <button type="button" class="button" id="disconnectCommandSave">Befehl speichern</button>
-        </div>
-        <p class="hint">Wird ausgeführt, sobald die Verbindung zum Gamepad abbricht.</p>
-      </div>
-    </section>
-    <section class="settings-section">
-      <h2>Lenkwinkel</h2>
-      <p class="hint">Definiert Mittelstellung und maximale Ausschläge des Servos.</p>
-      <div class="steering-grid">
-        <div class="field">
-          <label for="steeringLeft">Links (max.)</label>
-          <div class="number-input">
-            <input id="steeringLeft" type="number" inputmode="decimal" min="0" max="270" step="0.5" aria-label="Maximaler Lenkwinkel nach links" autocomplete="off">
-            <span>°</span>
+      <div class="joystick-card system-card">
+        <h2>System</h2>
+        <div class="system-overview">
+          <a id="batteryIndicator" class="battery-indicator unavailable" aria-live="polite" title="Akkustand unbekannt" href="/battery">
+            <svg viewBox="0 0 46 24" aria-hidden="true" focusable="false">
+              <rect class="battery-body" x="1" y="5" width="36" height="14" rx="3" ry="3" />
+              <rect class="battery-cap" x="38" y="9" width="6" height="6" rx="1.5" ry="1.5" />
+              <rect id="batteryFill" class="battery-fill" x="3" y="7" width="0" height="10" rx="2" ry="2" />
+            </svg>
+            <span id="batteryLabel">--%</span>
+          </a>
+          <div class="override-toggle">
+            <input id="override" type="checkbox">
+            <label for="override">Web-Override aktivieren</label>
           </div>
-        </div>
-        <div class="field">
-          <label for="steeringMid">Mitte</label>
-          <div class="number-input">
-            <input id="steeringMid" type="number" inputmode="decimal" min="0" max="270" step="0.5" aria-label="Neutralstellung des Lenkservos" autocomplete="off">
-            <span>°</span>
-          </div>
-        </div>
-        <div class="field">
-          <label for="steeringRight">Rechts (max.)</label>
-          <div class="number-input">
-            <input id="steeringRight" type="number" inputmode="decimal" min="0" max="270" step="0.5" aria-label="Maximaler Lenkwinkel nach rechts" autocomplete="off">
-            <span>°</span>
+          <div class="system-status">
+            <a id="soundboardButton" class="settings-button soundboard-button" href="#" title="Soundboard öffnen" aria-label="Soundboard öffnen" target="_blank" rel="noopener" hidden>
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path d="M3 9v6h4l5 5V4L7 9H3z"/>
+                <path d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v8.06c1.48-.74 2.5-2.26 2.5-4.03z"/>
+                <path d="M14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/>
+              </svg>
+            </a>
+            <a id="cameraButton" class="settings-button camera-button" href="#" title="Kamera öffnen" aria-label="Kamera öffnen" target="_blank" rel="noopener" hidden>
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path d="M4 6h3.17l1.41-1.41A2 2 0 0 1 9.83 4h4.34a2 2 0 0 1 1.41.59L17 6h3a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2Zm8 3a5 5 0 1 0 0 10 5 5 0 0 0 0-10Zm0 2a3 3 0 1 1 0 6 3 3 0 0 1 0-6Z"/>
+              </svg>
+            </a>
+            <a class="settings-button" href="/settings" title="Einstellungen" aria-label="Einstellungen öffnen">
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path d="M19.14 12.94c.04-.31.06-.63.06-.94s-.02-.63-.06-.94l2.03-1.58a.5.5 0 0 0 .12-.64l-1.92-3.32a.5.5 0 0 0-.6-.22l-2.39.96a7.1 7.1 0 0 0-1.62-.94l-.36-2.54A.5.5 0 0 0 14.92 2h-3.84a.5.5 0 0 0-.5.43l-.36 2.54a7.1 7.1 0 0 0-1.62.94l-2.39-.96a.5.5 0 0 0-.6.22L3.69 8.45a.5.5 0 0 0 .12.64l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94l-2.03 1.58a.5.5 0 0 0-.12.64l1.92 3.32c.14.24.43.33.68.22l2.39-.96c.49.39 1.04.71 1.62.94l.36 2.54c.04.25.25.43.5.43h3.84c.25 0 .46-.18.5-.43l.36-2.54c.58-.23 1.13-.55 1.62-.94l2.39.96c.25.11.54.02.68-.22l1.92-3.32a.5.5 0 0 0-.12-.64zm-7.14 2.56a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z"/>
+              </svg>
+            </a>
           </div>
         </div>
       </div>
-    </section>
-    <section class="settings-section">
-      <h2>Motorgrenzen</h2>
-      <p class="hint">Begrenzt den maximalen PWM-Anteil für den DC-Motor (0–100&nbsp;%).</p>
-      <div class="motor-limits">
-        <label for="motorForward">Vorwärts</label>
-        <div class="slider-row">
-          <input id="motorForward" type="range" min="0" max="100" step="1" aria-label="Vorwärtslimit einstellen">
-          <output id="motorForwardValue" for="motorForward">–</output>
-        </div>
+      <div class="joystick-card">
+        <h2>Lenkung</h2>
+        <div id="steeringStick" class="joystick axis-x"><div class="knob"></div></div>
+        <div class="value">Lenkung: <strong><span id="steeringVal">+0.00</span></strong></div>
       </div>
-      <div class="motor-limits">
-        <label for="motorReverse">Rückwärts</label>
-        <div class="slider-row">
-          <input id="motorReverse" type="range" min="0" max="100" step="1" aria-label="Rückwärtslimit einstellen">
-          <output id="motorReverseValue" for="motorReverse">–</output>
-        </div>
-      </div>
-    </section>
-    <audio id="soundPreviewPlayer" preload="none" hidden></audio>
+    </div>
+    <footer>Läuft auf Port 8081 · Ziehen/Tippen zum Steuern</footer>
   </div>
   <script>
+    const clampValue = (value) => {
+      const num = Number.parseFloat(value);
+      if (!Number.isFinite(num)) {
+        return 0;
+      }
+      return Math.max(-1, Math.min(1, num));
+    };
+
+    const state = { steering: 0, motor: 0, head: 0, override: false, audioDevice: null, audioVolume: null, soundboardPort: null, cameraTarget: null };
+    const steeringVal = document.getElementById('steeringVal');
+    const motorVal = document.getElementById('motorVal');
+    const headButtons = Array.from(document.querySelectorAll('[data-head-value]'));
+    const override = document.getElementById('override');
     const audioSelect = document.getElementById('audioDevice');
-    const statusEl = document.getElementById('status');
-    const volumeContainer = document.getElementById('audioVolumeContainer');
-    const volumeSlider = document.getElementById('audioVolume');
-    const volumeValue = document.getElementById('audioVolumeValue');
-    const motorForward = document.getElementById('motorForward');
-    const motorReverse = document.getElementById('motorReverse');
-    const motorForwardValue = document.getElementById('motorForwardValue');
-    const motorReverseValue = document.getElementById('motorReverseValue');
-    const steeringLeft = document.getElementById('steeringLeft');
-    const steeringMid = document.getElementById('steeringMid');
-    const steeringRight = document.getElementById('steeringRight');
-    const steeringInputs = [steeringLeft, steeringMid, steeringRight].filter((input) => input);
-    const soundDirectoryInput = document.getElementById('soundDirectory');
-    const soundDirectorySave = document.getElementById('soundDirectorySave');
-    const soundboardPortInput = document.getElementById('soundboardPort');
-    const soundboardPortSave = document.getElementById('soundboardPortSave');
-    const startSoundSelect = document.getElementById('startSound');
-    const connectedSoundSelect = document.getElementById('connectedSound');
-    const startSoundPreviewButton = document.querySelector('[data-sound-preview="start"]');
-    const connectedSoundPreviewButton = document.querySelector('[data-sound-preview="connected"]');
-    const soundPreviewPlayer = document.getElementById('soundPreviewPlayer');
-    const buttonActionsContainer = document.getElementById('buttonActionsContainer');
-    const disconnectCommandInput = document.getElementById('disconnectCommand');
-    const disconnectCommandSave = document.getElementById('disconnectCommandSave');
-    const BUTTON_MODE_NONE = 'none';
-    const BUTTON_MODE_MP3 = 'mp3';
-    const BUTTON_MODE_COMMAND = 'command';
-    const buttonActionControls = new Map();
-    let buttonAssignments = {};
-    let buttonDefinitions = [];
-    let currentSoundFiles = [];
-    let syncingButtonActions = false;
-    audioSelect.disabled = true;
+    const batteryIndicator = document.getElementById('batteryIndicator');
+    const batteryFill = document.getElementById('batteryFill');
+    const batteryLabel = document.getElementById('batteryLabel');
+    const soundboardButton = document.getElementById('soundboardButton');
+    const cameraButton = document.getElementById('cameraButton');
+    const BATTERY_CLASSES = ['charging', 'low', 'medium', 'error', 'unavailable'];
+    const BATTERY_MAX_WIDTH = 32;
     let audioOptionsSignature = '';
-    let volumeConfig = null;
-    let motorConfig = null;
-    let steeringConfig = null;
-    if (volumeSlider) {
-      volumeSlider.disabled = true;
-    }
-    if (volumeContainer) {
-      volumeContainer.hidden = true;
-    }
-    if (motorForward) {
-      motorForward.disabled = true;
-      motorForward.value = '0';
-    }
-    if (motorReverse) {
-      motorReverse.disabled = true;
-      motorReverse.value = '0';
-    }
-    if (motorForwardValue) {
-      motorForwardValue.textContent = '–';
-    }
-    if (motorReverseValue) {
-      motorReverseValue.textContent = '–';
-    }
-    if (steeringInputs.length > 0) {
-      steeringInputs.forEach((input) => {
-        input.disabled = true;
-        input.value = '';
-      });
-    }
-    if (soundDirectoryInput) {
-      soundDirectoryInput.disabled = true;
-      soundDirectoryInput.value = '';
-    }
-    if (soundDirectorySave) {
-      soundDirectorySave.disabled = true;
-    }
-    if (soundboardPortInput) {
-      soundboardPortInput.disabled = true;
-      soundboardPortInput.value = '';
-    }
-    if (soundboardPortSave) {
-      soundboardPortSave.disabled = true;
-    }
-    if (startSoundSelect) {
-      startSoundSelect.disabled = true;
-    }
-    if (connectedSoundSelect) {
-      connectedSoundSelect.disabled = true;
-    }
-    if (startSoundPreviewButton) {
-      startSoundPreviewButton.disabled = true;
-    }
-    if (connectedSoundPreviewButton) {
-      connectedSoundPreviewButton.disabled = true;
-    }
-    if (disconnectCommandInput) {
-      disconnectCommandInput.disabled = true;
-      disconnectCommandInput.value = '';
-    }
-    if (disconnectCommandSave) {
-      disconnectCommandSave.disabled = true;
-    }
-    const updatePreviewButtonState = () => {
-      const hasPreviewPlayer = Boolean(soundPreviewPlayer);
-      if (startSoundPreviewButton) {
-        const disabled =
-          !hasPreviewPlayer
-          || !startSoundSelect
-          || startSoundSelect.disabled
-          || !startSoundSelect.value;
-        startSoundPreviewButton.disabled = disabled;
-      }
-      if (connectedSoundPreviewButton) {
-        const disabled =
-          !hasPreviewPlayer
-          || !connectedSoundSelect
-          || connectedSoundSelect.disabled
-          || !connectedSoundSelect.value;
-        connectedSoundPreviewButton.disabled = disabled;
-      }
-      buttonActionControls.forEach((controls) => {
-        if (!controls || !controls.mp3PreviewButton) {
-          return;
-        }
-        const disabled =
-          !hasPreviewPlayer
-          || !controls.mp3Wrapper
-          || controls.mp3Wrapper.hidden
-          || !controls.mp3Select
-          || controls.mp3Select.disabled
-          || !controls.mp3Select.value;
-        controls.mp3PreviewButton.disabled = disabled;
-      });
-    };
-    updatePreviewButtonState();
-    if (soundPreviewPlayer) {
-      soundPreviewPlayer.addEventListener('error', (event) => {
-        console.error('Sound-Vorschau fehlgeschlagen', event);
-        setStatus('Sound konnte nicht abgespielt werden.', 'error');
-      });
+    if (audioSelect) {
+      audioSelect.disabled = true;
     }
 
-    const buildButtonActionsUI = (definitions) => {
-      if (!buttonActionsContainer) {
-        return;
-      }
-      buttonActionControls.clear();
-      buttonActionsContainer.innerHTML = '';
-      if (!Array.isArray(definitions) || definitions.length === 0) {
-        const empty = document.createElement('p');
-        empty.className = 'hint';
-        empty.textContent = 'Keine konfigurierbaren Tasten gefunden.';
-        buttonActionsContainer.append(empty);
-        updatePreviewButtonState();
-        return;
-      }
-      const fragment = document.createDocumentFragment();
-      definitions.forEach((definition) => {
-        const code = typeof definition.code === 'string' ? definition.code : '';
-        if (!code) {
-          return;
-        }
-        const label = typeof definition.label === 'string' && definition.label ? definition.label : code;
-        const field = document.createElement('div');
-        field.className = 'field button-action';
-        field.dataset.code = code;
-        const labelEl = document.createElement('label');
-        labelEl.textContent = label;
-        field.append(labelEl);
-        const row = document.createElement('div');
-        row.className = 'button-action-row';
-        const modeSelect = document.createElement('select');
-        modeSelect.className = 'button-action-mode';
-        modeSelect.setAttribute('aria-label', `${label} Aktion`);
-        const optionNone = document.createElement('option');
-        optionNone.value = BUTTON_MODE_NONE;
-        optionNone.textContent = 'Keine Aktion';
-        modeSelect.append(optionNone);
-        const optionMp3 = document.createElement('option');
-        optionMp3.value = BUTTON_MODE_MP3;
-        optionMp3.textContent = 'MP3 abspielen';
-        modeSelect.append(optionMp3);
-        const optionCommand = document.createElement('option');
-        optionCommand.value = BUTTON_MODE_COMMAND;
-        optionCommand.textContent = 'Befehl ausführen';
-        modeSelect.append(optionCommand);
-        row.append(modeSelect);
-        const mp3Wrapper = document.createElement('div');
-        mp3Wrapper.className = 'button-action-mp3 sound-row';
-        const mp3Select = document.createElement('select');
-        mp3Select.setAttribute('aria-label', `${label} MP3 auswählen`);
-        mp3Wrapper.append(mp3Select);
-        const mp3PreviewButton = document.createElement('button');
-        mp3PreviewButton.type = 'button';
-        mp3PreviewButton.className = 'sound-preview-button';
-        mp3PreviewButton.setAttribute('aria-label', `${label} MP3 probehören`);
-        const mp3PreviewIcon = document.createElement('span');
-        mp3PreviewIcon.setAttribute('aria-hidden', 'true');
-        mp3PreviewIcon.textContent = '▶';
-        mp3PreviewButton.append(mp3PreviewIcon);
-        mp3PreviewButton.disabled = true;
-        mp3Wrapper.append(mp3PreviewButton);
-        row.append(mp3Wrapper);
-        const commandWrapper = document.createElement('div');
-        commandWrapper.className = 'text-input button-action-command';
-        const commandInput = document.createElement('input');
-        commandInput.type = 'text';
-        commandInput.autocomplete = 'off';
-        commandInput.placeholder = 'sudo …';
-        commandInput.setAttribute('aria-label', `${label} Befehl`);
-        commandWrapper.append(commandInput);
-        row.append(commandWrapper);
-        mp3Wrapper.hidden = true;
-        commandWrapper.hidden = true;
-        field.append(row);
-        fragment.append(field);
-        buttonActionControls.set(code, {
-          container: field,
-          modeSelect,
-          mp3Wrapper,
-          mp3Select,
-          mp3PreviewButton,
-          commandWrapper,
-          commandInput,
-        });
-
-        mp3PreviewButton.addEventListener('click', () => {
-          playSoundPreview(mp3Select, mp3PreviewButton);
-        });
-
-        modeSelect.addEventListener('change', () => {
-          if (syncingButtonActions) {
-            return;
-          }
-          const selectedMode = modeSelect.value;
-          const controls = buttonActionControls.get(code);
-          if (!controls) {
-            return;
-          }
-          if (selectedMode === BUTTON_MODE_MP3) {
-            controls.mp3Wrapper.hidden = false;
-            controls.commandWrapper.hidden = true;
-            const value = controls.mp3Select.value;
-            if (value) {
-              saveButtonAction(code, BUTTON_MODE_MP3, value);
-            } else {
-              saveButtonAction(code, BUTTON_MODE_NONE, '');
-            }
-          } else if (selectedMode === BUTTON_MODE_COMMAND) {
-            controls.mp3Wrapper.hidden = true;
-            controls.commandWrapper.hidden = false;
-            controls.commandInput.focus();
-            const trimmed = controls.commandInput.value.trim();
-            if (trimmed) {
-              saveButtonAction(code, BUTTON_MODE_COMMAND, trimmed);
-            } else {
-              saveButtonAction(code, BUTTON_MODE_NONE, '');
-            }
-          } else {
-            controls.mp3Wrapper.hidden = true;
-            controls.commandWrapper.hidden = true;
-            saveButtonAction(code, BUTTON_MODE_NONE, '');
-          }
-          updatePreviewButtonState();
-        });
-
-        mp3Select.addEventListener('change', () => {
-          if (syncingButtonActions) {
-            return;
-          }
-          const value = mp3Select.value;
-          if (value) {
-            saveButtonAction(code, BUTTON_MODE_MP3, value);
-          } else {
-            saveButtonAction(code, BUTTON_MODE_NONE, '');
-          }
-          updatePreviewButtonState();
-        });
-
-        const handleCommandSave = () => {
-          if (syncingButtonActions) {
-            return;
-          }
-          const trimmed = commandInput.value.trim();
-          if (trimmed) {
-            saveButtonAction(code, BUTTON_MODE_COMMAND, trimmed);
-          } else {
-            saveButtonAction(code, BUTTON_MODE_NONE, '');
-          }
-        };
-        commandInput.addEventListener('change', handleCommandSave);
-        commandInput.addEventListener('keydown', (event) => {
-          if (event.key === 'Enter') {
-            event.preventDefault();
-            handleCommandSave();
-          }
-        });
-      });
-      buttonActionsContainer.append(fragment);
-      updatePreviewButtonState();
-    };
-
-    const applyButtonActionToControls = (code, assignment) => {
-      const controls = buttonActionControls.get(code);
-      if (!controls) {
-        return;
-      }
-      const mode = assignment && typeof assignment.mode === 'string'
-        ? assignment.mode.toLowerCase()
-        : BUTTON_MODE_NONE;
-      const value = assignment && typeof assignment.value === 'string' ? assignment.value : '';
-      const normalizedMode = [BUTTON_MODE_NONE, BUTTON_MODE_MP3, BUTTON_MODE_COMMAND].includes(mode)
-        ? mode
-        : BUTTON_MODE_NONE;
-      syncingButtonActions = true;
-      controls.modeSelect.value = normalizedMode;
-      controls.mp3Wrapper.hidden = normalizedMode !== BUTTON_MODE_MP3;
-      controls.commandWrapper.hidden = normalizedMode !== BUTTON_MODE_COMMAND;
-      if (normalizedMode === BUTTON_MODE_COMMAND) {
-        controls.commandInput.value = value || '';
-      } else if (!controls.commandInput.value) {
-        controls.commandInput.value = value || '';
-      }
-      if (normalizedMode !== BUTTON_MODE_MP3) {
-        controls.mp3Select.value = '';
-      }
-      syncingButtonActions = false;
-      updatePreviewButtonState();
-    };
-
-    const updateButtonMp3Options = () => {
-      if (buttonActionControls.size === 0) {
-        return;
-      }
-      buttonActionControls.forEach((controls, code) => {
-        const select = controls.mp3Select;
-        if (!select) {
-          return;
-        }
-        while (select.firstChild) {
-          select.removeChild(select.firstChild);
-        }
-        const fileList = Array.isArray(currentSoundFiles) ? currentSoundFiles : [];
-        if (fileList.length === 0) {
-          const option = document.createElement('option');
-          option.value = '';
-          option.textContent = 'Keine MP3-Dateien gefunden';
-          select.append(option);
-          select.disabled = true;
-        } else {
-          const placeholder = document.createElement('option');
-          placeholder.value = '';
-          placeholder.textContent = 'MP3 auswählen';
-          select.append(placeholder);
-          fileList.forEach((file) => {
-            const option = document.createElement('option');
-            option.value = file;
-            option.textContent = file;
-            select.append(option);
-          });
-          const assignment = buttonAssignments[code];
-          const target = assignment && assignment.mode === BUTTON_MODE_MP3 && assignment.value
-            ? assignment.value
-            : '';
-          if (target) {
-            const normalized = fileList.find((file) => file.toLowerCase() === target.toLowerCase());
-            if (!normalized) {
-              const missing = document.createElement('option');
-              missing.value = target;
-              missing.textContent = `${target} (nicht gefunden)`;
-              missing.disabled = true;
-              select.append(missing);
-            }
-          }
-          select.disabled = false;
-        }
-        const assignment = buttonAssignments[code];
-        const targetValue = assignment && assignment.mode === BUTTON_MODE_MP3 && assignment.value
-          ? assignment.value
-          : '';
-        const normalized = targetValue
-          ? fileList.find((file) => file.toLowerCase() === targetValue.toLowerCase()) || targetValue
-          : '';
-        syncingButtonActions = true;
-        select.value = normalized || '';
-        syncingButtonActions = false;
-      });
-      updatePreviewButtonState();
-    };
-
-    const syncButtonActions = (info) => {
-      if (!buttonActionsContainer) {
-        return null;
-      }
-      if (!info || !Array.isArray(info.definitions)) {
-        buttonDefinitions = [];
-        buttonAssignments = {};
-        buttonActionControls.clear();
-        buttonActionsContainer.innerHTML = '';
-        updatePreviewButtonState();
-        return null;
-      }
-      const normalizedDefinitions = info.definitions
-        .map((item) => {
-          const code = typeof item.code === 'string' ? item.code : '';
-          const label = typeof item.label === 'string' && item.label ? item.label : code;
-          return { code, label };
-        })
-        .filter((item) => item.code);
-      const definitionsChanged =
-        normalizedDefinitions.length !== buttonDefinitions.length
-        || normalizedDefinitions.some((definition, index) => {
-          const previous = buttonDefinitions[index];
-          if (!previous) {
-            return true;
-          }
-          return definition.code !== previous.code || definition.label !== previous.label;
-        });
-      if (definitionsChanged) {
-        buttonDefinitions = normalizedDefinitions;
-        buildButtonActionsUI(buttonDefinitions);
-      } else {
-        buttonDefinitions = normalizedDefinitions;
-      }
-      const assignmentsRaw = info.assignments && typeof info.assignments === 'object' ? info.assignments : {};
-      const nextAssignments = {};
-      buttonDefinitions.forEach((definition) => {
-        const code = definition.code;
-        const entry = assignmentsRaw[code];
-        const mode = entry && typeof entry.mode === 'string' ? entry.mode.toLowerCase() : BUTTON_MODE_NONE;
-        const value = entry && typeof entry.value === 'string' ? entry.value : '';
-        nextAssignments[code] = { mode, value };
-        applyButtonActionToControls(code, nextAssignments[code]);
-      });
-      buttonAssignments = nextAssignments;
-      updateButtonMp3Options();
-      return { definitions: buttonDefinitions, assignments: buttonAssignments };
-    };
-
-    async function saveButtonAction(code, mode, rawValue) {
-      if (!code) {
-        return;
-      }
-      let normalizedMode = typeof mode === 'string' ? mode.toLowerCase() : BUTTON_MODE_NONE;
-      let normalizedValue = '';
-      if (normalizedMode === BUTTON_MODE_MP3) {
-        normalizedValue = typeof rawValue === 'string' ? rawValue.trim() : '';
-        if (!normalizedValue) {
-          normalizedMode = BUTTON_MODE_NONE;
-        }
-      } else if (normalizedMode === BUTTON_MODE_COMMAND) {
-        normalizedValue = typeof rawValue === 'string' ? rawValue.trim() : '';
-        if (!normalizedValue) {
-          normalizedMode = BUTTON_MODE_NONE;
-        }
-      } else {
-        normalizedMode = BUTTON_MODE_NONE;
-      }
-      const currentAssignment = buttonAssignments[code];
-      const currentMode = currentAssignment ? currentAssignment.mode : BUTTON_MODE_NONE;
-      const currentValue = currentAssignment ? (currentAssignment.value || '') : '';
-      if (
-        normalizedMode === currentMode
-        && (normalizedMode === BUTTON_MODE_NONE || normalizedValue === currentValue)
-      ) {
-        return;
-      }
-      const entry = { mode: normalizedMode };
-      if (normalizedMode !== BUTTON_MODE_NONE) {
-        entry.value = normalizedValue;
-      }
-      const payload = { button_actions: { [code]: entry } };
-      const currentDevice = audioSelect.value;
-      if (currentDevice) {
-        payload.audio_device = currentDevice;
-      }
-      try {
-        setStatus('Speichere Tasten-Aktion …');
-        const resp = await fetch('/api/control', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        });
-        if (!resp.ok) {
-          throw new Error(`Status ${resp.status}`);
-        }
-        const data = await resp.json();
-        const selected = typeof data.audio_device === 'string' ? data.audio_device : null;
-        syncAudioSelection(data.audio_outputs, selected);
-        const volumeValue = syncVolume(data.audio_volume);
-        syncMotorLimits(data.motor_limits);
-        syncSteeringAngles(data.steering_angles);
-        const soundInfo = syncSoundSettings(data.sound);
-        const buttonInfo = syncButtonActions(data.button_actions);
-        let success = false;
-        if (buttonInfo && buttonInfo.assignments && buttonInfo.assignments[code]) {
-          const saved = buttonInfo.assignments[code];
-          if (normalizedMode === BUTTON_MODE_NONE) {
-            success = !saved || saved.mode === BUTTON_MODE_NONE || !saved.mode;
-          } else if (normalizedMode === BUTTON_MODE_MP3) {
-            success = saved.mode === BUTTON_MODE_MP3
-              && saved.value
-              && saved.value.toLowerCase() === normalizedValue.toLowerCase();
-          } else if (normalizedMode === BUTTON_MODE_COMMAND) {
-            success = saved.mode === BUTTON_MODE_COMMAND && saved.value === normalizedValue;
-          }
-        }
-        if (success) {
-          const messages = [];
-          if (selected) {
-            if (volumeValue !== null) {
-              messages.push('Audio-Ausgabe & Lautstärke synchronisiert');
-            } else {
-              messages.push('Audio-Ausgabe synchronisiert');
-            }
-          }
-          if (soundInfo && Array.isArray(soundInfo.files) && soundInfo.files.length === 0) {
-            messages.push('Keine MP3-Dateien gefunden');
-          }
-          messages.push('Tasten-Aktion gespeichert');
-          setStatus(`${messages.join(' · ')}.`, 'success');
-        } else {
-          setStatus('Tasten-Aktion konnte nicht gespeichert werden.', 'error');
-        }
-      } catch (err) {
-        console.error('Speichern der Tasten-Aktion fehlgeschlagen', err);
-        setStatus('Tasten-Aktion konnte nicht gespeichert werden.', 'error');
-      }
-    }
-
-    const setStatus = (message, tone = '') => {
-      statusEl.textContent = message ?? '';
-      statusEl.classList.remove('success', 'error');
-      if (tone === 'success') {
-        statusEl.classList.add('success');
-      } else if (tone === 'error') {
-        statusEl.classList.add('error');
-      }
-    };
-
-    const formatMotorPercent = (value) => `${Math.round((Number.parseFloat(value) || 0) * 100)}%`;
-
-    const clampMotorLimit = (value) => {
-      if (!motorConfig) {
-        return null;
-      }
-      const { min, max, step } = motorConfig;
-      const numeric = Number.parseFloat(value);
-      if (!Number.isFinite(numeric)) {
-        return null;
-      }
-      const limited = Math.max(min, Math.min(max, numeric));
-      const steps = Math.round((limited - min) / step);
-      const quantized = min + steps * step;
-      const clamped = Math.max(min, Math.min(max, quantized));
-      return Number.parseFloat(clamped.toFixed(4));
-    };
-
-    const clampMotorFromSlider = (value) => {
-      if (!motorConfig) {
-        return null;
-      }
-      const numeric = Number.parseFloat(value);
-      if (!Number.isFinite(numeric)) {
-        return null;
-      }
-      return clampMotorLimit(numeric / 100);
+    const formatValue = (value) => {
+      const rounded = clampValue(value);
+      return `${rounded >= 0 ? '+' : ''}${rounded.toFixed(2)}`;
     };
 
     const parseSoundboardPort = (value) => {
       if (typeof value === 'number') {
-        if (Number.isInteger(value) && value >= 1 && value <= 65535) {
-          return value;
-        }
-        return null;
+        return Number.isInteger(value) && value >= 1 && value <= 65535 ? value : null;
       }
       if (typeof value === 'string') {
         const trimmed = value.trim();
@@ -1077,203 +571,239 @@
       return null;
     };
 
-    const syncMotorLimits = (info) => {
-      if (!motorForward || !motorReverse || !motorForwardValue || !motorReverseValue) {
+    const parseCameraTarget = (value) => {
+      if (typeof value === 'number') {
+        if (Number.isInteger(value) && value >= 1 && value <= 65535) {
+          return { port: value, path: '', raw: String(value) };
+        }
         return null;
       }
-      if (!info || !Number.isFinite(info.forward) || !Number.isFinite(info.reverse)) {
-        motorConfig = null;
-        motorForward.disabled = true;
-        motorReverse.disabled = true;
-        motorForwardValue.textContent = '–';
-        motorReverseValue.textContent = '–';
+      if (typeof value !== 'string') {
         return null;
       }
-      const min = Number.isFinite(info.min) ? info.min : 0;
-      const max = Number.isFinite(info.max) ? info.max : 1;
-      const step = Number.isFinite(info.step) && info.step > 0 ? info.step : 0.01;
-      motorConfig = { min, max, step };
-      const sliderMin = Math.round(min * 100);
-      const sliderMax = Math.round(max * 100);
-      const sliderStep = Math.max(1, Math.round(step * 100));
-      motorForward.min = String(sliderMin);
-      motorForward.max = String(sliderMax);
-      motorForward.step = String(sliderStep);
-      motorReverse.min = String(sliderMin);
-      motorReverse.max = String(sliderMax);
-      motorReverse.step = String(sliderStep);
-      const forwardValue = clampMotorLimit(info.forward);
-      const reverseValue = clampMotorLimit(info.reverse);
-      if (forwardValue === null || reverseValue === null) {
-        motorConfig = null;
-        motorForward.disabled = true;
-        motorReverse.disabled = true;
-        motorForwardValue.textContent = '–';
-        motorReverseValue.textContent = '–';
+      const trimmed = value.trim();
+      if (!trimmed) {
         return null;
       }
-      motorForward.disabled = false;
-      motorReverse.disabled = false;
-      motorForward.value = String(Math.round(forwardValue * 100));
-      motorReverse.value = String(Math.round(reverseValue * 100));
-      motorForwardValue.textContent = formatMotorPercent(forwardValue);
-      motorReverseValue.textContent = formatMotorPercent(reverseValue);
-      return { forward: forwardValue, reverse: reverseValue };
+      const slashIndex = trimmed.indexOf('/');
+      const portPart = slashIndex === -1 ? trimmed : trimmed.slice(0, slashIndex);
+      const pathPart = slashIndex === -1 ? '' : trimmed.slice(slashIndex + 1);
+      const numeric = Number.parseInt(portPart, 10);
+      if (!Number.isInteger(numeric) || numeric < 1 || numeric > 65535) {
+        return null;
+      }
+      let normalizedPath = '';
+      if (pathPart) {
+        const segments = pathPart
+          .split('/')
+          .map((segment) => segment.trim())
+          .filter(Boolean);
+        if (segments.length > 0) {
+          normalizedPath = `/${segments.join('/')}`;
+          if (pathPart.trim().endsWith('/') && !normalizedPath.endsWith('/')) {
+            normalizedPath += '/';
+          }
+        }
+      }
+      return { port: numeric, path: normalizedPath, raw: `${numeric}${normalizedPath}` };
     };
 
-    const getCurrentMotorValues = () => {
-      if (!motorConfig || !motorForward || !motorReverse) {
-        return null;
+    const buildServiceUrl = (port) => {
+      const protocol = window.location.protocol === 'https:' ? 'https:' : 'http:';
+      const hostname = window.location.hostname || 'localhost';
+      let host = hostname;
+      if (host.includes(':') && !host.startsWith('[')) {
+        host = `[${host}]`;
       }
-      const forward = clampMotorFromSlider(motorForward.value);
-      const reverse = clampMotorFromSlider(motorReverse.value);
-      if (forward === null || reverse === null) {
-        return null;
-      }
-      return { forward, reverse };
+      return `${protocol}//${host}:${port}/`;
     };
 
-    const determineAnglePrecision = (step) => {
-      if (!Number.isFinite(step) || step <= 0) {
-        return 2;
+    const buildSoundboardUrl = (port) => buildServiceUrl(port);
+    const buildCameraUrl = (target) => {
+      if (!target || !target.port) {
+        return '#';
       }
-      if (step >= 1) {
-        return 0;
+      const base = buildServiceUrl(target.port);
+      if (!target.path) {
+        return base;
       }
-      if (step >= 0.1) {
-        return 1;
-      }
-      return 2;
+      const trimmedBase = base.endsWith('/') ? base.slice(0, -1) : base;
+      return `${trimmedBase}${target.path}`;
     };
 
-    const quantizeAngle = (value, min, max, step) => {
-      const numeric = Number.parseFloat(value);
-      if (!Number.isFinite(numeric)) {
-        return null;
-      }
-      const limited = Math.max(min, Math.min(max, numeric));
-      if (!Number.isFinite(step) || step <= 0) {
-        return Number.parseFloat(limited.toFixed(3));
-      }
-      const steps = Math.round((limited - min) / step);
-      const quantized = min + steps * step;
-      const clamped = Math.max(min, Math.min(max, quantized));
-      return Number.parseFloat(clamped.toFixed(3));
-    };
-
-    const formatAngleInput = (value, precision) => {
-      if (!Number.isFinite(value)) {
-        return '';
-      }
-      const digits = Number.isInteger(precision) ? precision : 1;
-      const clampedDigits = Math.max(0, Math.min(3, digits));
-      const normalized = Number.parseFloat(value.toFixed(clampedDigits));
-      return Number.isFinite(normalized) ? String(normalized) : '';
-    };
-
-    const clampSteeringValue = (rawValue) => {
-      if (!steeringConfig) {
-        return null;
-      }
-      if (rawValue === undefined || rawValue === null || rawValue === '') {
-        return null;
-      }
-      const { min, max, step } = steeringConfig;
-      return quantizeAngle(rawValue, min, max, step);
-    };
-
-    const applySteeringInputs = (values) => {
-      if (!steeringConfig) {
+    const updateSoundboardButton = (port) => {
+      if (!soundboardButton) {
         return;
       }
-      const precision = steeringConfig.precision ?? 1;
-      if (steeringLeft) {
-        steeringLeft.value = formatAngleInput(values.left, precision);
-      }
-      if (steeringMid) {
-        steeringMid.value = formatAngleInput(values.mid, precision);
-      }
-      if (steeringRight) {
-        steeringRight.value = formatAngleInput(values.right, precision);
-      }
-    };
-
-    const revertSteeringInputs = () => {
-      if (!steeringConfig || !steeringConfig.values) {
-        steeringInputs.forEach((input) => {
-          input.value = '';
-        });
+      const numeric = parseSoundboardPort(port);
+      if (numeric === null) {
+        soundboardButton.hidden = true;
+        soundboardButton.dataset.url = '';
+        soundboardButton.removeAttribute('data-port');
+        soundboardButton.href = '#';
         return;
       }
-      applySteeringInputs(steeringConfig.values);
+      const url = buildSoundboardUrl(numeric);
+      soundboardButton.hidden = false;
+      soundboardButton.dataset.url = url;
+      soundboardButton.dataset.port = String(numeric);
+      soundboardButton.href = url;
     };
 
-    const syncSteeringAngles = (info) => {
-      if (steeringInputs.length === 0) {
-        return null;
+    const updateCameraButton = (target) => {
+      if (!cameraButton) {
+        return;
       }
-      if (
-        !info ||
-        !Number.isFinite(info.left) ||
-        !Number.isFinite(info.mid) ||
-        !Number.isFinite(info.right)
-      ) {
-        steeringConfig = null;
-        steeringInputs.forEach((input) => {
-          input.disabled = true;
-          input.value = '';
-        });
-        return null;
+      if (!target) {
+        cameraButton.hidden = true;
+        cameraButton.dataset.url = '';
+        cameraButton.removeAttribute('data-port');
+        cameraButton.removeAttribute('data-path');
+        cameraButton.removeAttribute('data-raw');
+        cameraButton.href = '#';
+        return;
       }
-      const min = Number.isFinite(info.min) ? info.min : 0;
-      const max = Number.isFinite(info.max) ? info.max : 270;
-      const step = Number.isFinite(info.step) && info.step > 0 ? info.step : 0.5;
-      const precision = determineAnglePrecision(step);
-      const left = quantizeAngle(info.left, min, max, step);
-      const mid = quantizeAngle(info.mid, min, max, step);
-      const right = quantizeAngle(info.right, min, max, step);
-      if (left === null || mid === null || right === null || !(left <= mid && mid <= right)) {
-        steeringConfig = null;
-        steeringInputs.forEach((input) => {
-          input.disabled = true;
-          input.value = '';
-        });
-        return null;
+      const url = buildCameraUrl(target);
+      cameraButton.hidden = false;
+      cameraButton.dataset.url = url;
+      cameraButton.dataset.port = String(target.port);
+      if (target.path) {
+        cameraButton.dataset.path = target.path;
+      } else {
+        cameraButton.removeAttribute('data-path');
       }
-      steeringConfig = {
-        min,
-        max,
-        step,
-        precision,
-        values: { left, mid, right },
-      };
-      steeringInputs.forEach((input) => {
-        input.disabled = false;
-        input.min = String(min);
-        input.max = String(max);
-        input.step = String(step);
+      cameraButton.dataset.raw = target.raw;
+      cameraButton.href = url;
+    };
+
+    if (soundboardButton) {
+      updateSoundboardButton(null);
+      soundboardButton.addEventListener('click', (event) => {
+        const url = soundboardButton.dataset.url;
+        if (!url) {
+          event.preventDefault();
+          return;
+        }
+        event.preventDefault();
+        window.open(url, '_blank', 'noopener');
       });
-      applySteeringInputs(steeringConfig.values);
-      return steeringConfig.values;
+    }
+
+    if (cameraButton) {
+      updateCameraButton(null);
+      cameraButton.addEventListener('click', (event) => {
+        const url = cameraButton.dataset.url;
+        if (!url) {
+          event.preventDefault();
+          return;
+        }
+        event.preventDefault();
+        window.open(url, '_blank', 'noopener');
+      });
+    }
+
+    const updateBattery = (info) => {
+      if (!batteryIndicator || !batteryFill || !batteryLabel) {
+        return;
+      }
+      batteryIndicator.classList.remove(...BATTERY_CLASSES);
+      if (!info || typeof info !== 'object') {
+        batteryLabel.textContent = '--%';
+        batteryFill.setAttribute('width', '0');
+        batteryIndicator.classList.add('unavailable');
+        batteryIndicator.title = 'Akkustand nicht verfügbar';
+        return;
+      }
+      const percentRaw = Number(info.percent);
+      const percent = Number.isFinite(percentRaw) ? Math.max(0, Math.min(100, percentRaw)) : null;
+      const voltageRaw = Number(info.voltage);
+      const voltage = Number.isFinite(voltageRaw) ? voltageRaw : null;
+      const currentRaw = Number(info.current);
+      const current = Number.isFinite(currentRaw) ? currentRaw : null;
+      const powerRaw = Number(info.power);
+      const power = Number.isFinite(powerRaw) ? powerRaw : null;
+      const status = typeof info.status === 'string' ? info.status : 'unknown';
+
+      if (percent === null) {
+        batteryLabel.textContent = '--%';
+        batteryFill.setAttribute('width', '0');
+      } else {
+        batteryLabel.textContent = `${Math.round(percent)}%`;
+        const width = (BATTERY_MAX_WIDTH * percent) / 100;
+        batteryFill.setAttribute('width', width > 0 ? width.toFixed(1) : '0');
+      }
+
+      let indicatorClass = null;
+      if (status === 'error') {
+        indicatorClass = 'error';
+      } else if (status === 'charging') {
+        indicatorClass = 'charging';
+      } else if (status === 'initializing') {
+        indicatorClass = 'unavailable';
+      } else if (percent === null) {
+        indicatorClass = 'unavailable';
+      } else if (percent <= 20) {
+        indicatorClass = 'low';
+      } else if (percent <= 50) {
+        indicatorClass = 'medium';
+      }
+      if (indicatorClass) {
+        batteryIndicator.classList.add(indicatorClass);
+      }
+
+      const parts = [];
+      if (percent === null) {
+        parts.push('Akkuladung unbekannt');
+      } else {
+        parts.push(`Akkuladung ${Math.round(percent)}%`);
+      }
+      if (voltage !== null) {
+        parts.push(`${voltage.toFixed(2)} V`);
+      }
+      if (current !== null) {
+        const sign = current >= 0 ? '+' : '';
+        parts.push(`${sign}${current.toFixed(2)} A`);
+      }
+      if (power !== null) {
+        const sign = power >= 0 ? '+' : '';
+        parts.push(`${sign}${power.toFixed(2)} W`);
+      }
+      if (status === 'charging') {
+        parts.push('lädt');
+      } else if (status === 'discharging') {
+        parts.push('entlädt');
+      } else if (status === 'idle') {
+        parts.push('Ruhezustand');
+      } else if (status === 'error') {
+        parts.push('Sensorfehler');
+      } else if (status === 'initializing') {
+        parts.push('Initialisierung läuft');
+      } else if (status === 'unknown') {
+        parts.push('Status unbekannt');
+      }
+      batteryIndicator.title = parts.join(' · ');
     };
 
-    const getCurrentSteeringValues = () => {
-      if (!steeringConfig) {
-        return null;
-      }
-      const left = clampSteeringValue(steeringLeft?.value);
-      const mid = clampSteeringValue(steeringMid?.value);
-      const right = clampSteeringValue(steeringRight?.value);
-      if (left === null || mid === null || right === null) {
-        return null;
-      }
-      if (!(left <= mid && mid <= right)) {
-        return null;
-      }
-      return { left, mid, right };
+    const updateLabels = () => {
+      steeringVal.textContent = formatValue(state.steering);
+      motorVal.textContent = formatValue(state.motor);
+    };
+
+    const updateHeadButtons = () => {
+      headButtons.forEach((button) => {
+        const raw = button.dataset.headValue;
+        const value = Number.parseFloat(raw ?? '0');
+        if (!Number.isFinite(value)) {
+          return;
+        }
+        button.classList.toggle('active', Math.abs(state.head - value) < 0.01);
+      });
     };
 
     const syncAudioSelection = (options, selectedId) => {
+      if (!audioSelect) {
+        return;
+      }
       const normalized = Array.isArray(options)
         ? options
             .map((opt) => ({ id: opt?.id ?? '', label: opt?.label ?? String(opt?.id ?? '') }))
@@ -1298,840 +828,237 @@
         audioSelect.value = targetValue;
       }
       audioSelect.disabled = normalized.length === 0;
-      return targetValue || null;
+      state.audioDevice = targetValue || null;
     };
 
-    const formatVolume = (value) => `${Math.round(Number.parseFloat(value) || 0)}%`;
-
-    const clampVolume = (raw) => {
-      if (!volumeConfig) {
-        return null;
-      }
-      const { min, max, step } = volumeConfig;
-      const numeric = Number.parseFloat(raw);
-      if (!Number.isFinite(numeric)) {
-        return null;
-      }
-      const limited = Math.max(min, Math.min(max, numeric));
-      const steps = Math.round((limited - min) / step);
-      return min + steps * step;
-    };
-
-    const syncVolume = (info) => {
-      if (!volumeSlider || !volumeValue || !volumeContainer) {
-        return null;
-      }
-      if (!info || !Number.isFinite(info.value)) {
-        volumeConfig = null;
-        volumeContainer.hidden = true;
-        volumeSlider.disabled = true;
-        volumeValue.textContent = '–';
-        return null;
-      }
-      const min = Number.isFinite(info.min) ? info.min : 0;
-      const max = Number.isFinite(info.max) ? info.max : 100;
-      const step = Number.isFinite(info.step) && info.step > 0 ? info.step : 1;
-      volumeConfig = { min, max, step };
-      volumeSlider.min = String(min);
-      volumeSlider.max = String(max);
-      volumeSlider.step = String(step);
-      const value = clampVolume(info.value);
-      if (value === null) {
-        volumeConfig = null;
-        volumeContainer.hidden = true;
-        volumeSlider.disabled = true;
-        volumeValue.textContent = '–';
-        return null;
-      }
-      volumeSlider.value = String(value);
-      volumeSlider.disabled = false;
-      volumeContainer.hidden = false;
-      volumeValue.textContent = formatVolume(value);
-      return value;
-    };
-
-    const getSelectLabel = (select) => {
-      if (!select) {
-        return '';
-      }
-      const option = select.options[select.selectedIndex];
-      return option ? option.textContent.trim() : select.value;
-    };
-
-    const playSoundPreview = (select, button) => {
-      if (!select || !button || !soundPreviewPlayer) {
-        return;
-      }
-      if (select.disabled) {
-        updatePreviewButtonState();
-        return;
-      }
-      const value = select.value;
-      if (!value) {
-        setStatus('Bitte zuerst einen Sound auswählen.', 'error');
-        updatePreviewButtonState();
-        return;
-      }
-      const label = getSelectLabel(select);
-      const url = `/api/sound-preview?file=${encodeURIComponent(value)}&v=${Date.now()}`;
-      button.disabled = true;
-      try {
-        soundPreviewPlayer.pause();
-        soundPreviewPlayer.currentTime = 0;
-      } catch (err) {
-        console.error('Zurücksetzen der Sound-Vorschau fehlgeschlagen', err);
-      }
-      soundPreviewPlayer.src = url;
-      let playback;
-      try {
-        playback = soundPreviewPlayer.play();
-      } catch (err) {
-        console.error('Sound-Vorschau konnte nicht gestartet werden', err);
-        setStatus('Sound konnte nicht abgespielt werden.', 'error');
-        button.disabled = false;
-        return;
-      }
-      const onSuccess = () => {
-        setStatus(`Spiele „${label}“ …`, 'success');
-      };
-      const onError = (err) => {
-        console.error('Sound-Vorschau fehlgeschlagen', err);
-        setStatus('Sound konnte nicht abgespielt werden.', 'error');
-      };
-      if (playback && typeof playback.then === 'function') {
-        playback.then(onSuccess).catch(onError).finally(() => {
-          button.disabled = false;
-        });
-      } else {
-        onSuccess();
-        button.disabled = false;
+    const setHead = (value, emit = true) => {
+      state.head = clampValue(value);
+      updateLabels();
+      updateHeadButtons();
+      if (emit) {
+        sendState();
       }
     };
 
-    const syncSoundSettings = (info) => {
-      if (!soundDirectoryInput || !soundDirectorySave || !startSoundSelect || !connectedSoundSelect) {
-        return null;
-      }
-      startSoundSelect.innerHTML = '';
-      connectedSoundSelect.innerHTML = '';
-      if (!info || typeof info !== 'object') {
-        soundDirectoryInput.value = '';
-        soundDirectoryInput.disabled = true;
-        soundDirectorySave.disabled = true;
-        if (soundboardPortInput) {
-          soundboardPortInput.value = '';
-          soundboardPortInput.disabled = true;
+    function createJoystick(id, axis, onInput) {
+      const pad = document.getElementById(id);
+      let pointerId = null;
+      let active = false;
+      let value = 0;
+      const travel = 42; // Prozentuale Auslenkung für den Knopf
+
+      const render = () => {
+        if (axis === 'x') {
+          pad.style.setProperty('--tx', `${value * travel}%`);
+          pad.style.setProperty('--ty', '0%');
+        } else {
+          pad.style.setProperty('--ty', `${value * -travel}%`);
+          pad.style.setProperty('--tx', '0%');
         }
-        if (soundboardPortSave) {
-          soundboardPortSave.disabled = true;
+      };
+
+      const applyValue = (next, emit) => {
+        value = clampValue(next);
+        render();
+        if (emit && typeof onInput === 'function') {
+          onInput(value);
         }
-        const option = document.createElement('option');
-        option.value = '';
-        option.textContent = 'Keine MP3-Dateien gefunden';
-        startSoundSelect.append(option);
-        startSoundSelect.disabled = true;
-        const connectedOption = document.createElement('option');
-        connectedOption.value = '';
-        connectedOption.textContent = 'Keine MP3-Dateien gefunden';
-        connectedSoundSelect.append(connectedOption);
-        connectedSoundSelect.disabled = true;
-        connectedSoundSelect.value = '';
-        currentSoundFiles = [];
-        updateButtonMp3Options();
-        updatePreviewButtonState();
-        return null;
-      }
-      const directory = typeof info.directory === 'string' ? info.directory : '';
-      const files = Array.isArray(info.files)
-        ? info.files.filter((value) => typeof value === 'string')
-        : [];
-      const startSound = typeof info.start_sound === 'string' ? info.start_sound : '';
-      const connectedSound = typeof info.connected_sound === 'string' ? info.connected_sound : '';
-      const soundboardPort = parseSoundboardPort(info.soundboard_port);
-      soundDirectoryInput.disabled = false;
-      soundDirectoryInput.value = directory;
-      soundDirectorySave.disabled = false;
-      if (soundboardPortInput) {
-        soundboardPortInput.disabled = false;
-        soundboardPortInput.value = soundboardPort !== null ? String(soundboardPort) : '';
-      }
-      if (soundboardPortSave) {
-        soundboardPortSave.disabled = false;
-      }
-      let selected = '';
-      let connectedSelected = '';
-      if (files.length === 0) {
-        const option = document.createElement('option');
-        option.value = '';
-        option.textContent = 'Keine MP3-Dateien gefunden';
-        startSoundSelect.append(option);
-        startSoundSelect.disabled = true;
-        const connectedOption = document.createElement('option');
-        connectedOption.value = '';
-        connectedOption.textContent = 'Keine MP3-Dateien gefunden';
-        connectedSoundSelect.append(connectedOption);
-        connectedSoundSelect.disabled = true;
-        connectedSoundSelect.value = '';
-        currentSoundFiles = [];
-      } else {
-        const noneOption = document.createElement('option');
-        noneOption.value = '';
-        noneOption.textContent = 'Kein Sound';
-        connectedSoundSelect.append(noneOption);
-        files.forEach((file) => {
-          const option = document.createElement('option');
-          option.value = file;
-          option.textContent = file;
-          startSoundSelect.append(option);
-          const connectedOption = document.createElement('option');
-          connectedOption.value = file;
-          connectedOption.textContent = file;
-          connectedSoundSelect.append(connectedOption);
-        });
-        const normalized = startSound
-          ? files.find((file) => file.toLowerCase() === startSound.toLowerCase())
-          : null;
-        selected = normalized || files[0];
-        startSoundSelect.value = selected;
-        startSoundSelect.disabled = false;
-        const normalizedConnected = connectedSound
-          ? files.find((file) => file.toLowerCase() === connectedSound.toLowerCase())
-          : null;
-        connectedSelected = normalizedConnected || '';
-        connectedSoundSelect.value = connectedSelected;
-        connectedSoundSelect.disabled = false;
-        currentSoundFiles = files.slice();
-      }
-      updateButtonMp3Options();
-      updatePreviewButtonState();
+      };
+
+      const updateFromPointer = (event) => {
+        const rect = pad.getBoundingClientRect();
+        let next = 0;
+        if (axis === 'x') {
+          const centerX = rect.left + rect.width / 2;
+          next = (event.clientX - centerX) / (rect.width / 2);
+        } else {
+          const centerY = rect.top + rect.height / 2;
+          next = (centerY - event.clientY) / (rect.height / 2);
+        }
+        applyValue(next, true);
+      };
+
+      const releasePointer = (event) => {
+        if (event.pointerId !== pointerId) {
+          return;
+        }
+        try {
+          pad.releasePointerCapture(pointerId);
+        } catch (err) {
+          /* ignore */
+        }
+        pointerId = null;
+        active = false;
+        pad.classList.remove('active');
+        applyValue(0, true);
+      };
+
+      pad.addEventListener('pointerdown', (event) => {
+        event.preventDefault();
+        pointerId = event.pointerId;
+        active = true;
+        pad.classList.add('active');
+        try {
+          pad.setPointerCapture(pointerId);
+        } catch (err) {
+          /* ignore */
+        }
+        updateFromPointer(event);
+      });
+
+      pad.addEventListener('pointermove', (event) => {
+        if (!active || event.pointerId !== pointerId) {
+          return;
+        }
+        updateFromPointer(event);
+      });
+
+      pad.addEventListener('pointerup', releasePointer);
+      pad.addEventListener('pointercancel', releasePointer);
+      pad.addEventListener('contextmenu', (event) => {
+        event.preventDefault();
+      });
+
       return {
-        directory,
-        files,
-        startSound: selected || '',
-        connectedSound: connectedSelected || '',
-        soundboardPort,
+        setValue(next) {
+          applyValue(next, false);
+        },
+        reset() {
+          applyValue(0, false);
+        },
+        get value() {
+          return value;
+        },
+        get active() {
+          return active;
+        }
       };
-    };
-
-    const syncGamepadSettings = (info) => {
-      if (!disconnectCommandInput || !disconnectCommandSave) {
-        return null;
-      }
-      if (!info || typeof info !== 'object') {
-        disconnectCommandInput.value = '';
-        disconnectCommandInput.disabled = true;
-        disconnectCommandSave.disabled = true;
-        return null;
-      }
-      const command = typeof info.disconnect_command === 'string' ? info.disconnect_command : '';
-      disconnectCommandInput.disabled = false;
-      disconnectCommandInput.value = command;
-      disconnectCommandSave.disabled = false;
-      return { disconnectCommand: command };
-    };
-
-    async function loadState() {
-      try {
-        setStatus('Lade aktuelle Einstellungen …');
-        const resp = await fetch('/api/state');
-        if (!resp.ok) {
-          throw new Error(`Status ${resp.status}`);
-        }
-        const data = await resp.json();
-        const selected = typeof data.audio_device === 'string' ? data.audio_device : null;
-        const current = syncAudioSelection(data.audio_outputs, selected);
-        const volumeValue = syncVolume(data.audio_volume);
-        const motorValues = syncMotorLimits(data.motor_limits);
-        const steeringValues = syncSteeringAngles(data.steering_angles);
-        const soundInfo = syncSoundSettings(data.sound);
-        const gamepadInfo = syncGamepadSettings(data.gamepad);
-        const buttonInfo = syncButtonActions(data.button_actions);
-        const messageParts = [];
-        let tone = '';
-        if (current) {
-          if (volumeValue !== null) {
-            messageParts.push('Audio-Ausgabe und Lautstärke geladen');
-          } else {
-            messageParts.push('Audio-Ausgabe geladen (keine Lautstärke-Steuerung verfügbar)');
-          }
-          tone = 'success';
-        } else {
-          messageParts.push('Keine Audio-Ausgabegeräte verfügbar');
-          tone = 'error';
-        }
-        if (motorValues) {
-          messageParts.push('Motor-Limits geladen');
-          if (!tone) {
-            tone = 'success';
-          }
-        }
-        if (steeringValues) {
-          messageParts.push('Lenkwinkel geladen');
-          if (!tone) {
-            tone = 'success';
-          }
-        }
-        if (soundInfo) {
-          if (soundInfo.files.length > 0) {
-            messageParts.push('Sound-Einstellungen geladen');
-          } else {
-            messageParts.push('MP3-Verzeichnis geladen (keine Dateien gefunden)');
-          }
-          if (!tone) {
-            tone = 'success';
-          }
-        }
-        if (gamepadInfo) {
-          messageParts.push(gamepadInfo.disconnectCommand ? 'Gamepad-Befehl geladen' : 'Gamepad-Befehl entfernt');
-          if (!tone) {
-            tone = 'success';
-          }
-        }
-        if (buttonInfo) {
-          messageParts.push('Tasten-Aktionen geladen');
-          if (!tone) {
-            tone = 'success';
-          }
-        }
-        const message = messageParts.length > 0 ? `${messageParts.join(' · ')}.` : '';
-        setStatus(message, tone);
-      } catch (err) {
-        console.error('Laden fehlgeschlagen', err);
-        setStatus('Konnte Einstellungen nicht laden.', 'error');
-        audioSelect.disabled = true;
-        syncMotorLimits(null);
-        syncSteeringAngles(null);
-        syncSoundSettings(null);
-        syncButtonActions(null);
-        syncGamepadSettings(null);
-      }
     }
 
-    async function saveSelection(deviceId) {
-      if (!deviceId) {
-        return;
+    async function sendState(overrides = {}) {
+      const payload = {
+        steering: clampValue(overrides.steering ?? state.steering),
+        motor: clampValue(overrides.motor ?? state.motor),
+        head: clampValue(overrides.head ?? state.head),
+        override: overrides.override ?? state.override
+      };
+      state.steering = payload.steering;
+      state.motor = payload.motor;
+      state.head = payload.head;
+      state.override = payload.override;
+      const audioDevice = overrides.audioDevice ?? state.audioDevice;
+      if (typeof audioDevice === 'string' && audioDevice.length > 0) {
+        payload.audio_device = audioDevice;
+        state.audioDevice = audioDevice;
+      }
+      const audioVolume = overrides.audioVolume ?? state.audioVolume;
+      if (Number.isFinite(audioVolume)) {
+        const normalized = Math.max(0, Math.min(100, audioVolume));
+        payload.audio_volume = Math.round(normalized);
+        state.audioVolume = normalized;
       }
       try {
-        setStatus('Speichere …');
-        const resp = await fetch('/api/control', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ audio_device: deviceId })
-        });
-        if (!resp.ok) {
-          throw new Error(`Status ${resp.status}`);
-        }
-        const data = await resp.json();
-        syncAudioSelection(data.audio_outputs, data.audio_device);
-        const volumeValue = syncVolume(data.audio_volume);
-        syncMotorLimits(data.motor_limits);
-        syncSteeringAngles(data.steering_angles);
-        syncSoundSettings(data.sound);
-        syncGamepadSettings(data.gamepad);
-        syncButtonActions(data.button_actions);
-        if (volumeValue !== null) {
-          setStatus('Audio-Ausgabe und Lautstärke gespeichert.', 'success');
-        } else {
-          setStatus('Audio-Ausgabe gespeichert.', 'success');
-        }
-      } catch (err) {
-        console.error('Speichern fehlgeschlagen', err);
-        setStatus('Speichern fehlgeschlagen.', 'error');
-      }
-    }
-
-    async function saveVolume(rawValue) {
-      if (!volumeConfig) {
-        return;
-      }
-      const value = clampVolume(rawValue);
-      if (value === null) {
-        return;
-      }
-      try {
-        setStatus('Speichere Lautstärke …');
-        const payload = { audio_volume: value };
-        const currentDevice = audioSelect.value;
-        if (currentDevice) {
-          payload.audio_device = currentDevice;
-        }
-        const resp = await fetch('/api/control', {
+        await fetch('/api/control', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
         });
-        if (!resp.ok) {
-          throw new Error(`Status ${resp.status}`);
-        }
-        const data = await resp.json();
-        syncAudioSelection(data.audio_outputs, data.audio_device);
-        syncMotorLimits(data.motor_limits);
-        syncSteeringAngles(data.steering_angles);
-        const updated = syncVolume(data.audio_volume);
-        syncSoundSettings(data.sound);
-        syncGamepadSettings(data.gamepad);
-        syncButtonActions(data.button_actions);
-        if (updated !== null) {
-          setStatus('Lautstärke gespeichert.', 'success');
-        } else {
-          setStatus('Keine Lautstärke-Steuerung verfügbar.', 'error');
-        }
       } catch (err) {
-        console.error('Speichern der Lautstärke fehlgeschlagen', err);
-        setStatus('Speichern der Lautstärke fehlgeschlagen.', 'error');
+        console.error('Senden fehlgeschlagen', err);
       }
     }
 
-    async function saveSoundDirectory(rawPath) {
-      if (!soundDirectoryInput || !soundDirectorySave) {
-        return;
-      }
-      const value = typeof rawPath === 'string' ? rawPath.trim() : '';
-      if (!value) {
-        setStatus('Bitte einen gültigen MP3-Pfad eingeben.', 'error');
-        soundDirectoryInput.focus();
-        return;
-      }
-      try {
-        setStatus('Speichere Sound-Pfad …');
-        const payload = { sound_directory: value };
-        const currentDevice = audioSelect.value;
-        if (currentDevice) {
-          payload.audio_device = currentDevice;
-        }
-        const resp = await fetch('/api/control', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        });
-        if (!resp.ok) {
-          throw new Error(`Status ${resp.status}`);
-        }
-        const data = await resp.json();
-        syncAudioSelection(data.audio_outputs, data.audio_device);
-        syncVolume(data.audio_volume);
-        syncMotorLimits(data.motor_limits);
-        syncSteeringAngles(data.steering_angles);
-        const soundInfo = syncSoundSettings(data.sound);
-        syncGamepadSettings(data.gamepad);
-        syncButtonActions(data.button_actions);
-        const hasFiles = !!soundInfo && soundInfo.files.length > 0;
-        setStatus(
-          hasFiles
-            ? 'MP3-Verzeichnis gespeichert.'
-            : 'MP3-Verzeichnis gespeichert (keine MP3-Dateien gefunden).',
-          'success'
-        );
-      } catch (err) {
-        console.error('Speichern des Sound-Pfads fehlgeschlagen', err);
-        setStatus('Sound-Pfad konnte nicht gespeichert werden.', 'error');
-      }
-    }
-
-    async function saveSoundboardPort(rawPort) {
-      if (!soundboardPortInput || !soundboardPortSave) {
-        return;
-      }
-      const rawValue = typeof rawPort === 'string' ? rawPort.trim() : String(rawPort ?? '').trim();
-      if (!rawValue) {
-        setStatus('Bitte einen gültigen Port eingeben.', 'error');
-        soundboardPortInput.focus();
-        return;
-      }
-      const numeric = Number.parseInt(rawValue, 10);
-      if (!Number.isInteger(numeric) || numeric < 1 || numeric > 65535) {
-        setStatus('Port muss zwischen 1 und 65535 liegen.', 'error');
-        soundboardPortInput.focus();
-        return;
-      }
-      try {
-        setStatus('Speichere Soundboard-Port …');
-        const payload = { soundboard_port: numeric };
-        const currentDevice = audioSelect.value;
-        if (currentDevice) {
-          payload.audio_device = currentDevice;
-        }
-        const resp = await fetch('/api/control', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        });
-        if (!resp.ok) {
-          throw new Error(`Status ${resp.status}`);
-        }
-        const data = await resp.json();
-        syncAudioSelection(data.audio_outputs, data.audio_device);
-        syncVolume(data.audio_volume);
-        syncMotorLimits(data.motor_limits);
-        syncSteeringAngles(data.steering_angles);
-        const soundInfo = syncSoundSettings(data.sound);
-        syncGamepadSettings(data.gamepad);
-        syncButtonActions(data.button_actions);
-        const savedPort = soundInfo ? soundInfo.soundboardPort : null;
-        if (savedPort === numeric) {
-          setStatus('Soundboard-Port gespeichert.', 'success');
-        } else {
-          setStatus('Soundboard-Port konnte nicht gespeichert werden.', 'error');
-        }
-      } catch (err) {
-        console.error('Speichern des Soundboard-Ports fehlgeschlagen', err);
-        setStatus('Soundboard-Port konnte nicht gespeichert werden.', 'error');
-      }
-    }
-
-    async function saveDisconnectCommand(rawCommand) {
-      if (!disconnectCommandInput || !disconnectCommandSave) {
-        return;
-      }
-      const value = typeof rawCommand === 'string' ? rawCommand.trim() : '';
-      try {
-        setStatus('Speichere Gamepad-Befehl …');
-        const payload = { disconnect_command: value };
-        const currentDevice = audioSelect.value;
-        if (currentDevice) {
-          payload.audio_device = currentDevice;
-        }
-        const resp = await fetch('/api/control', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        });
-        if (!resp.ok) {
-          throw new Error(`Status ${resp.status}`);
-        }
-        const data = await resp.json();
-        syncAudioSelection(data.audio_outputs, data.audio_device);
-        syncVolume(data.audio_volume);
-        syncMotorLimits(data.motor_limits);
-        syncSteeringAngles(data.steering_angles);
-        syncSoundSettings(data.sound);
-        const gamepadInfo = syncGamepadSettings(data.gamepad);
-        syncButtonActions(data.button_actions);
-        const saved = gamepadInfo ? gamepadInfo.disconnectCommand : '';
-        const success = value ? saved === value : saved === '';
-        setStatus(
-          success ? 'Gamepad-Befehl gespeichert.' : 'Gamepad-Befehl konnte nicht gespeichert werden.',
-          success ? 'success' : 'error'
-        );
-      } catch (err) {
-        console.error('Speichern des Gamepad-Befehls fehlgeschlagen', err);
-        setStatus('Gamepad-Befehl konnte nicht gespeichert werden.', 'error');
-      }
-    }
-
-    async function saveStartSound(fileName) {
-      if (!startSoundSelect) {
-        return;
-      }
-      const value = typeof fileName === 'string' ? fileName.trim() : '';
-      if (!value) {
-        return;
-      }
-      try {
-        setStatus('Speichere Startsound …');
-        const payload = { start_sound: value };
-        const currentDevice = audioSelect.value;
-        if (currentDevice) {
-          payload.audio_device = currentDevice;
-        }
-        const resp = await fetch('/api/control', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        });
-        if (!resp.ok) {
-          throw new Error(`Status ${resp.status}`);
-        }
-        const data = await resp.json();
-        syncAudioSelection(data.audio_outputs, data.audio_device);
-        syncMotorLimits(data.motor_limits);
-        syncSteeringAngles(data.steering_angles);
-        syncVolume(data.audio_volume);
-        const soundInfo = syncSoundSettings(data.sound);
-        syncGamepadSettings(data.gamepad);
-        syncButtonActions(data.button_actions);
-        if (soundInfo && soundInfo.startSound && soundInfo.startSound.toLowerCase() === value.toLowerCase()) {
-          setStatus('Startsound gespeichert.', 'success');
-        } else {
-          setStatus('Startsound konnte nicht gespeichert werden.', 'error');
-        }
-      } catch (err) {
-        console.error('Speichern des Startsounds fehlgeschlagen', err);
-        setStatus('Startsound konnte nicht gespeichert werden.', 'error');
-      }
-    }
-
-    async function saveConnectedSound(fileName) {
-      if (!connectedSoundSelect) {
-        return;
-      }
-      const value = typeof fileName === 'string' ? fileName.trim() : '';
-      try {
-        setStatus('Speichere Connected Sound …');
-        const payload = { connected_sound: value };
-        const currentDevice = audioSelect.value;
-        if (currentDevice) {
-          payload.audio_device = currentDevice;
-        }
-        const resp = await fetch('/api/control', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        });
-        if (!resp.ok) {
-          throw new Error(`Status ${resp.status}`);
-        }
-        const data = await resp.json();
-        syncAudioSelection(data.audio_outputs, data.audio_device);
-        syncMotorLimits(data.motor_limits);
-        syncSteeringAngles(data.steering_angles);
-        syncVolume(data.audio_volume);
-        const soundInfo = syncSoundSettings(data.sound);
-        syncGamepadSettings(data.gamepad);
-        syncButtonActions(data.button_actions);
-        const requested = value ? value.toLowerCase() : '';
-        const saved = soundInfo && typeof soundInfo.connectedSound === 'string'
-          ? soundInfo.connectedSound.toLowerCase()
-          : '';
-        const success = requested ? requested === saved : saved === '';
-        setStatus(
-          success ? 'Connected Sound gespeichert.' : 'Connected Sound konnte nicht gespeichert werden.',
-          success ? 'success' : 'error'
-        );
-      } catch (err) {
-        console.error('Speichern des Connected Sounds fehlgeschlagen', err);
-        setStatus('Connected Sound konnte nicht gespeichert werden.', 'error');
-      }
-    }
-
-    async function saveMotorLimits(forward, reverse) {
-      if (!motorForward || !motorReverse) {
-        return;
-      }
-      try {
-        setStatus('Speichere Motor-Grenzen …');
-        const payload = { motor_limits: { forward, reverse } };
-        const currentDevice = audioSelect.value;
-        if (currentDevice) {
-          payload.audio_device = currentDevice;
-        }
-        const resp = await fetch('/api/control', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        });
-        if (!resp.ok) {
-          throw new Error(`Status ${resp.status}`);
-        }
-        const data = await resp.json();
-        syncAudioSelection(data.audio_outputs, data.audio_device);
-        syncMotorLimits(data.motor_limits);
-        syncSteeringAngles(data.steering_angles);
-        syncVolume(data.audio_volume);
-        syncSoundSettings(data.sound);
-        syncGamepadSettings(data.gamepad);
-        syncButtonActions(data.button_actions);
-        setStatus('Motor-Grenzen gespeichert.', 'success');
-      } catch (err) {
-        console.error('Speichern der Motor-Grenzen fehlgeschlagen', err);
-        setStatus('Motor-Grenzen konnten nicht gespeichert werden.', 'error');
-      }
-    }
-
-    async function saveSteeringAngles(values) {
-      if (!values) {
-        return;
-      }
-      try {
-        setStatus('Speichere Lenkwinkel …');
-        const payload = { steering_angles: values };
-        const currentDevice = audioSelect.value;
-        if (currentDevice) {
-          payload.audio_device = currentDevice;
-        }
-        const resp = await fetch('/api/control', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        });
-        if (!resp.ok) {
-          throw new Error(`Status ${resp.status}`);
-        }
-        const data = await resp.json();
-        syncAudioSelection(data.audio_outputs, data.audio_device);
-        syncMotorLimits(data.motor_limits);
-        syncVolume(data.audio_volume);
-        syncSoundSettings(data.sound);
-        syncButtonActions(data.button_actions);
-        const updated = syncSteeringAngles(data.steering_angles);
-        if (updated) {
-          setStatus('Lenkwinkel gespeichert.', 'success');
-        } else {
-          setStatus('Lenkwinkel konnten nicht übernommen werden.', 'error');
-        }
-      } catch (err) {
-        console.error('Speichern der Lenkwinkel fehlgeschlagen', err);
-        revertSteeringInputs();
-        setStatus('Lenkwinkel konnten nicht gespeichert werden.', 'error');
-      }
-    }
-
-    audioSelect.addEventListener('change', () => {
-      const value = audioSelect.value;
-      if (value) {
-        saveSelection(value);
-      }
+    const steeringStick = createJoystick('steeringStick', 'x', (value) => {
+      state.steering = value;
+      updateLabels();
+      sendState();
     });
 
-    if (motorForward && motorForwardValue) {
-      motorForward.addEventListener('input', () => {
-        const value = clampMotorFromSlider(motorForward.value);
-        motorForwardValue.textContent = value === null ? '–' : formatMotorPercent(value);
-      });
-      motorForward.addEventListener('change', () => {
-        const values = getCurrentMotorValues();
-        if (!values) {
-          return;
-        }
-        motorForward.value = String(Math.round(values.forward * 100));
-        motorForwardValue.textContent = formatMotorPercent(values.forward);
-        motorReverse.value = String(Math.round(values.reverse * 100));
-        motorReverseValue.textContent = formatMotorPercent(values.reverse);
-        saveMotorLimits(values.forward, values.reverse);
-      });
-    }
+    const motorStick = createJoystick('motorStick', 'y', (value) => {
+      state.motor = value;
+      updateLabels();
+      sendState();
+    });
 
-    if (motorReverse && motorReverseValue) {
-      motorReverse.addEventListener('input', () => {
-        const value = clampMotorFromSlider(motorReverse.value);
-        motorReverseValue.textContent = value === null ? '–' : formatMotorPercent(value);
-      });
-      motorReverse.addEventListener('change', () => {
-        const values = getCurrentMotorValues();
-        if (!values) {
+    headButtons.forEach((button) => {
+      button.addEventListener('click', () => {
+        const raw = button.dataset.headValue;
+        const value = Number.parseFloat(raw ?? '0');
+        if (!Number.isFinite(value)) {
           return;
         }
-        motorForward.value = String(Math.round(values.forward * 100));
-        motorForwardValue.textContent = formatMotorPercent(values.forward);
-        motorReverse.value = String(Math.round(values.reverse * 100));
-        motorReverseValue.textContent = formatMotorPercent(values.reverse);
-        saveMotorLimits(values.forward, values.reverse);
+        setHead(value);
       });
-    }
+    });
 
-    if (steeringInputs.length > 0) {
-      const handleSteeringChange = () => {
-        const values = getCurrentSteeringValues();
-        if (!values) {
-          setStatus('Ungültige Lenkwinkel. Bitte Werte prüfen.', 'error');
-          revertSteeringInputs();
-          return;
-        }
-        if (
-          steeringConfig &&
-          steeringConfig.values &&
-          values.left === steeringConfig.values.left &&
-          values.mid === steeringConfig.values.mid &&
-          values.right === steeringConfig.values.right
-        ) {
-          applySteeringInputs(steeringConfig.values);
-          return;
-        }
-        applySteeringInputs(values);
-        saveSteeringAngles(values);
-      };
-      steeringInputs.forEach((input) => {
-        input.addEventListener('input', () => {
-          const value = clampSteeringValue(input.value);
-          if (value === null || !steeringConfig) {
-            return;
-          }
-          input.value = formatAngleInput(value, steeringConfig.precision);
-        });
-        input.addEventListener('change', handleSteeringChange);
-      });
-    }
+    override.addEventListener('change', () => {
+      state.override = override.checked;
+      sendState();
+    });
 
-    if (volumeSlider) {
-      volumeSlider.addEventListener('input', () => {
-        volumeValue.textContent = formatVolume(volumeSlider.value);
-      });
-      volumeSlider.addEventListener('change', () => {
-        const value = clampVolume(volumeSlider.value);
-        if (value !== null) {
-          saveVolume(value);
+    if (audioSelect) {
+      audioSelect.addEventListener('change', () => {
+        const value = audioSelect.value;
+        state.audioDevice = value || null;
+        if (state.audioDevice) {
+          sendState({ audioDevice: state.audioDevice });
         }
       });
     }
 
-    if (soundDirectorySave && soundDirectoryInput) {
-      soundDirectorySave.addEventListener('click', () => {
-        saveSoundDirectory(soundDirectoryInput.value ?? '');
-      });
-    }
-    if (soundDirectoryInput) {
-      soundDirectoryInput.addEventListener('keydown', (event) => {
-        if (event.key === 'Enter') {
-          event.preventDefault();
-          saveSoundDirectory(soundDirectoryInput.value ?? '');
-        }
-      });
-    }
-    if (soundboardPortSave && soundboardPortInput) {
-      soundboardPortSave.addEventListener('click', () => {
-        saveSoundboardPort(soundboardPortInput.value ?? '');
-      });
-    }
-    if (soundboardPortInput) {
-      soundboardPortInput.addEventListener('keydown', (event) => {
-        if (event.key === 'Enter') {
-          event.preventDefault();
-          saveSoundboardPort(soundboardPortInput.value ?? '');
-        }
-      });
-    }
-    if (disconnectCommandSave && disconnectCommandInput) {
-      disconnectCommandSave.addEventListener('click', () => {
-        saveDisconnectCommand(disconnectCommandInput.value ?? '');
-      });
-    }
-    if (disconnectCommandInput) {
-      disconnectCommandInput.addEventListener('keydown', (event) => {
-        if (event.key === 'Enter') {
-          event.preventDefault();
-          saveDisconnectCommand(disconnectCommandInput.value ?? '');
-        }
-      });
-    }
-    if (startSoundSelect) {
-      startSoundSelect.addEventListener('change', () => {
-        updatePreviewButtonState();
-        const value = startSoundSelect.value;
-        if (!value) {
+    async function pollState() {
+      try {
+        const resp = await fetch('/api/state');
+        if (!resp.ok) {
           return;
         }
-        saveStartSound(value);
-      });
-    }
-    if (connectedSoundSelect) {
-      connectedSoundSelect.addEventListener('change', () => {
-        updatePreviewButtonState();
-        const value = connectedSoundSelect.value ?? '';
-        saveConnectedSound(value);
-      });
-    }
-    if (startSoundPreviewButton && startSoundSelect) {
-      startSoundPreviewButton.addEventListener('click', () => {
-        playSoundPreview(startSoundSelect, startSoundPreviewButton);
-      });
-    }
-    if (connectedSoundPreviewButton && connectedSoundSelect) {
-      connectedSoundPreviewButton.addEventListener('click', () => {
-        playSoundPreview(connectedSoundSelect, connectedSoundPreviewButton);
-      });
+        const data = await resp.json();
+        const remoteSteering = clampValue(data.steering ?? 0);
+        const remoteMotor = clampValue(data.motor ?? 0);
+        const remoteHead = clampValue(data.head ?? 0);
+        const remoteOverride = Boolean(data.override);
+        const remoteAudioDevice = typeof data.audio_device === 'string' ? data.audio_device : null;
+        const remoteAudioOutputs = Array.isArray(data.audio_outputs) ? data.audio_outputs : [];
+
+        if (!steeringStick.active) {
+          state.steering = remoteSteering;
+          steeringStick.setValue(remoteSteering);
+        }
+        if (!motorStick.active) {
+          state.motor = remoteMotor;
+          motorStick.setValue(remoteMotor);
+        }
+        state.head = remoteHead;
+        state.override = remoteOverride;
+        override.checked = remoteOverride;
+        updateHeadButtons();
+        updateLabels();
+        syncAudioSelection(remoteAudioOutputs, remoteAudioDevice);
+        if (data.audio_volume && Number.isFinite(data.audio_volume.value)) {
+          state.audioVolume = data.audio_volume.value;
+        } else {
+          state.audioVolume = null;
+        }
+        updateBattery(data.battery ?? null);
+        const soundInfo = data.sound && typeof data.sound === 'object' ? data.sound : null;
+        const portValue = soundInfo ? parseSoundboardPort(soundInfo.soundboard_port) : null;
+        const cameraValue = soundInfo ? parseCameraTarget(soundInfo.camera_port) : null;
+        state.soundboardPort = portValue;
+        state.cameraTarget = cameraValue;
+        updateSoundboardButton(portValue);
+        updateCameraButton(cameraValue);
+      } catch (err) {
+        console.error('Poll fehlgeschlagen', err);
+      }
     }
 
-    loadState();
+    updateLabels();
+    updateHeadButtons();
+    updateBattery(null);
+    updateSoundboardButton(null);
+    updateCameraButton(null);
+    pollState();
+    setInterval(pollState, 1500);
   </script>
 </body>
 </html>
