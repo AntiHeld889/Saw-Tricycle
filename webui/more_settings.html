@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Weitere Einstellungen · Saw Tricycle</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --safe-top: env(safe-area-inset-top, 0px);
+      --safe-bottom: env(safe-area-inset-bottom, 0px);
+      --safe-left: env(safe-area-inset-left, 0px);
+      --safe-right: env(safe-area-inset-right, 0px);
+    }
+    * { box-sizing: border-box; }
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background: #0d0d0d;
+      color: #f2f2f2;
+      margin: 0;
+      min-height: 100vh;
+      min-height: 100dvh;
+      padding: calc(1.4rem + var(--safe-top)) calc(1.4rem + var(--safe-right)) calc(1.4rem + var(--safe-bottom)) calc(1.4rem + var(--safe-left));
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      -webkit-text-size-adjust: 100%;
+      touch-action: manipulation;
+    }
+    .settings-card {
+      width: 100%;
+      max-width: 520px;
+      background: #151515;
+      border-radius: 16px;
+      padding: clamp(1.2rem, 4vw + 0.4rem, 1.8rem);
+      box-shadow: 0 0 40px rgba(0,0,0,0.45);
+      display: flex;
+      flex-direction: column;
+      gap: 1.4rem;
+    }
+    .settings-header {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
+    .back-button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 42px;
+      height: 42px;
+      border-radius: 12px;
+      background: rgba(229,9,20,0.16);
+      border: 1px solid rgba(229,9,20,0.3);
+      color: #fff;
+      text-decoration: none;
+      transition: background 0.2s ease, transform 0.2s ease, border-color 0.2s ease;
+    }
+    .back-button:hover {
+      background: rgba(229,9,20,0.28);
+      border-color: rgba(229,9,20,0.55);
+    }
+    .back-button:active {
+      transform: translateY(1px);
+    }
+    .settings-header h1 {
+      margin: 0;
+      font-size: clamp(1.25rem, 3vw, 1.7rem);
+      font-weight: 600;
+    }
+    .settings-section {
+      background: rgba(255,255,255,0.04);
+      border-radius: 14px;
+      padding: 1.2rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.9rem;
+    }
+    .settings-section h2 {
+      margin: 0;
+      font-size: 1.1rem;
+      font-weight: 600;
+    }
+    .settings-section p {
+      margin: 0;
+      line-height: 1.5;
+      color: #d5d5d5;
+      font-size: 0.95rem;
+    }
+    .settings-section ul {
+      margin: 0;
+      padding-left: 1.1rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+      color: #e6e6e6;
+      font-size: 0.95rem;
+    }
+    .settings-section li {
+      line-height: 1.45;
+    }
+    .settings-footer {
+      display: flex;
+      justify-content: flex-end;
+    }
+    .primary-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      border-radius: 12px;
+      padding: 0.55rem 1.1rem;
+      background: rgba(229,9,20,0.16);
+      border: 1px solid rgba(229,9,20,0.4);
+      color: #fff;
+      font-size: 0.95rem;
+      font-weight: 600;
+      text-decoration: none;
+      transition: background 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
+    }
+    .primary-link:hover {
+      background: rgba(229,9,20,0.28);
+      border-color: rgba(229,9,20,0.55);
+    }
+    .primary-link:active {
+      transform: translateY(1px);
+    }
+    @media (max-width: 640px) {
+      body {
+        padding: calc(1rem + var(--safe-top)) calc(1rem + var(--safe-right)) calc(1rem + var(--safe-bottom)) calc(1rem + var(--safe-left));
+      }
+      .settings-card {
+        border-radius: 12px;
+      }
+    }
+    @media (orientation: landscape) and (max-height: 520px) {
+      body {
+        padding: calc(0.7rem + var(--safe-top)) calc(0.75rem + var(--safe-right)) calc(0.7rem + var(--safe-bottom)) calc(0.75rem + var(--safe-left));
+        align-items: stretch;
+      }
+      .settings-card {
+        padding: 0.95rem;
+        gap: 1rem;
+        max-height: calc(100dvh - var(--safe-top) - var(--safe-bottom) - 1.2rem);
+        overflow-y: auto;
+        overscroll-behavior: contain;
+      }
+      .settings-section {
+        padding: 1rem;
+        gap: 0.75rem;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="settings-card">
+    <div class="settings-header">
+      <a class="back-button" href="/settings" aria-label="Zurück zu den Einstellungen" title="Zurück">⟵</a>
+      <h1>Weitere Einstellungen</h1>
+    </div>
+    <section class="settings-section">
+      <h2>Erweiterte Optionen</h2>
+      <p>Hier können künftig zusätzliche Einstellungen und Verwaltungsfunktionen für das Saw Tricycle bereitgestellt werden.</p>
+      <p>Nutze diese Seite, um erweiterte Konfigurationsmöglichkeiten oder Diagnosehinweise zu dokumentieren.</p>
+    </section>
+    <section class="settings-section">
+      <h2>Tipps für Administratoren</h2>
+      <ul>
+        <li>Notiere hier geplante Features oder Befehle, die über die Standardoberfläche hinausgehen.</li>
+        <li>Verlinke relevante Dokumentationen oder Support-Kanäle für Wartungsaufgaben.</li>
+        <li>Halte individuelle Anpassungen fest, damit alle Teammitglieder informiert bleiben.</li>
+      </ul>
+    </section>
+    <div class="settings-footer">
+      <a class="primary-link" href="/settings" aria-label="Zurück zu den Einstellungen">Zurück</a>
+    </div>
+  </div>
+</body>
+</html>
