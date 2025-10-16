@@ -494,6 +494,13 @@
               </svg>
               <span id="batteryLabel">--%</span>
             </a>
+            <a id="soundboardButton" class="settings-button soundboard-button" href="#" title="Soundboard öffnen" aria-label="Soundboard öffnen" target="_blank" rel="noopener" hidden>
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path d="M3 9v6h4l5 5V4L7 9H3z"/>
+                <path d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v8.06c1.48-.74 2.5-2.26 2.5-4.03z"/>
+                <path d="M14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/>
+              </svg>
+            </a>
             <a class="settings-button" href="/settings" title="Einstellungen" aria-label="Einstellungen öffnen">
               <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
                 <path d="M19.14 12.94c.04-.31.06-.63.06-.94s-.02-.63-.06-.94l2.03-1.58a.5.5 0 0 0 .12-.64l-1.92-3.32a.5.5 0 0 0-.6-.22l-2.39.96a7.1 7.1 0 0 0-1.62-.94l-.36-2.54A.5.5 0 0 0 14.92 2h-3.84a.5.5 0 0 0-.5.43l-.36 2.54a7.1 7.1 0 0 0-1.62.94l-2.39-.96a.5.5 0 0 0-.6.22L3.69 8.45a.5.5 0 0 0 .12.64l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94l-2.03 1.58a.5.5 0 0 0-.12.64l1.92 3.32c.14.24.43.33.68.22l2.39-.96c.49.39 1.04.71 1.62.94l.36 2.54c.04.25.25.43.5.43h3.84c.25 0 .46-.18.5-.43l.36-2.54c.58-.23 1.13-.55 1.62-.94l2.39.96c.25.11.54.02.68-.22l1.92-3.32a.5.5 0 0 0-.12-.64zm-7.14 2.56a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z"/>
@@ -519,7 +526,7 @@
       return Math.max(-1, Math.min(1, num));
     };
 
-    const state = { steering: 0, motor: 0, head: 0, override: false, audioDevice: null, audioVolume: null };
+    const state = { steering: 0, motor: 0, head: 0, override: false, audioDevice: null, audioVolume: null, soundboardPort: null };
     const steeringVal = document.getElementById('steeringVal');
     const motorVal = document.getElementById('motorVal');
     const headButtons = Array.from(document.querySelectorAll('[data-head-value]'));
@@ -528,6 +535,7 @@
     const batteryIndicator = document.getElementById('batteryIndicator');
     const batteryFill = document.getElementById('batteryFill');
     const batteryLabel = document.getElementById('batteryLabel');
+    const soundboardButton = document.getElementById('soundboardButton');
     const BATTERY_CLASSES = ['charging', 'low', 'medium', 'error', 'unavailable'];
     const BATTERY_MAX_WIDTH = 32;
     let audioOptionsSignature = '';
@@ -539,6 +547,65 @@
       const rounded = clampValue(value);
       return `${rounded >= 0 ? '+' : ''}${rounded.toFixed(2)}`;
     };
+
+    const parseSoundboardPort = (value) => {
+      if (typeof value === 'number') {
+        return Number.isInteger(value) && value >= 1 && value <= 65535 ? value : null;
+      }
+      if (typeof value === 'string') {
+        const trimmed = value.trim();
+        if (!trimmed) {
+          return null;
+        }
+        const parsed = Number.parseInt(trimmed, 10);
+        if (Number.isInteger(parsed) && parsed >= 1 && parsed <= 65535) {
+          return parsed;
+        }
+      }
+      return null;
+    };
+
+    const buildSoundboardUrl = (port) => {
+      const protocol = window.location.protocol === 'https:' ? 'https:' : 'http:';
+      const hostname = window.location.hostname || 'localhost';
+      let host = hostname;
+      if (host.includes(':') && !host.startsWith('[')) {
+        host = `[${host}]`;
+      }
+      return `${protocol}//${host}:${port}/`;
+    };
+
+    const updateSoundboardButton = (port) => {
+      if (!soundboardButton) {
+        return;
+      }
+      const numeric = parseSoundboardPort(port);
+      if (numeric === null) {
+        soundboardButton.hidden = true;
+        soundboardButton.dataset.url = '';
+        soundboardButton.removeAttribute('data-port');
+        soundboardButton.href = '#';
+        return;
+      }
+      const url = buildSoundboardUrl(numeric);
+      soundboardButton.hidden = false;
+      soundboardButton.dataset.url = url;
+      soundboardButton.dataset.port = String(numeric);
+      soundboardButton.href = url;
+    };
+
+    if (soundboardButton) {
+      updateSoundboardButton(null);
+      soundboardButton.addEventListener('click', (event) => {
+        const url = soundboardButton.dataset.url;
+        if (!url) {
+          event.preventDefault();
+          return;
+        }
+        event.preventDefault();
+        window.open(url, '_blank', 'noopener');
+      });
+    }
 
     const updateBattery = (info) => {
       if (!batteryIndicator || !batteryFill || !batteryLabel) {
@@ -878,6 +945,10 @@
           state.audioVolume = null;
         }
         updateBattery(data.battery ?? null);
+        const soundInfo = data.sound && typeof data.sound === 'object' ? data.sound : null;
+        const portValue = soundInfo ? parseSoundboardPort(soundInfo.soundboard_port) : null;
+        state.soundboardPort = portValue;
+        updateSoundboardButton(portValue);
       } catch (err) {
         console.error('Poll fehlgeschlagen', err);
       }
@@ -886,6 +957,7 @@
     updateLabels();
     updateHeadButtons();
     updateBattery(null);
+    updateSoundboardButton(null);
     pollState();
     setInterval(pollState, 1500);
   </script>

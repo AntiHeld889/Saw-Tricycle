@@ -13,6 +13,9 @@ ALSA_HP_DEVICE       = "plughw:0,0"           # Analoger Kopfhörer-Ausgang (mit
 ALSA_USB_DEVICE      = "plughw:1,0"           # USB-Soundkarte (mit 'aplay -l' prüfen)
 HEADPHONE_VOLUME_DEFAULT = 100
 AUDIO_ROUTE_TIMEOUT  = 3                      # Sekunden für amixer-Kommandos
+SOUNDBOARD_PORT_DEFAULT = None
+SOUNDBOARD_PORT_MIN = 1
+SOUNDBOARD_PORT_MAX = 65535
 
 # Vorkonfigurierte Audioausgänge für Web-Dropdown (ID, Label, ALSA-Device, Setup-Kommandos)
 HEADPHONE_ROUTE_COMMANDS = [
@@ -466,6 +469,24 @@ def sanitize_sound_directory(path):
     return absolute
 
 
+def sanitize_soundboard_port(value):
+    if value is None:
+        return None
+    try:
+        if isinstance(value, str):
+            stripped = value.strip()
+            if not stripped:
+                return None
+            numeric = int(stripped, 10)
+        else:
+            numeric = int(value)
+    except (TypeError, ValueError):
+        return None
+    if not (SOUNDBOARD_PORT_MIN <= numeric <= SOUNDBOARD_PORT_MAX):
+        return None
+    return numeric
+
+
 def sanitize_start_sound(name, available_files=None):
     if name is None:
         return None
@@ -569,6 +590,7 @@ def load_persisted_sound_settings():
     directory = None
     start_sound = None
     connected_sound = None
+    soundboard_port = None
     if isinstance(stored, dict):
         directory = sanitize_sound_directory(stored.get("directory"))
         start_sound = stored.get("start_sound")
@@ -581,6 +603,7 @@ def load_persisted_sound_settings():
             connected_sound = os.path.basename(connected_sound.strip()) or None
         else:
             connected_sound = None
+        soundboard_port = sanitize_soundboard_port(stored.get("soundboard_port"))
     if not directory:
         directory = SOUND_DIRECTORY_DEFAULT
     if not start_sound:
@@ -589,10 +612,11 @@ def load_persisted_sound_settings():
         "directory": directory,
         "start_sound": start_sound,
         "connected_sound": connected_sound,
+        "soundboard_port": soundboard_port if soundboard_port is not None else SOUNDBOARD_PORT_DEFAULT,
     }
 
 
-def persist_sound_settings(*, directory=_UNSET, start_sound=_UNSET, connected_sound=_UNSET):
+def persist_sound_settings(*, directory=_UNSET, start_sound=_UNSET, connected_sound=_UNSET, soundboard_port=_UNSET):
     payload = _load_persisted_state()
     sound_state = payload.get("sound") if isinstance(payload, dict) else {}
     if not isinstance(sound_state, dict):
@@ -612,6 +636,11 @@ def persist_sound_settings(*, directory=_UNSET, start_sound=_UNSET, connected_so
             sound_state.pop("connected_sound", None)
         else:
             sound_state["connected_sound"] = connected_sound
+    if soundboard_port is not _UNSET:
+        if soundboard_port is None:
+            sound_state.pop("soundboard_port", None)
+        else:
+            sound_state["soundboard_port"] = soundboard_port
     payload["sound"] = sound_state
     return _persist_state(payload)
 
@@ -951,6 +980,7 @@ class WebControlState:
         initial_sound_directory=None,
         initial_start_sound=None,
         initial_connected_sound=None,
+        initial_soundboard_port=None,
         initial_button_actions=None,
         battery_monitor=None,
     ):
@@ -977,6 +1007,7 @@ class WebControlState:
         self._sound_files = []
         self._start_sound = sanitize_start_sound(initial_start_sound)
         self._connected_sound = sanitize_start_sound(initial_connected_sound)
+        self._soundboard_port = sanitize_soundboard_port(initial_soundboard_port)
         self._button_actions = normalize_button_actions_map(initial_button_actions)
         self._refresh_sound_files_locked()
         self._motor_limit_forward = MOTOR_LIMIT_FWD
@@ -1049,6 +1080,7 @@ class WebControlState:
             "files": list(self._sound_files),
             "start_sound": self._start_sound,
             "connected_sound": self._connected_sound,
+            "soundboard_port": self._soundboard_port,
         }
 
     def _build_button_actions_snapshot_locked(self):
@@ -1158,6 +1190,7 @@ class WebControlState:
         sound_directory=None,
         start_sound=None,
         connected_sound=None,
+        soundboard_port=None,
         button_actions=None,
     ):
         new_audio_id = None
@@ -1172,6 +1205,7 @@ class WebControlState:
             previous_directory = self._sound_directory
             previous_start_sound = self._start_sound
             previous_connected_sound = self._connected_sound
+            previous_soundboard_port = self._soundboard_port
             if override is not None:
                 self._override = bool(override)
             if motor is not None:
@@ -1254,6 +1288,10 @@ class WebControlState:
                 elif not connected_sound:
                     if self._connected_sound is not None:
                         self._connected_sound = None
+            if soundboard_port is not None:
+                sanitized_port = sanitize_soundboard_port(soundboard_port)
+                if sanitized_port != self._soundboard_port:
+                    self._soundboard_port = sanitized_port
             self._ensure_sound_selections_locked()
             if button_actions is not None:
                 if self._apply_button_action_updates_locked(button_actions):
@@ -1262,11 +1300,13 @@ class WebControlState:
                 self._sound_directory != previous_directory
                 or self._start_sound != previous_start_sound
                 or self._connected_sound != previous_connected_sound
+                or self._soundboard_port != previous_soundboard_port
             ):
                 sound_settings_to_persist = {
                     "directory": self._sound_directory,
                     "start_sound": self._start_sound,
                     "connected_sound": self._connected_sound,
+                    "soundboard_port": self._soundboard_port,
                 }
             self._last_update = time.time()
             snapshot = self.snapshot_locked()
@@ -1492,6 +1532,7 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
                 sound_directory=data.get("sound_directory"),
                 start_sound=data.get("start_sound"),
                 connected_sound=data.get("connected_sound"),
+                soundboard_port=data.get("soundboard_port"),
                 button_actions=data.get("button_actions"),
             )
 
@@ -1829,6 +1870,7 @@ def main():
         initial_sound_directory=persisted_sound.get("directory"),
         initial_start_sound=persisted_sound.get("start_sound"),
         initial_connected_sound=persisted_sound.get("connected_sound"),
+        initial_soundboard_port=persisted_sound.get("soundboard_port"),
         initial_button_actions=persisted_button_actions,
         battery_monitor=battery_monitor,
     )
