@@ -67,8 +67,8 @@
       gap: 0.8rem;
       flex-wrap: wrap;
     }
-    .system-status .battery-indicator {
-      flex: 0 1 auto;
+    .system-overview > .battery-indicator {
+      align-self: flex-start;
     }
     .system-status .settings-button {
       flex: 0 0 auto;
@@ -481,19 +481,19 @@
       <div class="joystick-card system-card">
         <h2>System</h2>
         <div class="system-overview">
+          <a id="batteryIndicator" class="battery-indicator unavailable" aria-live="polite" title="Akkustand unbekannt" href="/battery">
+            <svg viewBox="0 0 46 24" aria-hidden="true" focusable="false">
+              <rect class="battery-body" x="1" y="5" width="36" height="14" rx="3" ry="3" />
+              <rect class="battery-cap" x="38" y="9" width="6" height="6" rx="1.5" ry="1.5" />
+              <rect id="batteryFill" class="battery-fill" x="3" y="7" width="0" height="10" rx="2" ry="2" />
+            </svg>
+            <span id="batteryLabel">--%</span>
+          </a>
           <div class="override-toggle">
             <input id="override" type="checkbox">
             <label for="override">Web-Override aktivieren</label>
           </div>
           <div class="system-status">
-            <a id="batteryIndicator" class="battery-indicator unavailable" aria-live="polite" title="Akkustand unbekannt" href="/battery">
-              <svg viewBox="0 0 46 24" aria-hidden="true" focusable="false">
-                <rect class="battery-body" x="1" y="5" width="36" height="14" rx="3" ry="3" />
-                <rect class="battery-cap" x="38" y="9" width="6" height="6" rx="1.5" ry="1.5" />
-                <rect id="batteryFill" class="battery-fill" x="3" y="7" width="0" height="10" rx="2" ry="2" />
-              </svg>
-              <span id="batteryLabel">--%</span>
-            </a>
             <a id="soundboardButton" class="settings-button soundboard-button" href="#" title="Soundboard öffnen" aria-label="Soundboard öffnen" target="_blank" rel="noopener" hidden>
               <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
                 <path d="M3 9v6h4l5 5V4L7 9H3z"/>
