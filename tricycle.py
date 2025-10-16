@@ -5,11 +5,10 @@
 #   KONFIGURATION (OBEN)
 # =========================
 
-from types import MappingProxyType
-
 # ---- Audio & Dateien ----
 SOUND_DIRECTORY_DEFAULT = "/opt/python/sawsounds"
 START_SOUND_DEFAULT = "Start.mp3"
+START_MP3_PATH       = f"{SOUND_DIRECTORY_DEFAULT}/{START_SOUND_DEFAULT}"
 ALSA_HP_DEVICE       = "plughw:0,0"           # Analoger Kopfhörer-Ausgang (mit 'aplay -l' prüfen)
 ALSA_USB_DEVICE      = "plughw:1,0"           # USB-Soundkarte (mit 'aplay -l' prüfen)
 HEADPHONE_VOLUME_DEFAULT = 100
@@ -17,10 +16,6 @@ AUDIO_ROUTE_TIMEOUT  = 3                      # Sekunden für amixer-Kommandos
 SOUNDBOARD_PORT_DEFAULT = None
 SOUNDBOARD_PORT_MIN = 1
 SOUNDBOARD_PORT_MAX = 65535
-
-CAMERA_PORT_DEFAULT = None
-CAMERA_PORT_MIN = 1
-CAMERA_PORT_MAX = 65535
 
 # Vorkonfigurierte Audioausgänge für Web-Dropdown (ID, Label, ALSA-Device, Setup-Kommandos)
 HEADPHONE_ROUTE_COMMANDS = [
@@ -88,7 +83,6 @@ _UNSET = object()
 GAMEPAD_NAME_EXACT   = "8BitDo Ultimate C 2.4G Wireless Controller"
 GAMEPAD_NAME_FALLBACK= "8BitDo"
 WAIT_FOR_DEVICE_S    = 5.0
-GAMEPAD_MAX_MISSING_SERVO_READS = 25  # ca. 0,5s bei 20ms Loopzeit
 
 BUTTON_LAYOUT = [
     ("KEY_304", "A Button"),
@@ -112,7 +106,7 @@ BUTTON_MODE_MP3 = "mp3"
 BUTTON_MODE_COMMAND = "command"
 
 # ---- Servo 1 (Lenkung auf ABS_Z) ----
-GPIO_PIN_SERVO_DEFAULT = 17
+GPIO_PIN_SERVO       = 17
 US_MIN               = 600
 US_MAX               = 2400
 SERVO_RANGE_DEG      = 270.0
@@ -150,8 +144,8 @@ MOTOR_AXIS_CENTERED_NAME = "ABS_Y"
 MOTOR_AXIS_GAS_NAME      = "ABS_GAS"
 MOTOR_AXIS_BRAKE_NAME    = "ABS_BRAKE"
 
-GPIO_PIN_MOTOR_PWM_DEFAULT = 18
-GPIO_PIN_MOTOR_DIR_DEFAULT = 27
+GPIO_PIN_MOTOR_PWM   = 18
+GPIO_PIN_MOTOR_DIR   = 27
 PWM_FREQ_HZ          = 20000
 INVERT_MOTOR         = True
 
@@ -172,7 +166,7 @@ MOTOR_NEUTRAL_THRESH = 0.08
 MOTOR_DIR_SWITCH_PAUSE_S = 0.005
 
 # ---- Servo 2 (Kopf per D-Pad, LATCHEND) ----
-GPIO_PIN_HEAD_DEFAULT = 24
+GPIO_PIN_HEAD        = 24
 HEAD_MIN_DEG         = 30.0
 HEAD_MAX_DEG         = 150.0
 HEAD_LEFT_DEG        = 30.0
@@ -182,71 +176,6 @@ HEAD_SMOOTH_A        = 0.8
 HEAD_RATE_DEG_S      = 100.0
 HEAD_SAFE_START_S    = 0.8
 HEAD_UPDATE_HYSTERESIS_DEG = 0.2
-
-# ---- GPIO-Konfiguration ----
-
-GPIO_PIN_MIN = 0
-GPIO_PIN_MAX = 27
-
-GPIO_PIN_DEFAULTS = MappingProxyType(
-    {
-        "steering_servo": GPIO_PIN_SERVO_DEFAULT,
-        "head_servo": GPIO_PIN_HEAD_DEFAULT,
-        "motor_pwm": GPIO_PIN_MOTOR_PWM_DEFAULT,
-        "motor_dir": GPIO_PIN_MOTOR_DIR_DEFAULT,
-    }
-)
-
-ACTIVE_GPIO_PINS = dict(GPIO_PIN_DEFAULTS)
-
-
-def sanitize_gpio_pin(value):
-    try:
-        numeric = int(value)
-    except (TypeError, ValueError):
-        return None
-    if not (GPIO_PIN_MIN <= numeric <= GPIO_PIN_MAX):
-        return None
-    return numeric
-
-
-def sanitize_gpio_pin_map(payload, *, allow_partial=False):
-    if not isinstance(payload, dict):
-        return None
-    sanitized = {}
-    known_keys = set(GPIO_PIN_DEFAULTS.keys())
-    for key, raw in payload.items():
-        if key not in known_keys:
-            continue
-        value = sanitize_gpio_pin(raw)
-        if value is None:
-            return None
-        sanitized[key] = value
-    if not allow_partial and sanitized.keys() != known_keys:
-        missing = known_keys - sanitized.keys()
-        if missing:
-            return None
-    return sanitized
-
-
-def apply_gpio_pins(pins, *, allow_partial=False):
-    global ACTIVE_GPIO_PINS
-    sanitized = sanitize_gpio_pin_map(pins, allow_partial=allow_partial)
-    if sanitized is None:
-        return False
-    base = dict(GPIO_PIN_DEFAULTS)
-    if allow_partial:
-        base.update(ACTIVE_GPIO_PINS)
-    base.update(sanitized)
-    ACTIVE_GPIO_PINS = base
-    return True
-
-
-def get_gpio_pin(name):
-    if name not in GPIO_PIN_DEFAULTS:
-        raise KeyError(name)
-    return ACTIVE_GPIO_PINS.get(name, GPIO_PIN_DEFAULTS[name])
-
 
 # ---- Debug/Output ----
 PRINT_EVERY_S        = 0.3
@@ -264,6 +193,7 @@ import threading
 import subprocess
 from functools import lru_cache
 from pathlib import Path
+from types import MappingProxyType
 from urllib.parse import parse_qs, urlparse
 
 try:
@@ -293,7 +223,7 @@ def _resolve_button_event_code(code_str):
     if isinstance(event_code, int):
         return event_code
     # KEY_304 etc. enthalten bereits die numerische Event-ID als Suffix.
-    _prefix, sep, suffix = code_str.rpartition("_")
+    prefix, sep, suffix = code_str.rpartition("_")
     if sep and suffix.isdigit():
         try:
             return int(suffix)
@@ -431,6 +361,13 @@ def _sanitize_volume_value(value, profile):
     return int(round(vol))
 
 
+def get_default_volume(audio_id):
+    profile = _get_volume_profile(audio_id)
+    if not profile:
+        return None
+    return profile["default"]
+
+
 def load_persisted_audio_state(default_id=DEFAULT_AUDIO_OUTPUT_ID, *, _payload=None):
     default_audio = _normalize_audio_output_id(default_id) or DEFAULT_AUDIO_OUTPUT_ID
     state = {
@@ -468,6 +405,14 @@ def load_persisted_audio_state(default_id=DEFAULT_AUDIO_OUTPUT_ID, *, _payload=N
 
     state["volumes"] = volumes
     return state
+
+
+def load_persisted_audio_output(default_id=DEFAULT_AUDIO_OUTPUT_ID):
+    return load_persisted_audio_state(default_id).get("audio_device")
+
+
+def load_persisted_audio_volumes():
+    return load_persisted_audio_state().get("volumes", {})
 
 
 def persist_audio_state(*, audio_device=None, volume_updates=None):
@@ -540,71 +485,6 @@ def sanitize_soundboard_port(value):
     if not (SOUNDBOARD_PORT_MIN <= numeric <= SOUNDBOARD_PORT_MAX):
         return None
     return numeric
-
-
-def sanitize_camera_port(value):
-    if value is None:
-        return None
-    numeric = None
-    path_part = ""
-    if isinstance(value, int):
-        numeric = value
-    else:
-        try:
-            raw = str(value).strip()
-        except Exception:
-            return None
-        if not raw:
-            return None
-        slash_index = raw.find("/")
-        if slash_index != -1:
-            port_part = raw[:slash_index]
-            remainder = raw[slash_index + 1 :]
-        else:
-            port_part = raw
-            remainder = ""
-        try:
-            numeric = int(port_part, 10)
-        except (TypeError, ValueError):
-            return None
-        path_part = remainder.strip()
-    if not isinstance(numeric, int):
-        try:
-            numeric = int(numeric)
-        except (TypeError, ValueError):
-            return None
-    if not (CAMERA_PORT_MIN <= numeric <= CAMERA_PORT_MAX):
-        return None
-    normalized_path = ""
-    if path_part:
-        segments = []
-        for piece in path_part.split("/"):
-            trimmed = piece.strip()
-            if trimmed:
-                segments.append(trimmed)
-        if segments:
-            normalized_path = "/" + "/".join(segments)
-            if path_part.endswith("/") and not normalized_path.endswith("/"):
-                normalized_path += "/"
-    if normalized_path:
-        return f"{numeric}{normalized_path}"
-    return str(numeric)
-
-
-def sanitize_disconnect_command(value, *, max_length=1024):
-    if value is None:
-        return None
-    try:
-        raw = str(value)
-    except Exception:
-        return None
-    cleaned = raw.replace("\r", " ").replace("\n", " ")
-    trimmed = cleaned.strip()
-    if not trimmed:
-        return None
-    if max_length and len(trimmed) > max_length:
-        trimmed = trimmed[:max_length]
-    return trimmed
 
 
 def sanitize_start_sound(name, available_files=None):
@@ -711,7 +591,6 @@ def load_persisted_sound_settings():
     start_sound = None
     connected_sound = None
     soundboard_port = None
-    camera_port = None
     if isinstance(stored, dict):
         directory = sanitize_sound_directory(stored.get("directory"))
         start_sound = stored.get("start_sound")
@@ -725,7 +604,6 @@ def load_persisted_sound_settings():
         else:
             connected_sound = None
         soundboard_port = sanitize_soundboard_port(stored.get("soundboard_port"))
-        camera_port = sanitize_camera_port(stored.get("camera_port"))
     if not directory:
         directory = SOUND_DIRECTORY_DEFAULT
     if not start_sound:
@@ -735,18 +613,10 @@ def load_persisted_sound_settings():
         "start_sound": start_sound,
         "connected_sound": connected_sound,
         "soundboard_port": soundboard_port if soundboard_port is not None else SOUNDBOARD_PORT_DEFAULT,
-        "camera_port": camera_port if camera_port is not None else CAMERA_PORT_DEFAULT,
     }
 
 
-def persist_sound_settings(
-    *,
-    directory=_UNSET,
-    start_sound=_UNSET,
-    connected_sound=_UNSET,
-    soundboard_port=_UNSET,
-    camera_port=_UNSET,
-):
+def persist_sound_settings(*, directory=_UNSET, start_sound=_UNSET, connected_sound=_UNSET, soundboard_port=_UNSET):
     payload = _load_persisted_state()
     sound_state = payload.get("sound") if isinstance(payload, dict) else {}
     if not isinstance(sound_state, dict):
@@ -771,60 +641,7 @@ def persist_sound_settings(
             sound_state.pop("soundboard_port", None)
         else:
             sound_state["soundboard_port"] = soundboard_port
-    if camera_port is not _UNSET:
-        if camera_port is None:
-            sound_state.pop("camera_port", None)
-        else:
-            sound_state["camera_port"] = camera_port
     payload["sound"] = sound_state
-    return _persist_state(payload)
-
-
-def load_persisted_gamepad_settings():
-    data = _load_persisted_state()
-    stored = data.get("gamepad") if isinstance(data, dict) else None
-    disconnect_command = None
-    if isinstance(stored, dict):
-        disconnect_command = sanitize_disconnect_command(stored.get("disconnect_command"))
-    return {"disconnect_command": disconnect_command}
-
-
-def persist_gamepad_settings(*, disconnect_command=_UNSET):
-    payload = _load_persisted_state()
-    gamepad_state = payload.get("gamepad") if isinstance(payload, dict) else {}
-    if not isinstance(gamepad_state, dict):
-        gamepad_state = {}
-    if disconnect_command is not _UNSET:
-        if disconnect_command is None:
-            gamepad_state.pop("disconnect_command", None)
-        else:
-            gamepad_state["disconnect_command"] = disconnect_command
-    if gamepad_state:
-        payload["gamepad"] = gamepad_state
-    else:
-        payload.pop("gamepad", None)
-    return _persist_state(payload)
-
-
-def load_persisted_gpio_pins(defaults=None):
-    if defaults is None:
-        defaults = GPIO_PIN_DEFAULTS
-    base = {key: defaults[key] for key in defaults}
-    data = _load_persisted_state()
-    stored = data.get("gpio") if isinstance(data, dict) else None
-    if isinstance(stored, dict):
-        sanitized = sanitize_gpio_pin_map(stored, allow_partial=True)
-        if sanitized:
-            base.update(sanitized)
-    return base
-
-
-def persist_gpio_pins(pins):
-    sanitized = sanitize_gpio_pin_map(pins, allow_partial=False)
-    if sanitized is None:
-        return False
-    payload = _load_persisted_state()
-    payload["gpio"] = sanitized
     return _persist_state(payload)
 
 
@@ -1163,11 +980,8 @@ class WebControlState:
         initial_sound_directory=None,
         initial_start_sound=None,
         initial_connected_sound=None,
-        initial_disconnect_command=None,
         initial_soundboard_port=None,
-        initial_camera_port=None,
         initial_button_actions=None,
-        initial_gpio_pins=None,
         battery_monitor=None,
     ):
         self._lock = threading.Lock()
@@ -1193,16 +1007,9 @@ class WebControlState:
         self._sound_files = []
         self._start_sound = sanitize_start_sound(initial_start_sound)
         self._connected_sound = sanitize_start_sound(initial_connected_sound)
-        self._disconnect_command = sanitize_disconnect_command(initial_disconnect_command)
         self._soundboard_port = sanitize_soundboard_port(initial_soundboard_port)
-        self._camera_port = sanitize_camera_port(initial_camera_port)
         self._button_actions = normalize_button_actions_map(initial_button_actions)
         self._refresh_sound_files_locked()
-        self._gpio_pins = dict(GPIO_PIN_DEFAULTS)
-        initial_gpio = sanitize_gpio_pin_map(initial_gpio_pins or {}, allow_partial=True)
-        if initial_gpio:
-            self._gpio_pins.update(initial_gpio)
-        apply_gpio_pins(self._gpio_pins)
         self._motor_limit_forward = MOTOR_LIMIT_FWD
         self._motor_limit_reverse = MOTOR_LIMIT_REV
         if isinstance(initial_motor_limits, dict):
@@ -1274,19 +1081,6 @@ class WebControlState:
             "start_sound": self._start_sound,
             "connected_sound": self._connected_sound,
             "soundboard_port": self._soundboard_port,
-            "camera_port": self._camera_port,
-        }
-
-    def _build_gamepad_snapshot_locked(self):
-        return {
-            "disconnect_command": self._disconnect_command,
-        }
-
-    def _build_gpio_snapshot_locked(self):
-        return {
-            "pins": dict(self._gpio_pins),
-            "min": GPIO_PIN_MIN,
-            "max": GPIO_PIN_MAX,
         }
 
     def _build_button_actions_snapshot_locked(self):
@@ -1396,11 +1190,8 @@ class WebControlState:
         sound_directory=None,
         start_sound=None,
         connected_sound=None,
-        disconnect_command=None,
         soundboard_port=None,
-        camera_port=None,
         button_actions=None,
-        gpio_pins=None,
     ):
         new_audio_id = None
         persist_audio_id = None
@@ -1409,16 +1200,12 @@ class WebControlState:
         motor_limits_to_persist = None
         steering_angles_to_persist = None
         sound_settings_to_persist = None
-        gamepad_settings_to_persist = None
         button_actions_to_persist = None
-        gpio_pins_to_persist = None
         with self._lock:
             previous_directory = self._sound_directory
             previous_start_sound = self._start_sound
             previous_connected_sound = self._connected_sound
-            previous_disconnect_command = self._disconnect_command
             previous_soundboard_port = self._soundboard_port
-            previous_camera_port = self._camera_port
             if override is not None:
                 self._override = bool(override)
             if motor is not None:
@@ -1501,48 +1288,25 @@ class WebControlState:
                 elif not connected_sound:
                     if self._connected_sound is not None:
                         self._connected_sound = None
-            if disconnect_command is not None:
-                sanitized_disconnect = sanitize_disconnect_command(disconnect_command)
-                if sanitized_disconnect != self._disconnect_command:
-                    self._disconnect_command = sanitized_disconnect
             if soundboard_port is not None:
                 sanitized_port = sanitize_soundboard_port(soundboard_port)
                 if sanitized_port != self._soundboard_port:
                     self._soundboard_port = sanitized_port
-            if camera_port is not None:
-                sanitized_camera = sanitize_camera_port(camera_port)
-                if sanitized_camera != self._camera_port:
-                    self._camera_port = sanitized_camera
             self._ensure_sound_selections_locked()
             if button_actions is not None:
                 if self._apply_button_action_updates_locked(button_actions):
                     button_actions_to_persist = dict(self._button_actions)
-            if gpio_pins is not None:
-                sanitized_gpio = sanitize_gpio_pin_map(gpio_pins, allow_partial=False)
-                if sanitized_gpio is not None:
-                    merged_gpio = dict(GPIO_PIN_DEFAULTS)
-                    merged_gpio.update(sanitized_gpio)
-                    if merged_gpio != self._gpio_pins:
-                        self._gpio_pins = merged_gpio
-                        gpio_pins_to_persist = dict(self._gpio_pins)
-                        apply_gpio_pins(self._gpio_pins)
             if (
                 self._sound_directory != previous_directory
                 or self._start_sound != previous_start_sound
                 or self._connected_sound != previous_connected_sound
                 or self._soundboard_port != previous_soundboard_port
-                or self._camera_port != previous_camera_port
             ):
                 sound_settings_to_persist = {
                     "directory": self._sound_directory,
                     "start_sound": self._start_sound,
                     "connected_sound": self._connected_sound,
                     "soundboard_port": self._soundboard_port,
-                    "camera_port": self._camera_port,
-                }
-            if self._disconnect_command != previous_disconnect_command:
-                gamepad_settings_to_persist = {
-                    "disconnect_command": self._disconnect_command,
                 }
             self._last_update = time.time()
             snapshot = self.snapshot_locked()
@@ -1557,12 +1321,8 @@ class WebControlState:
             persist_steering_angles(steering_angles_to_persist)
         if sound_settings_to_persist is not None:
             persist_sound_settings(**sound_settings_to_persist)
-        if gamepad_settings_to_persist is not None:
-            persist_gamepad_settings(**gamepad_settings_to_persist)
         if button_actions_to_persist is not None:
             persist_button_actions(button_actions_to_persist)
-        if gpio_pins_to_persist is not None:
-            persist_gpio_pins(gpio_pins_to_persist)
         if new_audio_id is not None:
             apply_audio_output(new_audio_id)
         if apply_volume_change is not None:
@@ -1602,8 +1362,6 @@ class WebControlState:
             ],
             "button_actions": self._build_button_actions_snapshot_locked(),
             "sound": self._build_sound_snapshot_locked(),
-            "gamepad": self._build_gamepad_snapshot_locked(),
-            "gpio": self._build_gpio_snapshot_locked(),
             "audio_volume": self._build_volume_snapshot_locked(),
             "last_update": self._last_update,
         }
@@ -1661,10 +1419,6 @@ class WebControlState:
             return None
         return str(Path(directory) / filename)
 
-    def get_disconnect_command(self):
-        with self._lock:
-            return self._disconnect_command
-
     def apply_current_audio_output(self):
         with self._lock:
             audio_id = self._audio_device
@@ -1682,7 +1436,6 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
     CONTROL_PAGE_NAME = "control.html"
     SETTINGS_PAGE_NAME = "settings.html"
     BATTERY_PAGE_NAME = "battery.html"
-    GPIO_PAGE_NAME = "gpio.html"
 
     def _write_response(self, status, body, content_type="text/html; charset=utf-8"):
         encoded = body.encode("utf-8")
@@ -1710,9 +1463,6 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
             return
         if self.path == "/settings":
             self._write_response(200, load_asset(self.SETTINGS_PAGE_NAME))
-            return
-        if self.path == "/settings/gpio":
-            self._write_response(200, load_asset(self.GPIO_PAGE_NAME))
             return
         if self.path == "/battery":
             self._write_response(200, load_asset(self.BATTERY_PAGE_NAME))
@@ -1782,9 +1532,7 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
                 sound_directory=data.get("sound_directory"),
                 start_sound=data.get("start_sound"),
                 connected_sound=data.get("connected_sound"),
-                disconnect_command=data.get("disconnect_command"),
                 soundboard_port=data.get("soundboard_port"),
-                camera_port=data.get("camera_port"),
                 button_actions=data.get("button_actions"),
             )
 
@@ -1896,6 +1644,11 @@ def run_audio_setup(commands):
             pass
 
 
+def route_audio_to_headphones():
+    """Route Audio → Kopfhörerbuchse & setze Lautstärke."""
+    run_audio_setup(HEADPHONE_ROUTE_COMMANDS)
+
+
 def apply_audio_output(audio_id):
     profile = get_audio_output(audio_id)
     if not profile:
@@ -1988,10 +1741,6 @@ def play_sound_switch(path, alsa_dev=ALSA_HP_DEVICE, restart_if_same=None):
 
 
 # --------- evdev / Hardware ---------
-class GamepadDisconnected(Exception):
-    """Signalisiert, dass das Gamepad getrennt wurde."""
-
-
 def find_gamepad():
     t0 = time.monotonic()
     informed_wait = False
@@ -2053,11 +1802,9 @@ def read_abs(dev, code):
 
 # --------- pigpio / Motor-Pins ---------
 def setup_motor_pins(pi):
-    dir_pin = get_gpio_pin("motor_dir")
-    pwm_pin = get_gpio_pin("motor_pwm")
-    pi.set_mode(dir_pin, pigpio.OUTPUT)
-    pi.write(dir_pin, 0)
-    pi.hardware_PWM(pwm_pin, PWM_FREQ_HZ, 0)
+    pi.set_mode(GPIO_PIN_MOTOR_DIR, pigpio.OUTPUT)
+    pi.write(GPIO_PIN_MOTOR_DIR, 0)
+    pi.hardware_PWM(GPIO_PIN_MOTOR_PWM, PWM_FREQ_HZ, 0)
 
 _last_motor_direction = None
 
@@ -2065,25 +1812,23 @@ _last_motor_direction = None
 def set_motor(pi, speed_norm):
     global _last_motor_direction
 
-    dir_pin = get_gpio_pin("motor_dir")
-    pwm_pin = get_gpio_pin("motor_pwm")
     s = clamp(speed_norm, -1.0, +1.0)
     if abs(s) < 1e-3:
-        pi.hardware_PWM(pwm_pin, PWM_FREQ_HZ, 0)
+        pi.hardware_PWM(GPIO_PIN_MOTOR_PWM, PWM_FREQ_HZ, 0)
         _last_motor_direction = None
         return
 
     direction = 1 if s > 0 else 0
     if _last_motor_direction is None:
-        pi.write(dir_pin, direction)
+        pi.write(GPIO_PIN_MOTOR_DIR, direction)
     elif direction != _last_motor_direction:
-        pi.hardware_PWM(pwm_pin, PWM_FREQ_HZ, 0)
+        pi.hardware_PWM(GPIO_PIN_MOTOR_PWM, PWM_FREQ_HZ, 0)
         if MOTOR_DIR_SWITCH_PAUSE_S > 0:
             time.sleep(MOTOR_DIR_SWITCH_PAUSE_S)
-        pi.write(dir_pin, direction)
+        pi.write(GPIO_PIN_MOTOR_DIR, direction)
 
     duty = int(abs(s) * 1_000_000)   # pigpio hardware_PWM erwartet 0..1_000_000
-    pi.hardware_PWM(pwm_pin, PWM_FREQ_HZ, duty)
+    pi.hardware_PWM(GPIO_PIN_MOTOR_PWM, PWM_FREQ_HZ, duty)
     _last_motor_direction = direction
 
 
@@ -2092,8 +1837,6 @@ def main():
     persisted_steering = load_persisted_steering_angles()
     if not apply_steering_angles(persisted_steering):
         apply_steering_angles(DEFAULT_STEERING_ANGLES)
-    persisted_gpio = load_persisted_gpio_pins()
-    apply_gpio_pins(persisted_gpio)
     validate_configuration()
 
     MOTOR_AXIS_CENTERED = getattr(ecodes, MOTOR_AXIS_CENTERED_NAME)
@@ -2116,7 +1859,6 @@ def main():
     persisted_audio = load_persisted_audio_state()
     persisted_motor_limits = load_persisted_motor_limits()
     persisted_sound = load_persisted_sound_settings()
-    persisted_gamepad = load_persisted_gamepad_settings()
     persisted_button_actions = load_persisted_button_actions()
     battery_monitor = BatteryMonitor()
 
@@ -2128,11 +1870,8 @@ def main():
         initial_sound_directory=persisted_sound.get("directory"),
         initial_start_sound=persisted_sound.get("start_sound"),
         initial_connected_sound=persisted_sound.get("connected_sound"),
-        initial_disconnect_command=persisted_gamepad.get("disconnect_command"),
         initial_soundboard_port=persisted_sound.get("soundboard_port"),
-        initial_camera_port=persisted_sound.get("camera_port"),
         initial_button_actions=persisted_button_actions,
-        initial_gpio_pins=persisted_gpio,
         battery_monitor=battery_monitor,
     )
     web_server = None
@@ -2149,377 +1888,325 @@ def main():
     if start_sound_path and os.path.isfile(start_sound_path):
         play_sound_switch(start_sound_path, web_state.get_selected_alsa_device())
 
-    def execute_disconnect_action():
-        command = web_state.get_disconnect_command()
-        if not command:
-            return
-        try:
-            subprocess.Popen(command, shell=True)
-            print(f"[Gamepad] Trennungsbefehl gestartet: {command}")
-        except Exception as exc:
-            print(f"[Gamepad] Trennungsbefehl konnte nicht gestartet werden: {exc}", file=sys.stderr)
+    # Gamepad
+    dev = find_gamepad()
+
+    connected_sound_path = web_state.get_connected_sound_path()
+    if connected_sound_path and os.path.isfile(connected_sound_path):
+        play_sound_switch(connected_sound_path, web_state.get_selected_alsa_device())
+
+    caps = dev.capabilities()
+    if ecodes.EV_ABS not in caps:
+        print("Kein EV_ABS – Controller-Modus prüfen!", file=sys.stderr); sys.exit(1)
+
+    # Achsenbereiche
+    rng_servo  = get_abs_range(caps, ecodes.ABS_Z)
+    rng_center = get_abs_range(caps, MOTOR_AXIS_CENTERED)
+    rng_gas    = get_abs_range(caps, MOTOR_AXIS_GAS)
+    rng_brake  = get_abs_range(caps, MOTOR_AXIS_BRAKE)
+
+    if rng_servo is None:
+        print("Lenkachse (ABS_Z) nicht gefunden!", file=sys.stderr); sys.exit(1)
+
+    lo_s, hi_s = rng_servo
+    lo_c, hi_c = (rng_center if rng_center else (0, 0))
+    lo_g, hi_g = (rng_gas if rng_gas else (0, 0))
+    lo_b, hi_b = (rng_brake if rng_brake else (0, 0))
+
+    have_center = rng_center is not None
+    have_gas    = rng_gas    is not None
+    have_brake  = rng_brake  is not None
+
+    # Startzustände
+    current_deg      = MID_DEG
+    target_deg       = MID_DEG
+    ax_val_servo     = 0.0
+    last_active_ts   = time.monotonic()
+    last_zero_ts     = None
+    last_print_ts    = 0.0
+    last_loop_ts     = time.monotonic()
+    in_deadzone_hold = True
+
+    MID_US = deg_to_us_lenkung(MID_DEG)
+    pi.set_servo_pulsewidth(GPIO_PIN_SERVO, MID_US)
+
+    motor_speed  = 0.0
+    motor_target = 0.0
+
+    motor_armed        = False
+    neutral_ok_since_m = None
+    steer_armed        = False
+    neutral_ok_since_s = None
+
+    head_current     = clamp(HEAD_CENTER_DEG, HEAD_MIN_DEG, HEAD_MAX_DEG)
+    head_target      = head_current
+    head_filtered    = head_current
+    head_motion_start = head_current
+    head_motion_end   = head_current
+    head_motion_start_ts = time.monotonic()
+    head_motion_duration = 0.0
+    head_last_sent   = head_current
+    pi.set_servo_pulsewidth(GPIO_PIN_HEAD, deg_to_us_unclamped(head_current))
+
+    print("Bereit. A = Zentrieren, Start = Beenden. D-Pad L/R setzt Kopf, D-Pad ↑ zentriert (latchend).")
+    print(f"Motorachsen: centered={have_center} GAS={have_gas} BRAKE={have_brake}")
 
     try:
         while True:
-            dev = find_gamepad()
-            device_path = getattr(dev, "path", None)
+            now = time.monotonic()
+            dt = max(0.001, min(0.05, now - last_loop_ts))
+            last_loop_ts = now
 
-            safe_start_motor_until = time.monotonic() + MOTOR_SAFE_START_S
-            safe_start_servo_until = time.monotonic() + SERVO_SAFE_START_S
-            safe_start_head_until  = time.monotonic() + HEAD_SAFE_START_S
+            control_snapshot = web_state.snapshot()
 
-            connected_sound_path = web_state.get_connected_sound_path()
-            if connected_sound_path and os.path.isfile(connected_sound_path):
-                play_sound_switch(connected_sound_path, web_state.get_selected_alsa_device())
-
-            caps = dev.capabilities()
-            if ecodes.EV_ABS not in caps:
-                print("Kein EV_ABS – Controller-Modus prüfen!", file=sys.stderr)
-                sys.exit(1)
-
-            # Achsenbereiche
-            rng_servo  = get_abs_range(caps, ecodes.ABS_Z)
-            rng_center = get_abs_range(caps, MOTOR_AXIS_CENTERED)
-            rng_gas    = get_abs_range(caps, MOTOR_AXIS_GAS)
-            rng_brake  = get_abs_range(caps, MOTOR_AXIS_BRAKE)
-
-            if rng_servo is None:
-                print("Lenkachse (ABS_Z) nicht gefunden!", file=sys.stderr)
-                sys.exit(1)
-
-            lo_s, hi_s = rng_servo
-            lo_c, hi_c = (rng_center if rng_center else (0, 0))
-            lo_g, hi_g = (rng_gas if rng_gas else (0, 0))
-            lo_b, hi_b = (rng_brake if rng_brake else (0, 0))
-
-            have_center = rng_center is not None
-            have_gas    = rng_gas    is not None
-            have_brake  = rng_brake  is not None
-
-            # Startzustände
-            current_deg      = MID_DEG
-            target_deg       = MID_DEG
-            ax_val_servo     = 0.0
-            last_active_ts   = time.monotonic()
-            last_zero_ts     = None
-            last_print_ts    = 0.0
-            last_loop_ts     = time.monotonic()
-            in_deadzone_hold = True
-
-            pi.set_servo_pulsewidth(get_gpio_pin("steering_servo"), deg_to_us_lenkung(MID_DEG))
-
-            motor_speed  = 0.0
-            motor_target = 0.0
-
-            motor_armed        = False
-            neutral_ok_since_m = None
-            steer_armed        = False
-            neutral_ok_since_s = None
-
-            head_current     = clamp(HEAD_CENTER_DEG, HEAD_MIN_DEG, HEAD_MAX_DEG)
-            head_target      = head_current
-            head_filtered    = head_current
-            head_motion_start = head_current
-            head_motion_end   = head_current
-            head_motion_start_ts = time.monotonic()
-            head_motion_duration = 0.0
-            head_last_sent   = head_current
-            pi.set_servo_pulsewidth(get_gpio_pin("head_servo"), deg_to_us_unclamped(head_current))
-
-            missing_servo_reads = 0
-
-            print("Bereit. A = Zentrieren, Start = Beenden. D-Pad L/R setzt Kopf, D-Pad ↑ zentriert (latchend).")
-            print(f"Motorachsen: centered={have_center} GAS={have_gas} BRAKE={have_brake}")
-
+            # Events (Buttons & Kopfsteuerung)
             try:
-                while True:
-                    now = time.monotonic()
-                    dt = max(0.001, min(0.05, now - last_loop_ts))
-                    last_loop_ts = now
+                e = dev.read_one()
+                while e:
+                    if e.type == ecodes.EV_ABS and now >= safe_start_head_until:
+                        # Kopfservo LATCHEND via D-Pad:
+                        if e.code == ecodes.ABS_HAT0X:
+                            if   e.value == -1: head_target = HEAD_LEFT_DEG
+                            elif e.value ==  1: head_target = HEAD_RIGHT_DEG
+                        elif e.code == ecodes.ABS_HAT0Y:
+                            if e.value == -1: head_target = HEAD_CENTER_DEG
+                    if e.type == ecodes.EV_KEY and e.value == 1:
+                        button_code = BUTTON_EVENT_TO_CODE.get(e.code)
+                        if button_code:
+                            action = web_state.get_button_action(button_code)
+                            if action:
+                                mode = action.get("mode")
+                                if mode == BUTTON_MODE_MP3:
+                                    file_name = action.get("value")
+                                    if file_name:
+                                        path = web_state.get_sound_file_path(file_name)
+                                        if path and os.path.isfile(path):
+                                            play_sound_switch(path, web_state.get_selected_alsa_device())
+                                elif mode == BUTTON_MODE_COMMAND:
+                                    command = action.get("value")
+                                    if command:
+                                        try:
+                                            subprocess.Popen(command, shell=True)
+                                        except Exception as exc:
+                                            print(
+                                                f"[Button] Kommando konnte nicht gestartet werden ({button_code}): {exc}",
+                                                file=sys.stderr,
+                                            )
 
-                    if device_path and not os.path.exists(device_path):
-                        raise GamepadDisconnected
+                    e = dev.read_one()
+            except OSError:
+                pass
 
-                    control_snapshot = web_state.snapshot()
+            # ===== Lenkservo (ABS_Z) =====
+            raw_s = read_abs(dev, ecodes.ABS_Z)
+            if raw_s is not None:
+                x = norm_axis_centered(raw_s, lo_s, hi_s)
+                if INVERT_SERVO: x = -x
 
-                    # Events (Buttons & Kopfsteuerung)
-                    try:
-                        e = dev.read_one()
-                        while e:
-                            if e.type == ecodes.EV_ABS and now >= safe_start_head_until:
-                                # Kopfservo LATCHEND via D-Pad:
-                                if e.code == ecodes.ABS_HAT0X:
-                                    if   e.value == -1: head_target = HEAD_LEFT_DEG
-                                    elif e.value ==  1: head_target = HEAD_RIGHT_DEG
-                                elif e.code == ecodes.ABS_HAT0Y:
-                                    if e.value == -1: head_target = HEAD_CENTER_DEG
-                            if e.type == ecodes.EV_KEY and e.value == 1:
-                                button_code = BUTTON_EVENT_TO_CODE.get(e.code)
-                                if button_code:
-                                    action = web_state.get_button_action(button_code)
-                                    if action:
-                                        mode = action.get("mode")
-                                        if mode == BUTTON_MODE_MP3:
-                                            file_name = action.get("value")
-                                            if file_name:
-                                                path = web_state.get_sound_file_path(file_name)
-                                                if path and os.path.isfile(path):
-                                                    play_sound_switch(path, web_state.get_selected_alsa_device())
-                                        elif mode == BUTTON_MODE_COMMAND:
-                                            command = action.get("value")
-                                            if command:
-                                                try:
-                                                    subprocess.Popen(command, shell=True)
-                                                except Exception as exc:
-                                                    print(
-                                                        f"[Button] Kommando konnte nicht gestartet werden ({button_code}): {exc}",
-                                                        file=sys.stderr,
-                                                    )
+                # Arming
+                if abs(x) <= SERVO_NEUTRAL_THRESH:
+                    if neutral_ok_since_s is None:
+                        neutral_ok_since_s = now
+                    elif (now - neutral_ok_since_s) * 1000.0 >= SERVO_ARM_NEUTRAL_MS:
+                        steer_armed = True
+                else:
+                    neutral_ok_since_s = None
 
-                            e = dev.read_one()
-                    except OSError as exc:
-                        print(f"[Gamepad] Lesefehler: {exc}")
-                        raise GamepadDisconnected from None
-
-                    # ===== Lenkservo (ABS_Z) =====
-                    raw_s = read_abs(dev, ecodes.ABS_Z)
-                    if raw_s is None:
-                        missing_servo_reads += 1
-                        if missing_servo_reads >= GAMEPAD_MAX_MISSING_SERVO_READS:
-                            raise GamepadDisconnected
+                # Safe-Start / un-armed
+                if (now < safe_start_servo_until) or (not steer_armed):
+                    ax_val_servo = 0.0
+                    target_deg   = MID_DEG
+                else:
+                    ax_abs = abs(x)
+                    if in_deadzone_hold:
+                        if ax_abs >= DEADZONE_OUT:
+                            in_deadzone_hold = False
                     else:
-                        missing_servo_reads = 0
-                        x = norm_axis_centered(raw_s, lo_s, hi_s)
-                        if INVERT_SERVO:
-                            x = -x
+                        if ax_abs <= DEADZONE_IN:
+                            in_deadzone_hold = True
 
-                        # Arming
-                        if abs(x) <= SERVO_NEUTRAL_THRESH:
-                            if neutral_ok_since_s is None:
-                                neutral_ok_since_s = now
-                            elif (now - neutral_ok_since_s) * 1000.0 >= SERVO_ARM_NEUTRAL_MS:
-                                steer_armed = True
-                        else:
-                            neutral_ok_since_s = None
-
-                        # Safe-Start / un-armed
-                        if (now < safe_start_servo_until) or (not steer_armed):
-                            ax_val_servo = 0.0
-                            target_deg   = MID_DEG
-                        else:
-                            ax_abs = abs(x)
-                            if in_deadzone_hold:
-                                if ax_abs >= DEADZONE_OUT:
-                                    in_deadzone_hold = False
-                            else:
-                                if ax_abs <= DEADZONE_IN:
-                                    in_deadzone_hold = True
-
-                            if in_deadzone_hold:
-                                shaped = 0.0
-                                if last_zero_ts is None:
-                                    last_zero_ts = now
-                            else:
-                                shaped = shape_expo(x, EXPO_SERVO)
-                                last_zero_ts = None
-
-                            ax_val_servo = clamp(shaped, -1.0, +1.0)
-                            target_deg   = axis_to_deg_lenkung(ax_val_servo)
-                            if abs(ax_val_servo) > 0.01:
-                                last_active_ts = now
-
-                    if control_snapshot.get("override"):
-                        if now >= safe_start_servo_until:
-                            steer_armed = True
-                        ax_val_servo = clamp(control_snapshot.get("steering", 0.0), -1.0, +1.0)
-                        if INVERT_SERVO:
-                            ax_val_servo = -ax_val_servo
-                        target_deg = axis_to_deg_lenkung(ax_val_servo)
-                        last_active_ts = now
+                    if in_deadzone_hold:
+                        shaped = 0.0
+                        if last_zero_ts is None:
+                            last_zero_ts = now
+                    else:
+                        shaped = shape_expo(x, EXPO_SERVO)
                         last_zero_ts = None
-                        in_deadzone_hold = False
 
-                    # Auto-Zentrierung nach Inaktivität
-                    if (now - last_active_ts) > NEUTRAL_HOLD_S:
-                        target_deg = MID_DEG
+                    ax_val_servo = clamp(shaped, -1.0, +1.0)
+                    target_deg   = axis_to_deg_lenkung(ax_val_servo)
+                    if abs(ax_val_servo) > 0.01:
+                        last_active_ts = now
 
-                    # Snap auf Mitte
-                    if target_deg == MID_DEG:
-                        if last_zero_ts is not None and (now - last_zero_ts) >= NEUTRAL_SNAP_S:
-                            current_deg = MID_DEG
-                        if abs(current_deg - MID_DEG) <= CENTER_SNAP_DEG:
-                            current_deg = MID_DEG
+            if control_snapshot.get("override"):
+                if now >= safe_start_servo_until:
+                    steer_armed = True
+                ax_val_servo = clamp(control_snapshot.get("steering", 0.0), -1.0, +1.0)
+                if INVERT_SERVO:
+                    ax_val_servo = -ax_val_servo
+                target_deg = axis_to_deg_lenkung(ax_val_servo)
+                last_active_ts = now
+                last_zero_ts = None
+                in_deadzone_hold = False
 
-                    # Sanftes Nachführen
-                    filtered_target = current_deg + (target_deg - current_deg) * SMOOTH_A_SERVO
-                    max_step = RATE_DEG_S * dt
-                    delta = clamp(filtered_target - current_deg, -max_step, +max_step)
-                    if 0 < abs(delta) < MIN_STEP_DEG:
-                        delta = MIN_STEP_DEG if delta > 0 else -MIN_STEP_DEG
-                    if (current_deg != MID_DEG) or (target_deg != MID_DEG):
-                        current_deg += delta
+            # Auto-Zentrierung nach Inaktivität
+            if (now - last_active_ts) > NEUTRAL_HOLD_S:
+                target_deg = MID_DEG
 
-                    # Puls ausgeben
-                    pi.set_servo_pulsewidth(
-                        get_gpio_pin("steering_servo"),
-                        deg_to_us_lenkung(current_deg if current_deg != MID_DEG else MID_DEG),
-                    )
+            # Snap auf Mitte
+            if target_deg == MID_DEG:
+                if last_zero_ts is not None and (now - last_zero_ts) >= NEUTRAL_SNAP_S:
+                    current_deg = MID_DEG
+                if abs(current_deg - MID_DEG) <= CENTER_SNAP_DEG:
+                    current_deg = MID_DEG
 
-                    # ===== Motor: kombiniert aus centered + GAS - BRAKE =====
-                    y_centered = 0.0
-                    gas        = 0.0
-                    brake      = 0.0
+            # Sanftes Nachführen
+            filtered_target = current_deg + (target_deg - current_deg) * SMOOTH_A_SERVO
+            max_step = RATE_DEG_S * dt
+            delta = clamp(filtered_target - current_deg, -max_step, +max_step)
+            if 0 < abs(delta) < MIN_STEP_DEG:
+                delta = MIN_STEP_DEG if delta > 0 else -MIN_STEP_DEG
+            if (current_deg != MID_DEG) or (target_deg != MID_DEG):
+                current_deg += delta
 
-                    if have_center:
-                        raw_c = read_abs(dev, MOTOR_AXIS_CENTERED)
-                        if raw_c is not None:
-                            y_centered = norm_axis_centered(raw_c, lo_c, hi_c)
-                            if INVERT_MOTOR:
-                                y_centered = -y_centered
+            # Puls ausgeben
+            pi.set_servo_pulsewidth(GPIO_PIN_SERVO, deg_to_us_lenkung(current_deg if current_deg != MID_DEG else MID_DEG))
 
-                    if have_gas:
-                        raw_g = read_abs(dev, MOTOR_AXIS_GAS)
-                        if raw_g is not None:
-                            gas = norm_axis_trigger(raw_g, lo_g, hi_g)  # 0..1
+            # ===== Motor: kombiniert aus centered + GAS - BRAKE =====
+            y_centered = 0.0
+            gas        = 0.0
+            brake      = 0.0
 
-                    if have_brake:
-                        raw_b = read_abs(dev, MOTOR_AXIS_BRAKE)
-                        if raw_b is not None:
-                            brake = norm_axis_trigger(raw_b, lo_b, hi_b)  # 0..1
+            if have_center:
+                raw_c = read_abs(dev, MOTOR_AXIS_CENTERED)
+                if raw_c is not None:
+                    y_centered = norm_axis_centered(raw_c, lo_c, hi_c)
+                    if INVERT_MOTOR:
+                        y_centered = -y_centered
 
-                    y_total = clamp(y_centered + gas - brake, -1.0, +1.0)
+            if have_gas:
+                raw_g = read_abs(dev, MOTOR_AXIS_GAS)
+                if raw_g is not None:
+                    gas = norm_axis_trigger(raw_g, lo_g, hi_g)  # 0..1
 
-                    if control_snapshot.get("override"):
-                        if now >= safe_start_motor_until:
-                            motor_armed = True
-                        y_total = clamp(control_snapshot.get("motor", 0.0), -1.0, +1.0)
+            if have_brake:
+                raw_b = read_abs(dev, MOTOR_AXIS_BRAKE)
+                if raw_b is not None:
+                    brake = norm_axis_trigger(raw_b, lo_b, hi_b)  # 0..1
 
-                    # Arming & Deadzone
-                    if abs(y_total) <= MOTOR_NEUTRAL_THRESH:
-                        if neutral_ok_since_m is None:
-                            neutral_ok_since_m = now
-                        elif (now - neutral_ok_since_m) * 1000.0 >= MOTOR_ARM_NEUTRAL_MS:
-                            motor_armed = True
-                    else:
-                        neutral_ok_since_m = None
+            y_total = clamp(y_centered + gas - brake, -1.0, +1.0)
 
-                    if motor_armed:
-                        if abs(y_total) < DEADZONE_MOTOR:
-                            y_shaped = 0.0
-                        else:
-                            sign = 1 if y_total >= 0 else -1
-                            y_eff = (abs(y_total) - DEADZONE_MOTOR) / (1 - DEADZONE_MOTOR)
-                            y_shaped = shape_expo(sign * y_eff, EXPO_MOTOR)
-                        motor_target = clamp(y_shaped, -1.0, +1.0)
-                    else:
-                        motor_target = 0.0
+            if control_snapshot.get("override"):
+                if now >= safe_start_motor_until:
+                    motor_armed = True
+                y_total = clamp(control_snapshot.get("motor", 0.0), -1.0, +1.0)
 
-                    # Filter + Safe-Start
-                    filtered_motor = motor_speed + (motor_target - motor_speed) * SMOOTH_A_MOTOR
-                    delta_u = filtered_motor - motor_speed
-                    max_rate = RATE_ACCEL_UNITS_S if delta_u >= 0 else RATE_DECEL_UNITS_S
-                    max_du = max_rate * dt
-                    step_u = clamp(delta_u, -max_du, +max_du)
-                    motor_speed += step_u
+            # Arming & Deadzone
+            if abs(y_total) <= MOTOR_NEUTRAL_THRESH:
+                if neutral_ok_since_m is None:
+                    neutral_ok_since_m = now
+                elif (now - neutral_ok_since_m) * 1000.0 >= MOTOR_ARM_NEUTRAL_MS:
+                    motor_armed = True
+            else:
+                neutral_ok_since_m = None
 
-                    if now < safe_start_motor_until:
-                        motor_speed = 0.0
-                        motor_target = 0.0
+            if motor_armed:
+                if abs(y_total) < DEADZONE_MOTOR:
+                    y_shaped = 0.0
+                else:
+                    sign = 1 if y_total >= 0 else -1
+                    y_eff = (abs(y_total) - DEADZONE_MOTOR) / (1 - DEADZONE_MOTOR)
+                    y_shaped = shape_expo(sign * y_eff, EXPO_MOTOR)
+                motor_target = clamp(y_shaped, -1.0, +1.0)
+            else:
+                motor_target = 0.0
 
-                    # Limits
-                    limit_forward = MOTOR_LIMIT_FWD
-                    limit_reverse = MOTOR_LIMIT_REV
-                    limits_snapshot = control_snapshot.get("motor_limits")
-                    if isinstance(limits_snapshot, dict):
-                        forward_limit = sanitize_motor_limit(limits_snapshot.get("forward"))
-                        if forward_limit is not None:
-                            limit_forward = forward_limit
-                        reverse_limit = sanitize_motor_limit(limits_snapshot.get("reverse"))
-                        if reverse_limit is not None:
-                            limit_reverse = reverse_limit
+            # Filter + Safe-Start
+            filtered_motor = motor_speed + (motor_target - motor_speed) * SMOOTH_A_MOTOR
+            delta_u = filtered_motor - motor_speed
+            max_rate = RATE_ACCEL_UNITS_S if delta_u >= 0 else RATE_DECEL_UNITS_S
+            max_du = max_rate * dt
+            step_u = clamp(delta_u, -max_du, +max_du)
+            motor_speed += step_u
 
-                    if motor_speed > 0:
-                        motor_speed = min(motor_speed, limit_forward)
-                    elif motor_speed < 0:
-                        motor_speed = max(motor_speed, -limit_reverse)
+            if now < safe_start_motor_until:
+                motor_speed = 0.0
+                motor_target = 0.0
 
-                    set_motor(pi, motor_speed)
+            # Limits
+            limit_forward = MOTOR_LIMIT_FWD
+            limit_reverse = MOTOR_LIMIT_REV
+            limits_snapshot = control_snapshot.get("motor_limits")
+            if isinstance(limits_snapshot, dict):
+                forward_limit = sanitize_motor_limit(limits_snapshot.get("forward"))
+                if forward_limit is not None:
+                    limit_forward = forward_limit
+                reverse_limit = sanitize_motor_limit(limits_snapshot.get("reverse"))
+                if reverse_limit is not None:
+                    limit_reverse = reverse_limit
 
-                    if control_snapshot.get("override"):
-                        if now >= safe_start_head_until:
-                            head_override = clamp(control_snapshot.get("head", 0.0), -1.0, +1.0)
-                            head_target = axis_to_deg_head(head_override)
-                        else:
-                            head_target = HEAD_CENTER_DEG
+            if motor_speed > 0:
+                motor_speed = min(motor_speed, limit_forward)
+            elif motor_speed < 0:
+                motor_speed = max(motor_speed, -limit_reverse)
 
-                    # ===== Kopf-Servo (latchend) =====
-                    head_target = clamp(head_target, HEAD_MIN_DEG, HEAD_MAX_DEG)
-                    head_filtered += (head_target - head_filtered) * HEAD_SMOOTH_A
+            set_motor(pi, motor_speed)
 
-                    if abs(head_filtered - head_motion_end) > 1e-4:
-                        head_motion_start = head_current
-                        head_motion_end = head_filtered
-                        head_motion_start_ts = now
-                        distance = abs(head_motion_end - head_motion_start)
-                        if HEAD_RATE_DEG_S > 0:
-                            head_motion_duration = max(distance / HEAD_RATE_DEG_S, dt)
-                        else:
-                            head_motion_duration = 0.0
+            if control_snapshot.get("override"):
+                if now >= safe_start_head_until:
+                    head_override = clamp(control_snapshot.get("head", 0.0), -1.0, +1.0)
+                    head_target = axis_to_deg_head(head_override)
+                else:
+                    head_target = HEAD_CENTER_DEG
 
-                    if head_motion_duration <= 0.0 or abs(head_motion_end - head_motion_start) <= 1e-6:
-                        head_current = head_motion_end
-                    else:
-                        progress = clamp((now - head_motion_start_ts) / head_motion_duration, 0.0, 1.0)
-                        eased = progress * progress * (3.0 - 2.0 * progress)
-                        head_current = head_motion_start + (head_motion_end - head_motion_start) * eased
+            # ===== Kopf-Servo (latchend) =====
+            head_target = clamp(head_target, HEAD_MIN_DEG, HEAD_MAX_DEG)
+            head_filtered += (head_target - head_filtered) * HEAD_SMOOTH_A
 
-                        if progress >= 1.0:
-                            head_motion_start = head_motion_end
-                            head_motion_duration = 0.0
+            if abs(head_filtered - head_motion_end) > 1e-4:
+                head_motion_start = head_current
+                head_motion_end = head_filtered
+                head_motion_start_ts = now
+                distance = abs(head_motion_end - head_motion_start)
+                if HEAD_RATE_DEG_S > 0:
+                    head_motion_duration = max(distance / HEAD_RATE_DEG_S, dt)
+                else:
+                    head_motion_duration = 0.0
 
-                    if abs(head_current - head_last_sent) >= HEAD_UPDATE_HYSTERESIS_DEG:
-                        pi.set_servo_pulsewidth(
-                            get_gpio_pin("head_servo"),
-                            deg_to_us_unclamped(head_current),
-                        )
-                        head_last_sent = head_current
+            if head_motion_duration <= 0.0 or abs(head_motion_end - head_motion_start) <= 1e-6:
+                head_current = head_motion_end
+            else:
+                progress = clamp((now - head_motion_start_ts) / head_motion_duration, 0.0, 1.0)
+                eased = progress * progress * (3.0 - 2.0 * progress)
+                head_current = head_motion_start + (head_motion_end - head_motion_start) * eased
 
-                    # Debug-Ausgabe
-                    if (now - last_print_ts) > PRINT_EVERY_S:
-                        last_print_ts = now
-                        armM = "ARMED" if motor_armed else "SAFE"
-                        armS = "ARMED" if steer_armed else "SAFE"
-                        print(
-                            f"{armS}/{armM} | SERVO x={ax_val_servo:+.3f} tgt={target_deg:6.1f}° pos={current_deg:6.1f}°  |  "
-                            f"MOTOR tgt={motor_target:+.3f} out={motor_speed:+.3f}  |  "
-                            f"HEAD tgt={head_target:5.1f}° pos={head_current:5.1f}°"
-                        )
+                if progress >= 1.0:
+                    head_motion_start = head_motion_end
+                    head_motion_duration = 0.0
 
-                    time.sleep(0.02)
-            except GamepadDisconnected:
-                print("Gamepad getrennt – warte auf erneute Verbindung …")
-                try:
-                    dev.close()
-                except Exception:
-                    pass
-                set_motor(pi, 0.0)
-                pi.set_servo_pulsewidth(get_gpio_pin("steering_servo"), deg_to_us_lenkung(MID_DEG))
-                pi.set_servo_pulsewidth(
-                    get_gpio_pin("head_servo"), deg_to_us_unclamped(HEAD_CENTER_DEG)
+            if abs(head_current - head_last_sent) >= HEAD_UPDATE_HYSTERESIS_DEG:
+                pi.set_servo_pulsewidth(GPIO_PIN_HEAD, deg_to_us_unclamped(head_current))
+                head_last_sent = head_current
+
+            # Debug-Ausgabe
+            if (now - last_print_ts) > PRINT_EVERY_S:
+                last_print_ts = now
+                armM = "ARMED" if motor_armed else "SAFE"
+                armS = "ARMED" if steer_armed else "SAFE"
+                print(
+                    f"{armS}/{armM} | SERVO x={ax_val_servo:+.3f} tgt={target_deg:6.1f}° pos={current_deg:6.1f}°  |  "
+                    f"MOTOR tgt={motor_target:+.3f} out={motor_speed:+.3f}  |  "
+                    f"HEAD tgt={head_target:5.1f}° pos={head_current:5.1f}°"
                 )
-                execute_disconnect_action()
-                safe_start_motor_until = time.monotonic() + MOTOR_SAFE_START_S
-                safe_start_servo_until = time.monotonic() + SERVO_SAFE_START_S
-                safe_start_head_until  = time.monotonic() + HEAD_SAFE_START_S
-                time.sleep(0.5)
-                continue
+
+            time.sleep(0.02)
 
     except KeyboardInterrupt:
         print("\nBeende – Servo & Motor freigeben …")
     finally:
         try:
-            pi.set_servo_pulsewidth(get_gpio_pin("steering_servo"), 0)
-            pi.set_servo_pulsewidth(get_gpio_pin("head_servo"), 0)
+            pi.set_servo_pulsewidth(GPIO_PIN_SERVO, 0)
+            pi.set_servo_pulsewidth(GPIO_PIN_HEAD, 0)
             set_motor(pi, 0.0)
         except Exception:
             pass
