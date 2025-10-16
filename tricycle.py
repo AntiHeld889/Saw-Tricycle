@@ -1697,14 +1697,7 @@ def main():
             try:
                 e = dev.read_one()
                 while e:
-                    if e.type == ecodes.EV_KEY and e.value == 1:   # nur DOWN
-                        if e.code == BTN_CENTER:
-                            target_deg = MID_DEG
-                            last_zero_ts = now
-                        elif e.code == BTN_QUIT:
-                            raise KeyboardInterrupt
-
-                    elif e.type == ecodes.EV_ABS and now >= safe_start_head_until:
+                    if e.type == ecodes.EV_ABS and now >= safe_start_head_until:
                         # Kopfservo LATCHEND via D-Pad:
                         if e.code == ecodes.ABS_HAT0X:
                             if   e.value == -1: head_target = HEAD_LEFT_DEG
