@@ -228,6 +228,37 @@
     .sound-row select {
       flex: 1 1 auto;
     }
+    .button-actions {
+      display: flex;
+      flex-direction: column;
+      gap: 0.9rem;
+    }
+    .button-action {
+      gap: 0.45rem;
+    }
+    .button-action-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.6rem;
+      align-items: center;
+    }
+    .button-action-row select,
+    .button-action-row .text-input {
+      flex: 1 1 180px;
+    }
+    .button-action-row select.button-action-mode {
+      flex: 0 0 180px;
+      min-width: 150px;
+    }
+    .button-action-mp3 select {
+      width: 100%;
+    }
+    .button-action-command {
+      flex: 1 1 220px;
+    }
+    .button-action-command input {
+      width: 100%;
+    }
     .sound-preview-button {
       display: inline-flex;
       align-items: center;
@@ -393,6 +424,11 @@
       </div>
     </section>
     <section class="settings-section">
+      <h2>Gamepad-Tasten</h2>
+      <p class="hint">Wähle pro Taste eine MP3 aus oder hinterlege einen Raspberry&nbsp;Pi Befehl.</p>
+      <div id="buttonActionsContainer" class="button-actions" aria-live="polite"></div>
+    </section>
+    <section class="settings-section">
       <h2>Lenkwinkel</h2>
       <p class="hint">Definiert Mittelstellung und maximale Ausschläge des Servos.</p>
       <div class="steering-grid">
@@ -460,6 +496,15 @@
     const startSoundPreviewButton = document.querySelector('[data-sound-preview="start"]');
     const connectedSoundPreviewButton = document.querySelector('[data-sound-preview="connected"]');
     const soundPreviewPlayer = document.getElementById('soundPreviewPlayer');
+    const buttonActionsContainer = document.getElementById('buttonActionsContainer');
+    const BUTTON_MODE_NONE = 'none';
+    const BUTTON_MODE_MP3 = 'mp3';
+    const BUTTON_MODE_COMMAND = 'command';
+    const buttonActionControls = new Map();
+    let buttonAssignments = {};
+    let buttonDefinitions = [];
+    let currentSoundFiles = [];
+    let syncingButtonActions = false;
     audioSelect.disabled = true;
     let audioOptionsSignature = '';
     let volumeConfig = null;
@@ -535,6 +580,372 @@
         console.error('Sound-Vorschau fehlgeschlagen', event);
         setStatus('Sound konnte nicht abgespielt werden.', 'error');
       });
+    }
+
+    const buildButtonActionsUI = (definitions) => {
+      if (!buttonActionsContainer) {
+        return;
+      }
+      buttonActionControls.clear();
+      buttonActionsContainer.innerHTML = '';
+      if (!Array.isArray(definitions) || definitions.length === 0) {
+        const empty = document.createElement('p');
+        empty.className = 'hint';
+        empty.textContent = 'Keine konfigurierbaren Tasten gefunden.';
+        buttonActionsContainer.append(empty);
+        return;
+      }
+      const fragment = document.createDocumentFragment();
+      definitions.forEach((definition) => {
+        const code = typeof definition.code === 'string' ? definition.code : '';
+        if (!code) {
+          return;
+        }
+        const label = typeof definition.label === 'string' && definition.label ? definition.label : code;
+        const field = document.createElement('div');
+        field.className = 'field button-action';
+        field.dataset.code = code;
+        const labelEl = document.createElement('label');
+        labelEl.textContent = label;
+        field.append(labelEl);
+        const row = document.createElement('div');
+        row.className = 'button-action-row';
+        const modeSelect = document.createElement('select');
+        modeSelect.className = 'button-action-mode';
+        modeSelect.setAttribute('aria-label', `${label} Aktion`);
+        const optionNone = document.createElement('option');
+        optionNone.value = BUTTON_MODE_NONE;
+        optionNone.textContent = 'Keine Aktion';
+        modeSelect.append(optionNone);
+        const optionMp3 = document.createElement('option');
+        optionMp3.value = BUTTON_MODE_MP3;
+        optionMp3.textContent = 'MP3 abspielen';
+        modeSelect.append(optionMp3);
+        const optionCommand = document.createElement('option');
+        optionCommand.value = BUTTON_MODE_COMMAND;
+        optionCommand.textContent = 'Befehl ausführen';
+        modeSelect.append(optionCommand);
+        row.append(modeSelect);
+        const mp3Wrapper = document.createElement('div');
+        mp3Wrapper.className = 'button-action-mp3';
+        const mp3Select = document.createElement('select');
+        mp3Select.setAttribute('aria-label', `${label} MP3 auswählen`);
+        mp3Wrapper.append(mp3Select);
+        row.append(mp3Wrapper);
+        const commandWrapper = document.createElement('div');
+        commandWrapper.className = 'text-input button-action-command';
+        const commandInput = document.createElement('input');
+        commandInput.type = 'text';
+        commandInput.autocomplete = 'off';
+        commandInput.placeholder = 'sudo …';
+        commandInput.setAttribute('aria-label', `${label} Befehl`);
+        commandWrapper.append(commandInput);
+        row.append(commandWrapper);
+        mp3Wrapper.hidden = true;
+        commandWrapper.hidden = true;
+        field.append(row);
+        fragment.append(field);
+        buttonActionControls.set(code, {
+          container: field,
+          modeSelect,
+          mp3Wrapper,
+          mp3Select,
+          commandWrapper,
+          commandInput,
+        });
+
+        modeSelect.addEventListener('change', () => {
+          if (syncingButtonActions) {
+            return;
+          }
+          const selectedMode = modeSelect.value;
+          const controls = buttonActionControls.get(code);
+          if (!controls) {
+            return;
+          }
+          if (selectedMode === BUTTON_MODE_MP3) {
+            controls.mp3Wrapper.hidden = false;
+            controls.commandWrapper.hidden = true;
+            const value = controls.mp3Select.value;
+            if (value) {
+              saveButtonAction(code, BUTTON_MODE_MP3, value);
+            } else {
+              saveButtonAction(code, BUTTON_MODE_NONE, '');
+            }
+          } else if (selectedMode === BUTTON_MODE_COMMAND) {
+            controls.mp3Wrapper.hidden = true;
+            controls.commandWrapper.hidden = false;
+            controls.commandInput.focus();
+            const trimmed = controls.commandInput.value.trim();
+            if (trimmed) {
+              saveButtonAction(code, BUTTON_MODE_COMMAND, trimmed);
+            } else {
+              saveButtonAction(code, BUTTON_MODE_NONE, '');
+            }
+          } else {
+            controls.mp3Wrapper.hidden = true;
+            controls.commandWrapper.hidden = true;
+            saveButtonAction(code, BUTTON_MODE_NONE, '');
+          }
+        });
+
+        mp3Select.addEventListener('change', () => {
+          if (syncingButtonActions) {
+            return;
+          }
+          const value = mp3Select.value;
+          if (value) {
+            saveButtonAction(code, BUTTON_MODE_MP3, value);
+          } else {
+            saveButtonAction(code, BUTTON_MODE_NONE, '');
+          }
+        });
+
+        const handleCommandSave = () => {
+          if (syncingButtonActions) {
+            return;
+          }
+          const trimmed = commandInput.value.trim();
+          if (trimmed) {
+            saveButtonAction(code, BUTTON_MODE_COMMAND, trimmed);
+          } else {
+            saveButtonAction(code, BUTTON_MODE_NONE, '');
+          }
+        };
+        commandInput.addEventListener('change', handleCommandSave);
+        commandInput.addEventListener('keydown', (event) => {
+          if (event.key === 'Enter') {
+            event.preventDefault();
+            handleCommandSave();
+          }
+        });
+      });
+      buttonActionsContainer.append(fragment);
+    };
+
+    const applyButtonActionToControls = (code, assignment) => {
+      const controls = buttonActionControls.get(code);
+      if (!controls) {
+        return;
+      }
+      const mode = assignment && typeof assignment.mode === 'string'
+        ? assignment.mode.toLowerCase()
+        : BUTTON_MODE_NONE;
+      const value = assignment && typeof assignment.value === 'string' ? assignment.value : '';
+      const normalizedMode = [BUTTON_MODE_NONE, BUTTON_MODE_MP3, BUTTON_MODE_COMMAND].includes(mode)
+        ? mode
+        : BUTTON_MODE_NONE;
+      syncingButtonActions = true;
+      controls.modeSelect.value = normalizedMode;
+      controls.mp3Wrapper.hidden = normalizedMode !== BUTTON_MODE_MP3;
+      controls.commandWrapper.hidden = normalizedMode !== BUTTON_MODE_COMMAND;
+      if (normalizedMode === BUTTON_MODE_COMMAND) {
+        controls.commandInput.value = value || '';
+      } else if (!controls.commandInput.value) {
+        controls.commandInput.value = value || '';
+      }
+      if (normalizedMode !== BUTTON_MODE_MP3) {
+        controls.mp3Select.value = '';
+      }
+      syncingButtonActions = false;
+    };
+
+    const updateButtonMp3Options = () => {
+      if (buttonActionControls.size === 0) {
+        return;
+      }
+      buttonActionControls.forEach((controls, code) => {
+        const select = controls.mp3Select;
+        if (!select) {
+          return;
+        }
+        while (select.firstChild) {
+          select.removeChild(select.firstChild);
+        }
+        const fileList = Array.isArray(currentSoundFiles) ? currentSoundFiles : [];
+        if (fileList.length === 0) {
+          const option = document.createElement('option');
+          option.value = '';
+          option.textContent = 'Keine MP3-Dateien gefunden';
+          select.append(option);
+          select.disabled = true;
+        } else {
+          const placeholder = document.createElement('option');
+          placeholder.value = '';
+          placeholder.textContent = 'MP3 auswählen';
+          select.append(placeholder);
+          fileList.forEach((file) => {
+            const option = document.createElement('option');
+            option.value = file;
+            option.textContent = file;
+            select.append(option);
+          });
+          const assignment = buttonAssignments[code];
+          const target = assignment && assignment.mode === BUTTON_MODE_MP3 && assignment.value
+            ? assignment.value
+            : '';
+          if (target) {
+            const normalized = fileList.find((file) => file.toLowerCase() === target.toLowerCase());
+            if (!normalized) {
+              const missing = document.createElement('option');
+              missing.value = target;
+              missing.textContent = `${target} (nicht gefunden)`;
+              missing.disabled = true;
+              select.append(missing);
+            }
+          }
+          select.disabled = false;
+        }
+        const assignment = buttonAssignments[code];
+        const targetValue = assignment && assignment.mode === BUTTON_MODE_MP3 && assignment.value
+          ? assignment.value
+          : '';
+        const normalized = targetValue
+          ? fileList.find((file) => file.toLowerCase() === targetValue.toLowerCase()) || targetValue
+          : '';
+        syncingButtonActions = true;
+        select.value = normalized || '';
+        syncingButtonActions = false;
+      });
+    };
+
+    const syncButtonActions = (info) => {
+      if (!buttonActionsContainer) {
+        return null;
+      }
+      if (!info || !Array.isArray(info.definitions)) {
+        buttonDefinitions = [];
+        buttonAssignments = {};
+        buttonActionControls.clear();
+        buttonActionsContainer.innerHTML = '';
+        return null;
+      }
+      const normalizedDefinitions = info.definitions
+        .map((item) => {
+          const code = typeof item.code === 'string' ? item.code : '';
+          const label = typeof item.label === 'string' && item.label ? item.label : code;
+          return { code, label };
+        })
+        .filter((item) => item.code);
+      const definitionsChanged =
+        normalizedDefinitions.length !== buttonDefinitions.length
+        || normalizedDefinitions.some((definition, index) => {
+          const previous = buttonDefinitions[index];
+          if (!previous) {
+            return true;
+          }
+          return definition.code !== previous.code || definition.label !== previous.label;
+        });
+      if (definitionsChanged) {
+        buttonDefinitions = normalizedDefinitions;
+        buildButtonActionsUI(buttonDefinitions);
+      } else {
+        buttonDefinitions = normalizedDefinitions;
+      }
+      const assignmentsRaw = info.assignments && typeof info.assignments === 'object' ? info.assignments : {};
+      const nextAssignments = {};
+      buttonDefinitions.forEach((definition) => {
+        const code = definition.code;
+        const entry = assignmentsRaw[code];
+        const mode = entry && typeof entry.mode === 'string' ? entry.mode.toLowerCase() : BUTTON_MODE_NONE;
+        const value = entry && typeof entry.value === 'string' ? entry.value : '';
+        nextAssignments[code] = { mode, value };
+        applyButtonActionToControls(code, nextAssignments[code]);
+      });
+      buttonAssignments = nextAssignments;
+      updateButtonMp3Options();
+      return { definitions: buttonDefinitions, assignments: buttonAssignments };
+    };
+
+    async function saveButtonAction(code, mode, rawValue) {
+      if (!code) {
+        return;
+      }
+      let normalizedMode = typeof mode === 'string' ? mode.toLowerCase() : BUTTON_MODE_NONE;
+      let normalizedValue = '';
+      if (normalizedMode === BUTTON_MODE_MP3) {
+        normalizedValue = typeof rawValue === 'string' ? rawValue.trim() : '';
+        if (!normalizedValue) {
+          normalizedMode = BUTTON_MODE_NONE;
+        }
+      } else if (normalizedMode === BUTTON_MODE_COMMAND) {
+        normalizedValue = typeof rawValue === 'string' ? rawValue.trim() : '';
+        if (!normalizedValue) {
+          normalizedMode = BUTTON_MODE_NONE;
+        }
+      } else {
+        normalizedMode = BUTTON_MODE_NONE;
+      }
+      const currentAssignment = buttonAssignments[code];
+      const currentMode = currentAssignment ? currentAssignment.mode : BUTTON_MODE_NONE;
+      const currentValue = currentAssignment ? (currentAssignment.value || '') : '';
+      if (
+        normalizedMode === currentMode
+        && (normalizedMode === BUTTON_MODE_NONE || normalizedValue === currentValue)
+      ) {
+        return;
+      }
+      const entry = { mode: normalizedMode };
+      if (normalizedMode !== BUTTON_MODE_NONE) {
+        entry.value = normalizedValue;
+      }
+      const payload = { button_actions: { [code]: entry } };
+      const currentDevice = audioSelect.value;
+      if (currentDevice) {
+        payload.audio_device = currentDevice;
+      }
+      try {
+        setStatus('Speichere Tasten-Aktion …');
+        const resp = await fetch('/api/control', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        if (!resp.ok) {
+          throw new Error(`Status ${resp.status}`);
+        }
+        const data = await resp.json();
+        const selected = typeof data.audio_device === 'string' ? data.audio_device : null;
+        syncAudioSelection(data.audio_outputs, selected);
+        const volumeValue = syncVolume(data.audio_volume);
+        syncMotorLimits(data.motor_limits);
+        syncSteeringAngles(data.steering_angles);
+        const soundInfo = syncSoundSettings(data.sound);
+        const buttonInfo = syncButtonActions(data.button_actions);
+        let success = false;
+        if (buttonInfo && buttonInfo.assignments && buttonInfo.assignments[code]) {
+          const saved = buttonInfo.assignments[code];
+          if (normalizedMode === BUTTON_MODE_NONE) {
+            success = !saved || saved.mode === BUTTON_MODE_NONE || !saved.mode;
+          } else if (normalizedMode === BUTTON_MODE_MP3) {
+            success = saved.mode === BUTTON_MODE_MP3
+              && saved.value
+              && saved.value.toLowerCase() === normalizedValue.toLowerCase();
+          } else if (normalizedMode === BUTTON_MODE_COMMAND) {
+            success = saved.mode === BUTTON_MODE_COMMAND && saved.value === normalizedValue;
+          }
+        }
+        if (success) {
+          const messages = [];
+          if (selected) {
+            if (volumeValue !== null) {
+              messages.push('Audio-Ausgabe & Lautstärke synchronisiert');
+            } else {
+              messages.push('Audio-Ausgabe synchronisiert');
+            }
+          }
+          if (soundInfo && Array.isArray(soundInfo.files) && soundInfo.files.length === 0) {
+            messages.push('Keine MP3-Dateien gefunden');
+          }
+          messages.push('Tasten-Aktion gespeichert');
+          setStatus(`${messages.join(' · ')}.`, 'success');
+        } else {
+          setStatus('Tasten-Aktion konnte nicht gespeichert werden.', 'error');
+        }
+      } catch (err) {
+        console.error('Speichern der Tasten-Aktion fehlgeschlagen', err);
+        setStatus('Tasten-Aktion konnte nicht gespeichert werden.', 'error');
+      }
     }
 
     const setStatus = (message, tone = '') => {
@@ -928,6 +1339,8 @@
         connectedSoundSelect.append(connectedOption);
         connectedSoundSelect.disabled = true;
         connectedSoundSelect.value = '';
+        currentSoundFiles = [];
+        updateButtonMp3Options();
         updatePreviewButtonState();
         return null;
       }
@@ -954,7 +1367,7 @@
         connectedSoundSelect.append(connectedOption);
         connectedSoundSelect.disabled = true;
         connectedSoundSelect.value = '';
-        updatePreviewButtonState();
+        currentSoundFiles = [];
       } else {
         const noneOption = document.createElement('option');
         noneOption.value = '';
@@ -982,7 +1395,9 @@
         connectedSelected = normalizedConnected || '';
         connectedSoundSelect.value = connectedSelected;
         connectedSoundSelect.disabled = false;
+        currentSoundFiles = files.slice();
       }
+      updateButtonMp3Options();
       updatePreviewButtonState();
       return {
         directory,
@@ -1006,6 +1421,7 @@
         const motorValues = syncMotorLimits(data.motor_limits);
         const steeringValues = syncSteeringAngles(data.steering_angles);
         const soundInfo = syncSoundSettings(data.sound);
+        const buttonInfo = syncButtonActions(data.button_actions);
         const messageParts = [];
         let tone = '';
         if (current) {
@@ -1041,6 +1457,12 @@
             tone = 'success';
           }
         }
+        if (buttonInfo) {
+          messageParts.push('Tasten-Aktionen geladen');
+          if (!tone) {
+            tone = 'success';
+          }
+        }
         const message = messageParts.length > 0 ? `${messageParts.join(' · ')}.` : '';
         setStatus(message, tone);
       } catch (err) {
@@ -1050,6 +1472,7 @@
         syncMotorLimits(null);
         syncSteeringAngles(null);
         syncSoundSettings(null);
+        syncButtonActions(null);
       }
     }
 
@@ -1073,6 +1496,7 @@
         syncMotorLimits(data.motor_limits);
         syncSteeringAngles(data.steering_angles);
         syncSoundSettings(data.sound);
+        syncButtonActions(data.button_actions);
         if (volumeValue !== null) {
           setStatus('Audio-Ausgabe und Lautstärke gespeichert.', 'success');
         } else {
@@ -1113,6 +1537,7 @@
         syncSteeringAngles(data.steering_angles);
         const updated = syncVolume(data.audio_volume);
         syncSoundSettings(data.sound);
+        syncButtonActions(data.button_actions);
         if (updated !== null) {
           setStatus('Lautstärke gespeichert.', 'success');
         } else {
@@ -1155,6 +1580,7 @@
         syncMotorLimits(data.motor_limits);
         syncSteeringAngles(data.steering_angles);
         const soundInfo = syncSoundSettings(data.sound);
+        syncButtonActions(data.button_actions);
         const hasFiles = !!soundInfo && soundInfo.files.length > 0;
         setStatus(
           hasFiles
@@ -1197,6 +1623,7 @@
         syncSteeringAngles(data.steering_angles);
         syncVolume(data.audio_volume);
         const soundInfo = syncSoundSettings(data.sound);
+        syncButtonActions(data.button_actions);
         if (soundInfo && soundInfo.startSound && soundInfo.startSound.toLowerCase() === value.toLowerCase()) {
           setStatus('Startsound gespeichert.', 'success');
         } else {
@@ -1234,6 +1661,7 @@
         syncSteeringAngles(data.steering_angles);
         syncVolume(data.audio_volume);
         const soundInfo = syncSoundSettings(data.sound);
+        syncButtonActions(data.button_actions);
         const requested = value ? value.toLowerCase() : '';
         const saved = soundInfo && typeof soundInfo.connectedSound === 'string'
           ? soundInfo.connectedSound.toLowerCase()
@@ -1274,6 +1702,7 @@
         syncSteeringAngles(data.steering_angles);
         syncVolume(data.audio_volume);
         syncSoundSettings(data.sound);
+        syncButtonActions(data.button_actions);
         setStatus('Motor-Grenzen gespeichert.', 'success');
       } catch (err) {
         console.error('Speichern der Motor-Grenzen fehlgeschlagen', err);
@@ -1305,6 +1734,7 @@
         syncMotorLimits(data.motor_limits);
         syncVolume(data.audio_volume);
         syncSoundSettings(data.sound);
+        syncButtonActions(data.button_actions);
         const updated = syncSteeringAngles(data.steering_angles);
         if (updated) {
           setStatus('Lenkwinkel gespeichert.', 'success');

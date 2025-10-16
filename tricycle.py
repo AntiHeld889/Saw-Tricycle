@@ -81,6 +81,27 @@ GAMEPAD_NAME_EXACT   = "8BitDo Ultimate C 2.4G Wireless Controller"
 GAMEPAD_NAME_FALLBACK= "8BitDo"
 WAIT_FOR_DEVICE_S    = 5.0
 
+BUTTON_LAYOUT = [
+    ("KEY_304", "A Button"),
+    ("KEY_305", "B Button"),
+    ("KEY_307", "X Button"),
+    ("KEY_308", "Y Button"),
+    ("KEY_310", "LB Button"),
+    ("KEY_311", "RB Button"),
+    ("KEY_314", "Minus Button"),
+    ("KEY_315", "Plus Button"),
+    ("KEY_316", "Stern Button"),
+    ("KEY_317", "Motor Button"),
+    ("KEY_318", "Lenkungs Button"),
+]
+
+BUTTON_CODE_SET = {entry[0] for entry in BUTTON_LAYOUT}
+BUTTON_DEFINITIONS = [{"code": code, "label": label} for code, label in BUTTON_LAYOUT]
+
+BUTTON_MODE_NONE = "none"
+BUTTON_MODE_MP3 = "mp3"
+BUTTON_MODE_COMMAND = "command"
+
 # ---- Servo 1 (Lenkung auf ABS_Z) ----
 GPIO_PIN_SERVO       = 17
 US_MIN               = 600
@@ -183,6 +204,36 @@ from evdev import InputDevice, ecodes, list_devices
 import pigpio
 
 from webui import load_asset
+
+
+def _resolve_button_event_code(code_str):
+    if not isinstance(code_str, str):
+        return None
+    # Bevorzugt das Mapping aus der ecodes-Tabelle, da hier auch Alias-Namen
+    # (z. B. BTN_SOUTH, KEY_304, ...) hinterlegt sind.
+    event_code = ecodes.ecodes.get(code_str)
+    if isinstance(event_code, int):
+        return event_code
+    event_code = getattr(ecodes, code_str, None)
+    if isinstance(event_code, int):
+        return event_code
+    # KEY_304 etc. enthalten bereits die numerische Event-ID als Suffix.
+    prefix, sep, suffix = code_str.rpartition("_")
+    if sep and suffix.isdigit():
+        try:
+            return int(suffix)
+        except ValueError:
+            return None
+    return None
+
+
+BUTTON_CODE_TO_EVENT = {}
+BUTTON_EVENT_TO_CODE = {}
+for code_str, _label in BUTTON_LAYOUT:
+    event_code = _resolve_button_event_code(code_str)
+    if isinstance(event_code, int):
+        BUTTON_CODE_TO_EVENT[code_str] = event_code
+        BUTTON_EVENT_TO_CODE[event_code] = code_str
 
 
 def _default_state_dir():
@@ -419,6 +470,69 @@ def sanitize_start_sound(name, available_files=None):
     return lookup.get(raw.lower())
 
 
+def sanitize_button_command(command):
+    if command is None:
+        return None
+    try:
+        raw = str(command)
+    except Exception:
+        return None
+    trimmed = raw.strip()
+    return trimmed or None
+
+
+def sanitize_button_action(code, value, available_files=None):
+    if code is None:
+        return None
+    try:
+        code_str = str(code)
+    except Exception:
+        return None
+    if code_str not in BUTTON_CODE_SET:
+        return None
+    if value is None:
+        return None
+    if isinstance(value, str):
+        # Für einfache Werte wie "mp3:Datei"
+        value = {"mode": value}
+    if not isinstance(value, dict):
+        return None
+    mode_raw = value.get("mode")
+    mode = str(mode_raw).strip().lower() if isinstance(mode_raw, str) else None
+    if not mode:
+        return None
+    if mode == BUTTON_MODE_MP3:
+        mp3_value = sanitize_start_sound(value.get("value"), available_files)
+        if mp3_value:
+            return {"mode": BUTTON_MODE_MP3, "value": mp3_value}
+        return None
+    if mode == BUTTON_MODE_COMMAND:
+        command = sanitize_button_command(value.get("value"))
+        if command:
+            return {"mode": BUTTON_MODE_COMMAND, "value": command}
+        return None
+    if mode == BUTTON_MODE_NONE:
+        return None
+    return None
+
+
+def normalize_button_actions_map(raw_map, available_files=None):
+    normalized = {}
+    if not isinstance(raw_map, dict):
+        return normalized
+    for key, value in raw_map.items():
+        try:
+            code = str(key)
+        except Exception:
+            continue
+        if code not in BUTTON_CODE_SET:
+            continue
+        sanitized = sanitize_button_action(code, value, available_files)
+        if sanitized is not None:
+            normalized[code] = sanitized
+    return normalized
+
+
 def list_mp3_files(directory):
     try:
         path = Path(directory)
@@ -485,6 +599,24 @@ def persist_sound_settings(*, directory=_UNSET, start_sound=_UNSET, connected_so
         else:
             sound_state["connected_sound"] = connected_sound
     payload["sound"] = sound_state
+    return _persist_state(payload)
+
+
+def load_persisted_button_actions():
+    data = _load_persisted_state()
+    raw_actions = data.get("button_actions") if isinstance(data, dict) else None
+    if not isinstance(raw_actions, dict):
+        return {}
+    return normalize_button_actions_map(raw_actions)
+
+
+def persist_button_actions(actions):
+    payload = _load_persisted_state()
+    sanitized = normalize_button_actions_map(actions)
+    if sanitized:
+        payload["button_actions"] = sanitized
+    else:
+        payload.pop("button_actions", None)
     return _persist_state(payload)
 
 
@@ -802,6 +934,7 @@ class WebControlState:
         initial_sound_directory=None,
         initial_start_sound=None,
         initial_connected_sound=None,
+        initial_button_actions=None,
         battery_monitor=None,
     ):
         self._lock = threading.Lock()
@@ -827,6 +960,7 @@ class WebControlState:
         self._sound_files = []
         self._start_sound = sanitize_start_sound(initial_start_sound)
         self._connected_sound = sanitize_start_sound(initial_connected_sound)
+        self._button_actions = normalize_button_actions_map(initial_button_actions)
         self._refresh_sound_files_locked()
         self._motor_limit_forward = MOTOR_LIMIT_FWD
         self._motor_limit_reverse = MOTOR_LIMIT_REV
@@ -868,6 +1002,14 @@ class WebControlState:
     def _refresh_sound_files_locked(self):
         self._sound_files = list_mp3_files(self._sound_directory)
         self._ensure_sound_selections_locked()
+        return self._sanitize_existing_button_actions_locked()
+
+    def _sanitize_existing_button_actions_locked(self):
+        sanitized = normalize_button_actions_map(self._button_actions, self._sound_files)
+        if sanitized != self._button_actions:
+            self._button_actions = sanitized
+            return True
+        return False
 
     def _ensure_sound_selections_locked(self):
         if not self._sound_files:
@@ -891,6 +1033,48 @@ class WebControlState:
             "start_sound": self._start_sound,
             "connected_sound": self._connected_sound,
         }
+
+    def _build_button_actions_snapshot_locked(self):
+        assignments = {}
+        for definition in BUTTON_DEFINITIONS:
+            code = definition["code"]
+            entry = self._button_actions.get(code)
+            if not entry:
+                assignments[code] = {"mode": BUTTON_MODE_NONE, "value": None}
+            else:
+                assignments[code] = {
+                    "mode": entry.get("mode", BUTTON_MODE_NONE),
+                    "value": entry.get("value"),
+                }
+        return {
+            "definitions": [dict(item) for item in BUTTON_DEFINITIONS],
+            "assignments": assignments,
+        }
+
+    def _apply_button_action_updates_locked(self, updates):
+        if not isinstance(updates, dict) or not updates:
+            return False
+        changed = False
+        for key, value in updates.items():
+            try:
+                code = str(key)
+            except Exception:
+                continue
+            if code not in BUTTON_CODE_SET:
+                continue
+            sanitized = sanitize_button_action(code, value, self._sound_files)
+            if sanitized is None:
+                if code in self._button_actions:
+                    del self._button_actions[code]
+                    changed = True
+                continue
+            existing = self._button_actions.get(code)
+            if existing != sanitized:
+                self._button_actions[code] = sanitized
+                changed = True
+        if changed:
+            self._sanitize_existing_button_actions_locked()
+        return changed
 
     def get_sound_file_path(self, filename):
         if filename is None:
@@ -957,6 +1141,7 @@ class WebControlState:
         sound_directory=None,
         start_sound=None,
         connected_sound=None,
+        button_actions=None,
     ):
         new_audio_id = None
         persist_audio_id = None
@@ -965,6 +1150,7 @@ class WebControlState:
         motor_limits_to_persist = None
         steering_angles_to_persist = None
         sound_settings_to_persist = None
+        button_actions_to_persist = None
         with self._lock:
             previous_directory = self._sound_directory
             previous_start_sound = self._start_sound
@@ -1030,12 +1216,15 @@ class WebControlState:
                     steering_angles_to_persist = sanitized
             if sound_directory is not None:
                 sanitized_dir = sanitize_sound_directory(sound_directory)
+                refreshed = False
                 if sanitized_dir:
                     if sanitized_dir != self._sound_directory:
                         self._sound_directory = sanitized_dir
-                    self._refresh_sound_files_locked()
+                    refreshed = self._refresh_sound_files_locked()
                 else:
-                    self._refresh_sound_files_locked()
+                    refreshed = self._refresh_sound_files_locked()
+                if refreshed:
+                    button_actions_to_persist = dict(self._button_actions)
             if start_sound is not None:
                 sanitized_sound = sanitize_start_sound(start_sound, self._sound_files)
                 if sanitized_sound is not None and sanitized_sound != self._start_sound:
@@ -1049,6 +1238,9 @@ class WebControlState:
                     if self._connected_sound is not None:
                         self._connected_sound = None
             self._ensure_sound_selections_locked()
+            if button_actions is not None:
+                if self._apply_button_action_updates_locked(button_actions):
+                    button_actions_to_persist = dict(self._button_actions)
             if (
                 self._sound_directory != previous_directory
                 or self._start_sound != previous_start_sound
@@ -1072,6 +1264,8 @@ class WebControlState:
             persist_steering_angles(steering_angles_to_persist)
         if sound_settings_to_persist is not None:
             persist_sound_settings(**sound_settings_to_persist)
+        if button_actions_to_persist is not None:
+            persist_button_actions(button_actions_to_persist)
         if new_audio_id is not None:
             apply_audio_output(new_audio_id)
         if apply_volume_change is not None:
@@ -1109,6 +1303,7 @@ class WebControlState:
                 {"id": cfg["id"], "label": cfg["label"]}
                 for cfg in AUDIO_OUTPUTS
             ],
+            "button_actions": self._build_button_actions_snapshot_locked(),
             "sound": self._build_sound_snapshot_locked(),
             "audio_volume": self._build_volume_snapshot_locked(),
             "last_update": self._last_update,
@@ -1129,6 +1324,19 @@ class WebControlState:
             return self._battery_monitor.get_state()
         except Exception:
             return {"status": "error"}
+
+    def get_button_action(self, code):
+        try:
+            code_str = str(code)
+        except Exception:
+            return None
+        if code_str not in BUTTON_CODE_SET:
+            return None
+        with self._lock:
+            entry = self._button_actions.get(code_str)
+            if not entry:
+                return None
+            return dict(entry)
 
     def get_selected_alsa_device(self):
         with self._lock:
@@ -1267,6 +1475,7 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
                 sound_directory=data.get("sound_directory"),
                 start_sound=data.get("start_sound"),
                 connected_sound=data.get("connected_sound"),
+                button_actions=data.get("button_actions"),
             )
 
         body = json.dumps(state)
@@ -1596,6 +1805,7 @@ def main():
     persisted_audio = load_persisted_audio_state()
     persisted_motor_limits = load_persisted_motor_limits()
     persisted_sound = load_persisted_sound_settings()
+    persisted_button_actions = load_persisted_button_actions()
     battery_monitor = BatteryMonitor()
 
     web_state = WebControlState(
@@ -1606,6 +1816,7 @@ def main():
         initial_sound_directory=persisted_sound.get("directory"),
         initial_start_sound=persisted_sound.get("start_sound"),
         initial_connected_sound=persisted_sound.get("connected_sound"),
+        initial_button_actions=persisted_button_actions,
         battery_monitor=battery_monitor,
     )
     web_server = None
@@ -1704,6 +1915,28 @@ def main():
                             elif e.value ==  1: head_target = HEAD_RIGHT_DEG
                         elif e.code == ecodes.ABS_HAT0Y:
                             if e.value == -1: head_target = HEAD_CENTER_DEG
+                    if e.type == ecodes.EV_KEY and e.value == 1:
+                        button_code = BUTTON_EVENT_TO_CODE.get(e.code)
+                        if button_code:
+                            action = web_state.get_button_action(button_code)
+                            if action:
+                                mode = action.get("mode")
+                                if mode == BUTTON_MODE_MP3:
+                                    file_name = action.get("value")
+                                    if file_name:
+                                        path = web_state.get_sound_file_path(file_name)
+                                        if path and os.path.isfile(path):
+                                            play_sound_switch(path, web_state.get_selected_alsa_device())
+                                elif mode == BUTTON_MODE_COMMAND:
+                                    command = action.get("value")
+                                    if command:
+                                        try:
+                                            subprocess.Popen(command, shell=True)
+                                        except Exception as exc:
+                                            print(
+                                                f"[Button] Kommando konnte nicht gestartet werden ({button_code}): {exc}",
+                                                file=sys.stderr,
+                                            )
 
                     e = dev.read_one()
             except OSError:
