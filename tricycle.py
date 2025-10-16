@@ -6,7 +6,6 @@
 # =========================
 
 # ---- Audio & Dateien ----
-SOUND_DIRECTORY_DEFAULT = "/opt/python/sawsounds"
 ALSA_HP_DEVICE       = "plughw:0,0"           # Analoger Kopfhörer-Ausgang (mit 'aplay -l' prüfen)
 ALSA_USB_DEVICE      = "plughw:1,0"           # USB-Soundkarte (mit 'aplay -l' prüfen)
 HEADPHONE_VOLUME_DEFAULT = 100
@@ -549,8 +548,10 @@ def sanitize_sounds(name, available_files=None):
         return None
     if not raw:
         return None
-    if not available_files:
+    if available_files is None:
         return raw
+    if not available_files:
+        return None
     lookup = {candidate.lower(): candidate for candidate in available_files if isinstance(candidate, str)}
     return lookup.get(raw.lower())
 
@@ -653,8 +654,6 @@ def load_persisted_sound_settings():
             connected_sound = None
         soundboard_port = sanitize_soundboard_port(stored.get("soundboard_port"))
         camera_port = sanitize_camera_port(stored.get("camera_port"))
-    if not directory:
-        directory = SOUND_DIRECTORY_DEFAULT
     return {
         "directory": directory,
         "connected_sound": connected_sound,
@@ -1082,7 +1081,7 @@ class WebControlState:
                 key_str = str(key)
                 self._audio_volumes[key_str] = sanitized
         self._ensure_volume_defaults_locked(self._audio_device)
-        initial_directory = sanitize_sound_directory(initial_sound_directory) or SOUND_DIRECTORY_DEFAULT
+        initial_directory = sanitize_sound_directory(initial_sound_directory)
         self._sound_directory = initial_directory
         self._sound_files = []
         self._connected_sound = sanitize_sounds(initial_connected_sound)
@@ -1350,12 +1349,16 @@ class WebControlState:
             if sound_directory is not None:
                 sanitized_dir = sanitize_sound_directory(sound_directory)
                 refreshed = False
-                if sanitized_dir:
+                if sanitized_dir is None:
+                    if self._sound_directory is not None:
+                        self._sound_directory = None
+                        refreshed = self._refresh_sound_files_locked()
+                    else:
+                        refreshed = self._refresh_sound_files_locked()
+                else:
                     if sanitized_dir != self._sound_directory:
                         self._sound_directory = sanitized_dir
-                    refreshed = self._refresh_sound_files_locked()
-                else:
-                    refreshed = self._refresh_sound_files_locked()
+                        refreshed = self._refresh_sound_files_locked()
                 if refreshed:
                     button_actions_to_persist = dict(self._button_actions)
             if connected_sound is not None:
@@ -1649,8 +1652,6 @@ def start_webserver(state):
 def validate_configuration():
     """Validiert zentrale Konfigurationsparameter beim Programmstart."""
 
-    if not os.path.isabs(SOUND_DIRECTORY_DEFAULT):
-        raise ValueError("SOUND_DIRECTORY_DEFAULT muss ein absoluter Pfad sein")
 
     if US_MIN >= US_MAX:
         raise ValueError("US_MIN muss kleiner als US_MAX sein")
