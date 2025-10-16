@@ -74,6 +74,8 @@ DEFAULT_AUDIO_OUTPUT_ID = AUDIO_OUTPUTS[0]["id"] if AUDIO_OUTPUTS else None
 # Gleiches File bei erneutem Tastendruck neu starten?
 RESTART_SAME_TRACK   = True
 
+_UNSET = object()
+
 # Sound-Tastenbelegung (NUMERISCHE Codes; siehe evdev Events)
 SOUND_KEY_MAP = {
     310: "/opt/python/sawsounds/Soundtrack.mp3",  # KEY_310
@@ -453,6 +455,7 @@ def load_persisted_sound_settings():
     stored = data.get("sound") if isinstance(data, dict) else {}
     directory = None
     start_sound = None
+    connected_sound = None
     if isinstance(stored, dict):
         directory = sanitize_sound_directory(stored.get("directory"))
         start_sound = stored.get("start_sound")
@@ -460,22 +463,42 @@ def load_persisted_sound_settings():
             start_sound = os.path.basename(start_sound.strip()) or None
         else:
             start_sound = None
+        connected_sound = stored.get("connected_sound")
+        if isinstance(connected_sound, str):
+            connected_sound = os.path.basename(connected_sound.strip()) or None
+        else:
+            connected_sound = None
     if not directory:
         directory = SOUND_DIRECTORY_DEFAULT
     if not start_sound:
         start_sound = START_SOUND_DEFAULT
-    return {"directory": directory, "start_sound": start_sound}
+    return {
+        "directory": directory,
+        "start_sound": start_sound,
+        "connected_sound": connected_sound,
+    }
 
 
-def persist_sound_settings(*, directory=None, start_sound=None):
+def persist_sound_settings(*, directory=_UNSET, start_sound=_UNSET, connected_sound=_UNSET):
     payload = _load_persisted_state()
     sound_state = payload.get("sound") if isinstance(payload, dict) else {}
     if not isinstance(sound_state, dict):
         sound_state = {}
-    if directory is not None:
-        sound_state["directory"] = directory
-    if start_sound is not None:
-        sound_state["start_sound"] = start_sound
+    if directory is not _UNSET:
+        if directory is None:
+            sound_state.pop("directory", None)
+        else:
+            sound_state["directory"] = directory
+    if start_sound is not _UNSET:
+        if start_sound is None:
+            sound_state.pop("start_sound", None)
+        else:
+            sound_state["start_sound"] = start_sound
+    if connected_sound is not _UNSET:
+        if connected_sound is None:
+            sound_state.pop("connected_sound", None)
+        else:
+            sound_state["connected_sound"] = connected_sound
     payload["sound"] = sound_state
     return _persist_state(payload)
 
@@ -793,6 +816,7 @@ class WebControlState:
         initial_steering_angles=None,
         initial_sound_directory=None,
         initial_start_sound=None,
+        initial_connected_sound=None,
         battery_monitor=None,
     ):
         self._lock = threading.Lock()
@@ -817,6 +841,7 @@ class WebControlState:
         self._sound_directory = initial_directory
         self._sound_files = []
         self._start_sound = sanitize_start_sound(initial_start_sound)
+        self._connected_sound = sanitize_start_sound(initial_connected_sound)
         self._refresh_sound_files_locked()
         self._motor_limit_forward = MOTOR_LIMIT_FWD
         self._motor_limit_reverse = MOTOR_LIMIT_REV
@@ -857,28 +882,29 @@ class WebControlState:
 
     def _refresh_sound_files_locked(self):
         self._sound_files = list_mp3_files(self._sound_directory)
-        self._ensure_start_sound_locked()
+        self._ensure_sound_selections_locked()
 
-    def _ensure_start_sound_locked(self):
+    def _ensure_sound_selections_locked(self):
         if not self._sound_files:
             self._start_sound = None
+            self._connected_sound = None
             return None
-        normalized = sanitize_start_sound(self._start_sound, self._sound_files)
-        if normalized:
-            self._start_sound = normalized
-            return normalized
-        preferred = sanitize_start_sound(START_SOUND_DEFAULT, self._sound_files)
-        if preferred:
-            self._start_sound = preferred
-            return preferred
-        self._start_sound = None
-        return None
+        normalized_start = sanitize_start_sound(self._start_sound, self._sound_files)
+        if normalized_start:
+            self._start_sound = normalized_start
+        else:
+            preferred = sanitize_start_sound(START_SOUND_DEFAULT, self._sound_files)
+            self._start_sound = preferred if preferred else None
+        normalized_connected = sanitize_start_sound(self._connected_sound, self._sound_files)
+        self._connected_sound = normalized_connected
+        return self._start_sound
 
     def _build_sound_snapshot_locked(self):
         return {
             "directory": self._sound_directory,
             "files": list(self._sound_files),
             "start_sound": self._start_sound,
+            "connected_sound": self._connected_sound,
         }
 
     def _build_volume_snapshot_locked(self):
@@ -918,6 +944,7 @@ class WebControlState:
         steering_angles=None,
         sound_directory=None,
         start_sound=None,
+        connected_sound=None,
     ):
         new_audio_id = None
         persist_audio_id = None
@@ -929,6 +956,7 @@ class WebControlState:
         with self._lock:
             previous_directory = self._sound_directory
             previous_start_sound = self._start_sound
+            previous_connected_sound = self._connected_sound
             if override is not None:
                 self._override = bool(override)
             if motor is not None:
@@ -1000,14 +1028,24 @@ class WebControlState:
                 sanitized_sound = sanitize_start_sound(start_sound, self._sound_files)
                 if sanitized_sound is not None and sanitized_sound != self._start_sound:
                     self._start_sound = sanitized_sound
-            self._ensure_start_sound_locked()
+            if connected_sound is not None:
+                sanitized_connected = sanitize_start_sound(connected_sound, self._sound_files)
+                if sanitized_connected is not None:
+                    if sanitized_connected != self._connected_sound:
+                        self._connected_sound = sanitized_connected
+                elif not connected_sound:
+                    if self._connected_sound is not None:
+                        self._connected_sound = None
+            self._ensure_sound_selections_locked()
             if (
                 self._sound_directory != previous_directory
                 or self._start_sound != previous_start_sound
+                or self._connected_sound != previous_connected_sound
             ):
                 sound_settings_to_persist = {
                     "directory": self._sound_directory,
                     "start_sound": self._start_sound,
+                    "connected_sound": self._connected_sound,
                 }
             self._last_update = time.time()
             snapshot = self.snapshot_locked()
@@ -1096,6 +1134,14 @@ class WebControlState:
             return None
         return str(Path(directory) / filename)
 
+    def get_connected_sound_path(self):
+        with self._lock:
+            directory = self._sound_directory
+            filename = self._connected_sound
+        if not directory or not filename:
+            return None
+        return str(Path(directory) / filename)
+
     def apply_current_audio_output(self):
         with self._lock:
             audio_id = self._audio_device
@@ -1175,6 +1221,7 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
                 steering_angles=data.get("steering_angles"),
                 sound_directory=data.get("sound_directory"),
                 start_sound=data.get("start_sound"),
+                connected_sound=data.get("connected_sound"),
             )
 
         body = json.dumps(state)
@@ -1513,6 +1560,7 @@ def main():
         initial_steering_angles=persisted_steering,
         initial_sound_directory=persisted_sound.get("directory"),
         initial_start_sound=persisted_sound.get("start_sound"),
+        initial_connected_sound=persisted_sound.get("connected_sound"),
         battery_monitor=battery_monitor,
     )
     web_server = None
@@ -1523,15 +1571,18 @@ def main():
         print(f"Webserver konnte nicht gestartet werden: {exc}", file=sys.stderr)
         web_server = None
 
-
-    # Gamepad
-    dev = find_gamepad()
-
-    # Startsound nach erfolgreicher Verbindung
+    # Audioausgabe und Startsound direkt beim Start anwenden
     web_state.apply_current_audio_output()
     start_sound_path = web_state.get_start_sound_path()
     if start_sound_path and os.path.isfile(start_sound_path):
         play_sound_switch(start_sound_path, web_state.get_selected_alsa_device())
+
+    # Gamepad
+    dev = find_gamepad()
+
+    connected_sound_path = web_state.get_connected_sound_path()
+    if connected_sound_path and os.path.isfile(connected_sound_path):
+        play_sound_switch(connected_sound_path, web_state.get_selected_alsa_device())
 
     caps = dev.capabilities()
     if ecodes.EV_ABS not in caps:
