@@ -76,9 +76,6 @@ RESTART_SAME_TRACK   = True
 
 _UNSET = object()
 
-# Sound-Tastenbelegung (NUMERISCHE Codes; siehe evdev Events)
-SOUND_KEY_MAP = {}
-
 # ---- Gamepad ----
 GAMEPAD_NAME_EXACT   = "8BitDo Ultimate C 2.4G Wireless Controller"
 GAMEPAD_NAME_FALLBACK= "8BitDo"
@@ -117,10 +114,6 @@ NEUTRAL_SNAP_S       = 0.15
 SERVO_SAFE_START_S   = 0.8
 SERVO_ARM_NEUTRAL_MS = 400
 SERVO_NEUTRAL_THRESH = 0.08
-
-# Buttons
-BTN_CENTER_NAME      = "BTN_SOUTH"  # A
-BTN_QUIT_NAME        = "BTN_START"  # Start
 
 # ---- Motor (Cytron MD13S) ----
 MOTOR_AXIS_CENTERED_NAME = "ABS_Y"
@@ -1579,9 +1572,9 @@ def main():
         apply_steering_angles(DEFAULT_STEERING_ANGLES)
     validate_configuration()
 
-    # Button-/Achskonstanten aus Namen auflösen
-    BTN_CENTER = getattr(ecodes, BTN_CENTER_NAME)
-    BTN_QUIT   = getattr(ecodes, BTN_QUIT_NAME)
+    # Button-/Achskonstanten
+    BTN_CENTER = ecodes.BTN_SOUTH
+    BTN_QUIT   = ecodes.BTN_START
 
     MOTOR_AXIS_CENTERED = getattr(ecodes, MOTOR_AXIS_CENTERED_NAME)
     MOTOR_AXIS_GAS      = getattr(ecodes, MOTOR_AXIS_GAS_NAME)
@@ -1710,8 +1703,6 @@ def main():
                             last_zero_ts = now
                         elif e.code == BTN_QUIT:
                             raise KeyboardInterrupt
-                        elif e.code in SOUND_KEY_MAP:
-                            play_sound_switch(SOUND_KEY_MAP[e.code], web_state.get_selected_alsa_device())
 
                     elif e.type == ecodes.EV_ABS and now >= safe_start_head_until:
                         # Kopfservo LATCHEND via D-Pad:
