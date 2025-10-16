@@ -1781,10 +1781,6 @@ def main():
         apply_steering_angles(DEFAULT_STEERING_ANGLES)
     validate_configuration()
 
-    # Button-/Achskonstanten
-    BTN_CENTER = ecodes.BTN_SOUTH
-    BTN_QUIT   = ecodes.BTN_START
-
     MOTOR_AXIS_CENTERED = getattr(ecodes, MOTOR_AXIS_CENTERED_NAME)
     MOTOR_AXIS_GAS      = getattr(ecodes, MOTOR_AXIS_GAS_NAME)
     MOTOR_AXIS_BRAKE    = getattr(ecodes, MOTOR_AXIS_BRAKE_NAME)
