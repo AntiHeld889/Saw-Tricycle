@@ -106,6 +106,11 @@
       flex-direction: column;
       gap: 0.55rem;
     }
+    .motor-limits {
+      display: flex;
+      flex-direction: column;
+      gap: 0.55rem;
+    }
     .steering-grid {
       display: grid;
       gap: 0.75rem;
@@ -199,7 +204,6 @@
       border: 1px solid rgba(229,9,20,0.4);
       background: rgba(229,9,20,0.16);
       color: #fff;
-      text-decoration: none;
       font-size: 0.95rem;
       font-weight: 600;
       cursor: pointer;
@@ -407,15 +411,6 @@
         </div>
       </div>
       <div class="field">
-        <label for="cameraPort">Kamera Port/Pfad</label>
-        <div class="text-input">
-          <input id="cameraPort" type="text" autocomplete="off" placeholder="8080/cam" aria-label="Port und optionaler Pfad für die Kamera">
-        </div>
-        <div class="button-row">
-          <button type="button" class="button" id="cameraPortSave">Adresse speichern</button>
-        </div>
-      </div>
-      <div class="field">
         <label for="startSound">Startsound</label>
         <div class="sound-row">
           <select id="startSound" aria-label="Startsound auswählen"></select>
@@ -439,16 +434,6 @@
       <h2>Gamepad-Tasten</h2>
       <p class="hint">Wähle pro Taste eine MP3 aus oder hinterlege einen Raspberry&nbsp;Pi Befehl.</p>
       <div id="buttonActionsContainer" class="button-actions" aria-live="polite"></div>
-      <div class="field">
-        <label for="disconnectCommand">Befehl bei Gamepad-Verlust</label>
-        <div class="text-input">
-          <input id="disconnectCommand" type="text" inputmode="text" autocomplete="off" placeholder="sudo systemctl restart ..." aria-label="Befehl, der bei Gamepad-Trennung ausgeführt wird">
-        </div>
-        <div class="button-row">
-          <button type="button" class="button" id="disconnectCommandSave">Befehl speichern</button>
-        </div>
-        <p class="hint">Wird ausgeführt, sobald die Verbindung zum Gamepad abbricht.</p>
-      </div>
     </section>
     <section class="settings-section">
       <h2>Lenkwinkel</h2>
@@ -478,10 +463,21 @@
       </div>
     </section>
     <section class="settings-section">
-      <h2>Weitere Einstellungen</h2>
-      <p class="hint">GPIO-Belegung für Servos und Motor konfigurieren.</p>
-      <div class="button-row">
-        <a class="button" href="/settings/gpio">GPIO-Einstellungen öffnen</a>
+      <h2>Motorgrenzen</h2>
+      <p class="hint">Begrenzt den maximalen PWM-Anteil für den DC-Motor (0–100&nbsp;%).</p>
+      <div class="motor-limits">
+        <label for="motorForward">Vorwärts</label>
+        <div class="slider-row">
+          <input id="motorForward" type="range" min="0" max="100" step="1" aria-label="Vorwärtslimit einstellen">
+          <output id="motorForwardValue" for="motorForward">–</output>
+        </div>
+      </div>
+      <div class="motor-limits">
+        <label for="motorReverse">Rückwärts</label>
+        <div class="slider-row">
+          <input id="motorReverse" type="range" min="0" max="100" step="1" aria-label="Rückwärtslimit einstellen">
+          <output id="motorReverseValue" for="motorReverse">–</output>
+        </div>
       </div>
     </section>
     <audio id="soundPreviewPlayer" preload="none" hidden></audio>
@@ -492,6 +488,10 @@
     const volumeContainer = document.getElementById('audioVolumeContainer');
     const volumeSlider = document.getElementById('audioVolume');
     const volumeValue = document.getElementById('audioVolumeValue');
+    const motorForward = document.getElementById('motorForward');
+    const motorReverse = document.getElementById('motorReverse');
+    const motorForwardValue = document.getElementById('motorForwardValue');
+    const motorReverseValue = document.getElementById('motorReverseValue');
     const steeringLeft = document.getElementById('steeringLeft');
     const steeringMid = document.getElementById('steeringMid');
     const steeringRight = document.getElementById('steeringRight');
@@ -500,16 +500,12 @@
     const soundDirectorySave = document.getElementById('soundDirectorySave');
     const soundboardPortInput = document.getElementById('soundboardPort');
     const soundboardPortSave = document.getElementById('soundboardPortSave');
-    const cameraPortInput = document.getElementById('cameraPort');
-    const cameraPortSave = document.getElementById('cameraPortSave');
     const startSoundSelect = document.getElementById('startSound');
     const connectedSoundSelect = document.getElementById('connectedSound');
     const startSoundPreviewButton = document.querySelector('[data-sound-preview="start"]');
     const connectedSoundPreviewButton = document.querySelector('[data-sound-preview="connected"]');
     const soundPreviewPlayer = document.getElementById('soundPreviewPlayer');
     const buttonActionsContainer = document.getElementById('buttonActionsContainer');
-    const disconnectCommandInput = document.getElementById('disconnectCommand');
-    const disconnectCommandSave = document.getElementById('disconnectCommandSave');
     const BUTTON_MODE_NONE = 'none';
     const BUTTON_MODE_MP3 = 'mp3';
     const BUTTON_MODE_COMMAND = 'command';
@@ -521,12 +517,27 @@
     audioSelect.disabled = true;
     let audioOptionsSignature = '';
     let volumeConfig = null;
+    let motorConfig = null;
     let steeringConfig = null;
     if (volumeSlider) {
       volumeSlider.disabled = true;
     }
     if (volumeContainer) {
       volumeContainer.hidden = true;
+    }
+    if (motorForward) {
+      motorForward.disabled = true;
+      motorForward.value = '0';
+    }
+    if (motorReverse) {
+      motorReverse.disabled = true;
+      motorReverse.value = '0';
+    }
+    if (motorForwardValue) {
+      motorForwardValue.textContent = '–';
+    }
+    if (motorReverseValue) {
+      motorReverseValue.textContent = '–';
     }
     if (steeringInputs.length > 0) {
       steeringInputs.forEach((input) => {
@@ -548,13 +559,6 @@
     if (soundboardPortSave) {
       soundboardPortSave.disabled = true;
     }
-    if (cameraPortInput) {
-      cameraPortInput.disabled = true;
-      cameraPortInput.value = '';
-    }
-    if (cameraPortSave) {
-      cameraPortSave.disabled = true;
-    }
     if (startSoundSelect) {
       startSoundSelect.disabled = true;
     }
@@ -566,13 +570,6 @@
     }
     if (connectedSoundPreviewButton) {
       connectedSoundPreviewButton.disabled = true;
-    }
-    if (disconnectCommandInput) {
-      disconnectCommandInput.disabled = true;
-      disconnectCommandInput.value = '';
-    }
-    if (disconnectCommandSave) {
-      disconnectCommandSave.disabled = true;
     }
     const updatePreviewButtonState = () => {
       const hasPreviewPlayer = Boolean(soundPreviewPlayer);
@@ -962,6 +959,7 @@
         const selected = typeof data.audio_device === 'string' ? data.audio_device : null;
         syncAudioSelection(data.audio_outputs, selected);
         const volumeValue = syncVolume(data.audio_volume);
+        syncMotorLimits(data.motor_limits);
         syncSteeringAngles(data.steering_angles);
         const soundInfo = syncSoundSettings(data.sound);
         const buttonInfo = syncButtonActions(data.button_actions);
@@ -1011,6 +1009,35 @@
       }
     };
 
+    const formatMotorPercent = (value) => `${Math.round((Number.parseFloat(value) || 0) * 100)}%`;
+
+    const clampMotorLimit = (value) => {
+      if (!motorConfig) {
+        return null;
+      }
+      const { min, max, step } = motorConfig;
+      const numeric = Number.parseFloat(value);
+      if (!Number.isFinite(numeric)) {
+        return null;
+      }
+      const limited = Math.max(min, Math.min(max, numeric));
+      const steps = Math.round((limited - min) / step);
+      const quantized = min + steps * step;
+      const clamped = Math.max(min, Math.min(max, quantized));
+      return Number.parseFloat(clamped.toFixed(4));
+    };
+
+    const clampMotorFromSlider = (value) => {
+      if (!motorConfig) {
+        return null;
+      }
+      const numeric = Number.parseFloat(value);
+      if (!Number.isFinite(numeric)) {
+        return null;
+      }
+      return clampMotorLimit(numeric / 100);
+    };
+
     const parseSoundboardPort = (value) => {
       if (typeof value === 'number') {
         if (Number.isInteger(value) && value >= 1 && value <= 65535) {
@@ -1031,41 +1058,60 @@
       return null;
     };
 
-    const parseCameraTarget = (value) => {
-      if (typeof value === 'number') {
-        if (Number.isInteger(value) && value >= 1 && value <= 65535) {
-          return { port: value, path: '', raw: String(value) };
-        }
+    const syncMotorLimits = (info) => {
+      if (!motorForward || !motorReverse || !motorForwardValue || !motorReverseValue) {
         return null;
       }
-      if (typeof value !== 'string') {
+      if (!info || !Number.isFinite(info.forward) || !Number.isFinite(info.reverse)) {
+        motorConfig = null;
+        motorForward.disabled = true;
+        motorReverse.disabled = true;
+        motorForwardValue.textContent = '–';
+        motorReverseValue.textContent = '–';
         return null;
       }
-      const trimmed = value.trim();
-      if (!trimmed) {
+      const min = Number.isFinite(info.min) ? info.min : 0;
+      const max = Number.isFinite(info.max) ? info.max : 1;
+      const step = Number.isFinite(info.step) && info.step > 0 ? info.step : 0.01;
+      motorConfig = { min, max, step };
+      const sliderMin = Math.round(min * 100);
+      const sliderMax = Math.round(max * 100);
+      const sliderStep = Math.max(1, Math.round(step * 100));
+      motorForward.min = String(sliderMin);
+      motorForward.max = String(sliderMax);
+      motorForward.step = String(sliderStep);
+      motorReverse.min = String(sliderMin);
+      motorReverse.max = String(sliderMax);
+      motorReverse.step = String(sliderStep);
+      const forwardValue = clampMotorLimit(info.forward);
+      const reverseValue = clampMotorLimit(info.reverse);
+      if (forwardValue === null || reverseValue === null) {
+        motorConfig = null;
+        motorForward.disabled = true;
+        motorReverse.disabled = true;
+        motorForwardValue.textContent = '–';
+        motorReverseValue.textContent = '–';
         return null;
       }
-      const slashIndex = trimmed.indexOf('/');
-      const portPart = slashIndex === -1 ? trimmed : trimmed.slice(0, slashIndex);
-      const pathPart = slashIndex === -1 ? '' : trimmed.slice(slashIndex + 1);
-      const numeric = Number.parseInt(portPart, 10);
-      if (!Number.isInteger(numeric) || numeric < 1 || numeric > 65535) {
+      motorForward.disabled = false;
+      motorReverse.disabled = false;
+      motorForward.value = String(Math.round(forwardValue * 100));
+      motorReverse.value = String(Math.round(reverseValue * 100));
+      motorForwardValue.textContent = formatMotorPercent(forwardValue);
+      motorReverseValue.textContent = formatMotorPercent(reverseValue);
+      return { forward: forwardValue, reverse: reverseValue };
+    };
+
+    const getCurrentMotorValues = () => {
+      if (!motorConfig || !motorForward || !motorReverse) {
         return null;
       }
-      let normalizedPath = '';
-      if (pathPart) {
-        const segments = pathPart
-          .split('/')
-          .map((segment) => segment.trim())
-          .filter(Boolean);
-        if (segments.length > 0) {
-          normalizedPath = `/${segments.join('/')}`;
-          if (pathPart.trim().endsWith('/') && !normalizedPath.endsWith('/')) {
-            normalizedPath += '/';
-          }
-        }
+      const forward = clampMotorFromSlider(motorForward.value);
+      const reverse = clampMotorFromSlider(motorReverse.value);
+      if (forward === null || reverse === null) {
+        return null;
       }
-      return { port: numeric, path: normalizedPath, raw: `${numeric}${normalizedPath}` };
+      return { forward, reverse };
     };
 
     const determineAnglePrecision = (step) => {
@@ -1353,20 +1399,13 @@
         soundDirectoryInput.value = '';
         soundDirectoryInput.disabled = true;
         soundDirectorySave.disabled = true;
-      if (soundboardPortInput) {
-        soundboardPortInput.value = '';
-        soundboardPortInput.disabled = true;
-      }
-      if (soundboardPortSave) {
-        soundboardPortSave.disabled = true;
-      }
-      if (cameraPortInput) {
-        cameraPortInput.value = '';
-        cameraPortInput.disabled = true;
-      }
-      if (cameraPortSave) {
-        cameraPortSave.disabled = true;
-      }
+        if (soundboardPortInput) {
+          soundboardPortInput.value = '';
+          soundboardPortInput.disabled = true;
+        }
+        if (soundboardPortSave) {
+          soundboardPortSave.disabled = true;
+        }
         const option = document.createElement('option');
         option.value = '';
         option.textContent = 'Keine MP3-Dateien gefunden';
@@ -1390,7 +1429,6 @@
       const startSound = typeof info.start_sound === 'string' ? info.start_sound : '';
       const connectedSound = typeof info.connected_sound === 'string' ? info.connected_sound : '';
       const soundboardPort = parseSoundboardPort(info.soundboard_port);
-      const cameraTarget = parseCameraTarget(info.camera_port);
       soundDirectoryInput.disabled = false;
       soundDirectoryInput.value = directory;
       soundDirectorySave.disabled = false;
@@ -1400,13 +1438,6 @@
       }
       if (soundboardPortSave) {
         soundboardPortSave.disabled = false;
-      }
-      if (cameraPortInput) {
-        cameraPortInput.disabled = false;
-        cameraPortInput.value = cameraTarget ? cameraTarget.raw : '';
-      }
-      if (cameraPortSave) {
-        cameraPortSave.disabled = false;
       }
       let selected = '';
       let connectedSelected = '';
@@ -1460,25 +1491,7 @@
         startSound: selected || '',
         connectedSound: connectedSelected || '',
         soundboardPort,
-        cameraTarget,
       };
-    };
-
-    const syncGamepadSettings = (info) => {
-      if (!disconnectCommandInput || !disconnectCommandSave) {
-        return null;
-      }
-      if (!info || typeof info !== 'object') {
-        disconnectCommandInput.value = '';
-        disconnectCommandInput.disabled = true;
-        disconnectCommandSave.disabled = true;
-        return null;
-      }
-      const command = typeof info.disconnect_command === 'string' ? info.disconnect_command : '';
-      disconnectCommandInput.disabled = false;
-      disconnectCommandInput.value = command;
-      disconnectCommandSave.disabled = false;
-      return { disconnectCommand: command };
     };
 
     async function loadState() {
@@ -1492,9 +1505,9 @@
         const selected = typeof data.audio_device === 'string' ? data.audio_device : null;
         const current = syncAudioSelection(data.audio_outputs, selected);
         const volumeValue = syncVolume(data.audio_volume);
+        const motorValues = syncMotorLimits(data.motor_limits);
         const steeringValues = syncSteeringAngles(data.steering_angles);
         const soundInfo = syncSoundSettings(data.sound);
-        const gamepadInfo = syncGamepadSettings(data.gamepad);
         const buttonInfo = syncButtonActions(data.button_actions);
         const messageParts = [];
         let tone = '';
@@ -1508,6 +1521,12 @@
         } else {
           messageParts.push('Keine Audio-Ausgabegeräte verfügbar');
           tone = 'error';
+        }
+        if (motorValues) {
+          messageParts.push('Motor-Limits geladen');
+          if (!tone) {
+            tone = 'success';
+          }
         }
         if (steeringValues) {
           messageParts.push('Lenkwinkel geladen');
@@ -1525,12 +1544,6 @@
             tone = 'success';
           }
         }
-        if (gamepadInfo) {
-          messageParts.push(gamepadInfo.disconnectCommand ? 'Gamepad-Befehl geladen' : 'Gamepad-Befehl entfernt');
-          if (!tone) {
-            tone = 'success';
-          }
-        }
         if (buttonInfo) {
           messageParts.push('Tasten-Aktionen geladen');
           if (!tone) {
@@ -1543,10 +1556,10 @@
         console.error('Laden fehlgeschlagen', err);
         setStatus('Konnte Einstellungen nicht laden.', 'error');
         audioSelect.disabled = true;
+        syncMotorLimits(null);
         syncSteeringAngles(null);
         syncSoundSettings(null);
         syncButtonActions(null);
-        syncGamepadSettings(null);
       }
     }
 
@@ -1567,9 +1580,9 @@
         const data = await resp.json();
         syncAudioSelection(data.audio_outputs, data.audio_device);
         const volumeValue = syncVolume(data.audio_volume);
+        syncMotorLimits(data.motor_limits);
         syncSteeringAngles(data.steering_angles);
         syncSoundSettings(data.sound);
-        syncGamepadSettings(data.gamepad);
         syncButtonActions(data.button_actions);
         if (volumeValue !== null) {
           setStatus('Audio-Ausgabe und Lautstärke gespeichert.', 'success');
@@ -1607,10 +1620,10 @@
         }
         const data = await resp.json();
         syncAudioSelection(data.audio_outputs, data.audio_device);
+        syncMotorLimits(data.motor_limits);
         syncSteeringAngles(data.steering_angles);
         const updated = syncVolume(data.audio_volume);
         syncSoundSettings(data.sound);
-        syncGamepadSettings(data.gamepad);
         syncButtonActions(data.button_actions);
         if (updated !== null) {
           setStatus('Lautstärke gespeichert.', 'success');
@@ -1651,9 +1664,9 @@
         const data = await resp.json();
         syncAudioSelection(data.audio_outputs, data.audio_device);
         syncVolume(data.audio_volume);
+        syncMotorLimits(data.motor_limits);
         syncSteeringAngles(data.steering_angles);
         const soundInfo = syncSoundSettings(data.sound);
-        syncGamepadSettings(data.gamepad);
         syncButtonActions(data.button_actions);
         const hasFiles = !!soundInfo && soundInfo.files.length > 0;
         setStatus(
@@ -1702,9 +1715,9 @@
         const data = await resp.json();
         syncAudioSelection(data.audio_outputs, data.audio_device);
         syncVolume(data.audio_volume);
+        syncMotorLimits(data.motor_limits);
         syncSteeringAngles(data.steering_angles);
         const soundInfo = syncSoundSettings(data.sound);
-        syncGamepadSettings(data.gamepad);
         syncButtonActions(data.button_actions);
         const savedPort = soundInfo ? soundInfo.soundboardPort : null;
         if (savedPort === numeric) {
@@ -1715,95 +1728,6 @@
       } catch (err) {
         console.error('Speichern des Soundboard-Ports fehlgeschlagen', err);
         setStatus('Soundboard-Port konnte nicht gespeichert werden.', 'error');
-      }
-    }
-
-    async function saveCameraPort(rawPort) {
-      if (!cameraPortInput || !cameraPortSave) {
-        return;
-      }
-      const rawValue = typeof rawPort === 'string' ? rawPort.trim() : String(rawPort ?? '').trim();
-      if (!rawValue) {
-        setStatus('Bitte eine gültige Kamera-Adresse eingeben.', 'error');
-        cameraPortInput.focus();
-        return;
-      }
-      const parsed = parseCameraTarget(rawValue);
-      if (!parsed) {
-        setStatus('Port muss zwischen 1 und 65535 liegen. Optionaler Pfad beginnt mit "/".', 'error');
-        cameraPortInput.focus();
-        return;
-      }
-      try {
-        setStatus('Speichere Kamera-Adresse …');
-        const payload = { camera_port: parsed.raw };
-        const currentDevice = audioSelect.value;
-        if (currentDevice) {
-          payload.audio_device = currentDevice;
-        }
-        const resp = await fetch('/api/control', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        });
-        if (!resp.ok) {
-          throw new Error(`Status ${resp.status}`);
-        }
-        const data = await resp.json();
-        syncAudioSelection(data.audio_outputs, data.audio_device);
-        syncVolume(data.audio_volume);
-        syncSteeringAngles(data.steering_angles);
-        const soundInfo = syncSoundSettings(data.sound);
-        syncGamepadSettings(data.gamepad);
-        syncButtonActions(data.button_actions);
-        const savedTarget = soundInfo && soundInfo.cameraTarget ? soundInfo.cameraTarget.raw : null;
-        if (savedTarget === parsed.raw) {
-          setStatus('Kamera-Adresse gespeichert.', 'success');
-        } else {
-          setStatus('Kamera-Adresse konnte nicht gespeichert werden.', 'error');
-        }
-      } catch (err) {
-        console.error('Speichern der Kamera-Adresse fehlgeschlagen', err);
-        setStatus('Kamera-Adresse konnte nicht gespeichert werden.', 'error');
-      }
-    }
-
-    async function saveDisconnectCommand(rawCommand) {
-      if (!disconnectCommandInput || !disconnectCommandSave) {
-        return;
-      }
-      const value = typeof rawCommand === 'string' ? rawCommand.trim() : '';
-      try {
-        setStatus('Speichere Gamepad-Befehl …');
-        const payload = { disconnect_command: value };
-        const currentDevice = audioSelect.value;
-        if (currentDevice) {
-          payload.audio_device = currentDevice;
-        }
-        const resp = await fetch('/api/control', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        });
-        if (!resp.ok) {
-          throw new Error(`Status ${resp.status}`);
-        }
-        const data = await resp.json();
-        syncAudioSelection(data.audio_outputs, data.audio_device);
-        syncVolume(data.audio_volume);
-        syncSteeringAngles(data.steering_angles);
-        syncSoundSettings(data.sound);
-        const gamepadInfo = syncGamepadSettings(data.gamepad);
-        syncButtonActions(data.button_actions);
-        const saved = gamepadInfo ? gamepadInfo.disconnectCommand : '';
-        const success = value ? saved === value : saved === '';
-        setStatus(
-          success ? 'Gamepad-Befehl gespeichert.' : 'Gamepad-Befehl konnte nicht gespeichert werden.',
-          success ? 'success' : 'error'
-        );
-      } catch (err) {
-        console.error('Speichern des Gamepad-Befehls fehlgeschlagen', err);
-        setStatus('Gamepad-Befehl konnte nicht gespeichert werden.', 'error');
       }
     }
 
@@ -1832,10 +1756,10 @@
         }
         const data = await resp.json();
         syncAudioSelection(data.audio_outputs, data.audio_device);
+        syncMotorLimits(data.motor_limits);
         syncSteeringAngles(data.steering_angles);
         syncVolume(data.audio_volume);
         const soundInfo = syncSoundSettings(data.sound);
-        syncGamepadSettings(data.gamepad);
         syncButtonActions(data.button_actions);
         if (soundInfo && soundInfo.startSound && soundInfo.startSound.toLowerCase() === value.toLowerCase()) {
           setStatus('Startsound gespeichert.', 'success');
@@ -1870,10 +1794,10 @@
         }
         const data = await resp.json();
         syncAudioSelection(data.audio_outputs, data.audio_device);
+        syncMotorLimits(data.motor_limits);
         syncSteeringAngles(data.steering_angles);
         syncVolume(data.audio_volume);
         const soundInfo = syncSoundSettings(data.sound);
-        syncGamepadSettings(data.gamepad);
         syncButtonActions(data.button_actions);
         const requested = value ? value.toLowerCase() : '';
         const saved = soundInfo && typeof soundInfo.connectedSound === 'string'
@@ -1887,6 +1811,39 @@
       } catch (err) {
         console.error('Speichern des Connected Sounds fehlgeschlagen', err);
         setStatus('Connected Sound konnte nicht gespeichert werden.', 'error');
+      }
+    }
+
+    async function saveMotorLimits(forward, reverse) {
+      if (!motorForward || !motorReverse) {
+        return;
+      }
+      try {
+        setStatus('Speichere Motor-Grenzen …');
+        const payload = { motor_limits: { forward, reverse } };
+        const currentDevice = audioSelect.value;
+        if (currentDevice) {
+          payload.audio_device = currentDevice;
+        }
+        const resp = await fetch('/api/control', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        if (!resp.ok) {
+          throw new Error(`Status ${resp.status}`);
+        }
+        const data = await resp.json();
+        syncAudioSelection(data.audio_outputs, data.audio_device);
+        syncMotorLimits(data.motor_limits);
+        syncSteeringAngles(data.steering_angles);
+        syncVolume(data.audio_volume);
+        syncSoundSettings(data.sound);
+        syncButtonActions(data.button_actions);
+        setStatus('Motor-Grenzen gespeichert.', 'success');
+      } catch (err) {
+        console.error('Speichern der Motor-Grenzen fehlgeschlagen', err);
+        setStatus('Motor-Grenzen konnten nicht gespeichert werden.', 'error');
       }
     }
 
@@ -1911,6 +1868,7 @@
         }
         const data = await resp.json();
         syncAudioSelection(data.audio_outputs, data.audio_device);
+        syncMotorLimits(data.motor_limits);
         syncVolume(data.audio_volume);
         syncSoundSettings(data.sound);
         syncButtonActions(data.button_actions);
@@ -1933,6 +1891,42 @@
         saveSelection(value);
       }
     });
+
+    if (motorForward && motorForwardValue) {
+      motorForward.addEventListener('input', () => {
+        const value = clampMotorFromSlider(motorForward.value);
+        motorForwardValue.textContent = value === null ? '–' : formatMotorPercent(value);
+      });
+      motorForward.addEventListener('change', () => {
+        const values = getCurrentMotorValues();
+        if (!values) {
+          return;
+        }
+        motorForward.value = String(Math.round(values.forward * 100));
+        motorForwardValue.textContent = formatMotorPercent(values.forward);
+        motorReverse.value = String(Math.round(values.reverse * 100));
+        motorReverseValue.textContent = formatMotorPercent(values.reverse);
+        saveMotorLimits(values.forward, values.reverse);
+      });
+    }
+
+    if (motorReverse && motorReverseValue) {
+      motorReverse.addEventListener('input', () => {
+        const value = clampMotorFromSlider(motorReverse.value);
+        motorReverseValue.textContent = value === null ? '–' : formatMotorPercent(value);
+      });
+      motorReverse.addEventListener('change', () => {
+        const values = getCurrentMotorValues();
+        if (!values) {
+          return;
+        }
+        motorForward.value = String(Math.round(values.forward * 100));
+        motorForwardValue.textContent = formatMotorPercent(values.forward);
+        motorReverse.value = String(Math.round(values.reverse * 100));
+        motorReverseValue.textContent = formatMotorPercent(values.reverse);
+        saveMotorLimits(values.forward, values.reverse);
+      });
+    }
 
     if (steeringInputs.length > 0) {
       const handleSteeringChange = () => {
@@ -2002,32 +1996,6 @@
         if (event.key === 'Enter') {
           event.preventDefault();
           saveSoundboardPort(soundboardPortInput.value ?? '');
-        }
-      });
-    }
-    if (cameraPortSave && cameraPortInput) {
-      cameraPortSave.addEventListener('click', () => {
-        saveCameraPort(cameraPortInput.value ?? '');
-      });
-    }
-    if (cameraPortInput) {
-      cameraPortInput.addEventListener('keydown', (event) => {
-        if (event.key === 'Enter') {
-          event.preventDefault();
-          saveCameraPort(cameraPortInput.value ?? '');
-        }
-      });
-    }
-    if (disconnectCommandSave && disconnectCommandInput) {
-      disconnectCommandSave.addEventListener('click', () => {
-        saveDisconnectCommand(disconnectCommandInput.value ?? '');
-      });
-    }
-    if (disconnectCommandInput) {
-      disconnectCommandInput.addEventListener('keydown', (event) => {
-        if (event.key === 'Enter') {
-          event.preventDefault();
-          saveDisconnectCommand(disconnectCommandInput.value ?? '');
         }
       });
     }
