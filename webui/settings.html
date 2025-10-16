@@ -263,18 +263,17 @@
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      gap: 0.35rem;
-      padding: 0.55rem 0.85rem;
+      padding: 0;
+      width: 44px;
+      height: 44px;
       border-radius: 12px;
       border: 1px solid rgba(229,9,20,0.4);
       background: rgba(229,9,20,0.12);
       color: #fff;
-      font-size: 0.9rem;
+      font-size: 1rem;
       font-weight: 600;
       cursor: pointer;
       transition: background 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
-      white-space: nowrap;
-      min-height: 44px;
     }
     .sound-preview-button:hover:not(:disabled) {
       background: rgba(229,9,20,0.24);
@@ -290,9 +289,6 @@
     .sound-preview-button span[aria-hidden="true"] {
       font-size: 1rem;
       line-height: 1;
-    }
-    .sound-preview-text {
-      display: inline-block;
     }
     input[type="range"] {
       width: 100%;
@@ -360,10 +356,8 @@
     }
     @media (max-width: 420px) {
       .sound-preview-button {
-        padding: 0.55rem;
-      }
-      .sound-preview-text {
-        display: none;
+        width: 42px;
+        height: 42px;
       }
     }
   </style>
@@ -407,7 +401,6 @@
           <select id="startSound" aria-label="Startsound auswählen"></select>
           <button type="button" class="sound-preview-button" data-sound-preview="start" aria-label="Startsound probehören">
             <span aria-hidden="true">▶</span>
-            <span class="sound-preview-text">Probehören</span>
           </button>
         </div>
       </div>
@@ -417,7 +410,6 @@
           <select id="connectedSound" aria-label="Connected Sound auswählen"></select>
           <button type="button" class="sound-preview-button" data-sound-preview="connected" aria-label="Connected Sound probehören">
             <span aria-hidden="true">▶</span>
-            <span class="sound-preview-text">Probehören</span>
           </button>
         </div>
         <p class="hint">Wird nach erfolgreicher Controller-Verbindung abgespielt.</p>
