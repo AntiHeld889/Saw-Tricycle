@@ -411,6 +411,16 @@
         </div>
         <p class="hint">Wird nach erfolgreicher Controller-Verbindung abgespielt.</p>
       </div>
+      <div class="field">
+        <label for="startupSound">Start-Up-Sound</label>
+        <div class="sound-row">
+          <select id="startupSound" aria-label="Start-Up-Sound auswählen"></select>
+          <button type="button" class="sound-preview-button" data-sound-preview="startup" aria-label="Start-Up-Sound probehören">
+            <span aria-hidden="true">▶</span>
+          </button>
+        </div>
+        <p class="hint">Wird beim Programmstart abgespielt.</p>
+      </div>
     </section>
     <section class="settings-section">
       <h2>Weblinks</h2>
@@ -517,6 +527,8 @@
     const cameraPortSave = document.getElementById('cameraPortSave');
     const connectedSoundSelect = document.getElementById('connectedSound');
     const connectedSoundPreviewButton = document.querySelector('[data-sound-preview="connected"]');
+    const startupSoundSelect = document.getElementById('startupSound');
+    const startupSoundPreviewButton = document.querySelector('[data-sound-preview="startup"]');
     const soundPreviewPlayer = document.getElementById('soundPreviewPlayer');
     const buttonActionsContainer = document.getElementById('buttonActionsContainer');
     const disconnectCommandInput = document.getElementById('disconnectCommand');
@@ -588,6 +600,12 @@
     if (connectedSoundPreviewButton) {
       connectedSoundPreviewButton.disabled = true;
     }
+    if (startupSoundSelect) {
+      startupSoundSelect.disabled = true;
+    }
+    if (startupSoundPreviewButton) {
+      startupSoundPreviewButton.disabled = true;
+    }
     if (disconnectCommandInput) {
       disconnectCommandInput.disabled = true;
       disconnectCommandInput.value = '';
@@ -604,6 +622,14 @@
           || connectedSoundSelect.disabled
           || !connectedSoundSelect.value;
         connectedSoundPreviewButton.disabled = disabled;
+      }
+      if (startupSoundPreviewButton) {
+        const disabled =
+          !hasPreviewPlayer
+          || !startupSoundSelect
+          || startupSoundSelect.disabled
+          || !startupSoundSelect.value;
+        startupSoundPreviewButton.disabled = disabled;
       }
       buttonActionControls.forEach((controls) => {
         if (!controls || !controls.mp3PreviewButton) {
@@ -1459,10 +1485,48 @@
     };
 
     const syncSoundSettings = (info) => {
-      if (!soundDirectoryInput || !soundDirectorySave || !connectedSoundSelect) {
+      if (!soundDirectoryInput || !soundDirectorySave || !connectedSoundSelect || !startupSoundSelect) {
         return null;
       }
+      const setSelectPlaceholder = (select, message) => {
+        if (!select) {
+          return;
+        }
+        select.innerHTML = '';
+        const option = document.createElement('option');
+        option.value = '';
+        option.textContent = message;
+        select.append(option);
+        select.disabled = true;
+        select.value = '';
+      };
+      const populateSoundSelect = (select, files, selectedValue) => {
+        if (!select) {
+          return '';
+        }
+        select.innerHTML = '';
+        const noneOption = document.createElement('option');
+        noneOption.value = '';
+        noneOption.textContent = 'Kein Sound';
+        select.append(noneOption);
+        files.forEach((file) => {
+          const option = document.createElement('option');
+          option.value = file;
+          option.textContent = file;
+          select.append(option);
+        });
+        const normalized = selectedValue
+          ? files.find((file) => file.toLowerCase() === selectedValue.toLowerCase())
+          : null;
+        const finalValue = normalized || '';
+        select.value = finalValue;
+        select.disabled = false;
+        return finalValue;
+      };
+
       connectedSoundSelect.innerHTML = '';
+      startupSoundSelect.innerHTML = '';
+
       if (!info || typeof info !== 'object') {
         soundDirectoryInput.value = '';
         soundDirectoryInput.disabled = true;
@@ -1482,22 +1546,21 @@
         if (cameraPortSave) {
           cameraPortSave.disabled = true;
         }
-        const option = document.createElement('option');
-        option.value = '';
-        option.textContent = 'Kein MP3-Verzeichnis konfiguriert';
-        connectedSoundSelect.append(option);
-        connectedSoundSelect.disabled = true;
-        connectedSoundSelect.value = '';
+        const message = 'Kein MP3-Verzeichnis konfiguriert';
+        setSelectPlaceholder(connectedSoundSelect, message);
+        setSelectPlaceholder(startupSoundSelect, message);
         currentSoundFiles = [];
         updateButtonMp3Options();
         updatePreviewButtonState();
         return null;
       }
+
       const directory = typeof info.directory === 'string' ? info.directory : '';
       const files = Array.isArray(info.files)
         ? info.files.filter((value) => typeof value === 'string')
         : [];
       const connectedSound = typeof info.connected_sound === 'string' ? info.connected_sound : '';
+      const startupSound = typeof info.startup_sound === 'string' ? info.startup_sound : '';
       const soundboardPort = parseSoundboardPort(info.soundboard_port);
       const cameraTarget = parseCameraTarget(info.camera_port);
       soundDirectoryConfigured = Boolean(directory);
@@ -1518,42 +1581,29 @@
       if (cameraPortSave) {
         cameraPortSave.disabled = false;
       }
+
       let connectedSelected = '';
+      let startupSelected = '';
       if (files.length === 0) {
-        const option = document.createElement('option');
-        option.value = '';
-        option.textContent = soundDirectoryConfigured
+        const message = soundDirectoryConfigured
           ? 'Keine MP3-Dateien gefunden'
           : 'Kein MP3-Verzeichnis konfiguriert';
-        connectedSoundSelect.append(option);
-        connectedSoundSelect.disabled = true;
-        connectedSoundSelect.value = '';
+        setSelectPlaceholder(connectedSoundSelect, message);
+        setSelectPlaceholder(startupSoundSelect, message);
         currentSoundFiles = [];
       } else {
-        const noneOption = document.createElement('option');
-        noneOption.value = '';
-        noneOption.textContent = 'Kein Sound';
-        connectedSoundSelect.append(noneOption);
-        files.forEach((file) => {
-          const option = document.createElement('option');
-          option.value = file;
-          option.textContent = file;
-          connectedSoundSelect.append(option);
-        });
-        const normalizedConnected = connectedSound
-          ? files.find((file) => file.toLowerCase() === connectedSound.toLowerCase())
-          : null;
-        connectedSelected = normalizedConnected || '';
-        connectedSoundSelect.value = connectedSelected;
-        connectedSoundSelect.disabled = false;
+        connectedSelected = populateSoundSelect(connectedSoundSelect, files, connectedSound);
+        startupSelected = populateSoundSelect(startupSoundSelect, files, startupSound);
         currentSoundFiles = files.slice();
       }
+
       updateButtonMp3Options();
       updatePreviewButtonState();
       return {
         directory,
         files,
         connectedSound: connectedSelected || '',
+        startupSound: startupSelected || '',
         soundboardPort,
         cameraTarget,
         configured: soundDirectoryConfigured,
@@ -1960,6 +2010,49 @@
       }
     }
 
+    async function saveStartupSound(fileName) {
+      if (!startupSoundSelect) {
+        return;
+      }
+      const value = typeof fileName === 'string' ? fileName.trim() : '';
+      try {
+        setStatus('Speichere Start-Up-Sound …');
+        const payload = { startup_sound: value };
+        const currentDevice = audioSelect.value;
+        if (currentDevice) {
+          payload.audio_device = currentDevice;
+        }
+        const resp = await fetch('/api/control', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        if (!resp.ok) {
+          throw new Error(`Status ${resp.status}`);
+        }
+        const data = await resp.json();
+        syncAudioSelection(data.audio_outputs, data.audio_device);
+        syncMotorLimits(data.motor_limits);
+        syncSteeringAngles(data.steering_angles);
+        syncVolume(data.audio_volume);
+        const soundInfo = syncSoundSettings(data.sound);
+        syncGamepadSettings(data.gamepad);
+        syncButtonActions(data.button_actions);
+        const requested = value ? value.toLowerCase() : '';
+        const saved = soundInfo && typeof soundInfo.startupSound === 'string'
+          ? soundInfo.startupSound.toLowerCase()
+          : '';
+        const success = requested ? requested === saved : saved === '';
+        setStatus(
+          success ? 'Start-Up-Sound gespeichert.' : 'Start-Up-Sound konnte nicht gespeichert werden.',
+          success ? 'success' : 'error'
+        );
+      } catch (err) {
+        console.error('Speichern des Start-Up-Sounds fehlgeschlagen', err);
+        setStatus('Start-Up-Sound konnte nicht gespeichert werden.', 'error');
+      }
+    }
+
     async function saveMotorLimits(forward, reverse) {
       if (!motorForward || !motorReverse) {
         return;
@@ -2182,6 +2275,18 @@
     if (connectedSoundPreviewButton && connectedSoundSelect) {
       connectedSoundPreviewButton.addEventListener('click', () => {
         playSoundPreview(connectedSoundSelect, connectedSoundPreviewButton);
+      });
+    }
+    if (startupSoundSelect) {
+      startupSoundSelect.addEventListener('change', () => {
+        updatePreviewButtonState();
+        const value = startupSoundSelect.value ?? '';
+        saveStartupSound(value);
+      });
+    }
+    if (startupSoundPreviewButton && startupSoundSelect) {
+      startupSoundPreviewButton.addEventListener('click', () => {
+        playSoundPreview(startupSoundSelect, startupSoundPreviewButton);
       });
     }
 
