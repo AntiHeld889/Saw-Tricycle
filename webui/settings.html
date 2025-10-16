@@ -253,6 +253,9 @@
       flex: 0 0 180px;
       min-width: 150px;
     }
+    .button-action-mp3 {
+      flex: 1 1 220px;
+    }
     .button-action-mp3 select {
       width: 100%;
     }
@@ -551,23 +554,36 @@
       connectedSoundPreviewButton.disabled = true;
     }
     const updatePreviewButtonState = () => {
-      if (!soundPreviewPlayer) {
-        if (startSoundPreviewButton) {
-          startSoundPreviewButton.disabled = true;
-        }
-        if (connectedSoundPreviewButton) {
-          connectedSoundPreviewButton.disabled = true;
-        }
-        return;
-      }
+      const hasPreviewPlayer = Boolean(soundPreviewPlayer);
       if (startSoundPreviewButton) {
-        const disabled = !startSoundSelect || startSoundSelect.disabled || !startSoundSelect.value;
+        const disabled =
+          !hasPreviewPlayer
+          || !startSoundSelect
+          || startSoundSelect.disabled
+          || !startSoundSelect.value;
         startSoundPreviewButton.disabled = disabled;
       }
       if (connectedSoundPreviewButton) {
-        const disabled = !connectedSoundSelect || connectedSoundSelect.disabled || !connectedSoundSelect.value;
+        const disabled =
+          !hasPreviewPlayer
+          || !connectedSoundSelect
+          || connectedSoundSelect.disabled
+          || !connectedSoundSelect.value;
         connectedSoundPreviewButton.disabled = disabled;
       }
+      buttonActionControls.forEach((controls) => {
+        if (!controls || !controls.mp3PreviewButton) {
+          return;
+        }
+        const disabled =
+          !hasPreviewPlayer
+          || !controls.mp3Wrapper
+          || controls.mp3Wrapper.hidden
+          || !controls.mp3Select
+          || controls.mp3Select.disabled
+          || !controls.mp3Select.value;
+        controls.mp3PreviewButton.disabled = disabled;
+      });
     };
     updatePreviewButtonState();
     if (soundPreviewPlayer) {
@@ -588,6 +604,7 @@
         empty.className = 'hint';
         empty.textContent = 'Keine konfigurierbaren Tasten gefunden.';
         buttonActionsContainer.append(empty);
+        updatePreviewButtonState();
         return;
       }
       const fragment = document.createDocumentFragment();
@@ -622,10 +639,20 @@
         modeSelect.append(optionCommand);
         row.append(modeSelect);
         const mp3Wrapper = document.createElement('div');
-        mp3Wrapper.className = 'button-action-mp3';
+        mp3Wrapper.className = 'button-action-mp3 sound-row';
         const mp3Select = document.createElement('select');
         mp3Select.setAttribute('aria-label', `${label} MP3 auswählen`);
         mp3Wrapper.append(mp3Select);
+        const mp3PreviewButton = document.createElement('button');
+        mp3PreviewButton.type = 'button';
+        mp3PreviewButton.className = 'sound-preview-button';
+        mp3PreviewButton.setAttribute('aria-label', `${label} MP3 probehören`);
+        const mp3PreviewIcon = document.createElement('span');
+        mp3PreviewIcon.setAttribute('aria-hidden', 'true');
+        mp3PreviewIcon.textContent = '▶';
+        mp3PreviewButton.append(mp3PreviewIcon);
+        mp3PreviewButton.disabled = true;
+        mp3Wrapper.append(mp3PreviewButton);
         row.append(mp3Wrapper);
         const commandWrapper = document.createElement('div');
         commandWrapper.className = 'text-input button-action-command';
@@ -645,8 +672,13 @@
           modeSelect,
           mp3Wrapper,
           mp3Select,
+          mp3PreviewButton,
           commandWrapper,
           commandInput,
+        });
+
+        mp3PreviewButton.addEventListener('click', () => {
+          playSoundPreview(mp3Select, mp3PreviewButton);
         });
 
         modeSelect.addEventListener('change', () => {
@@ -682,6 +714,7 @@
             controls.commandWrapper.hidden = true;
             saveButtonAction(code, BUTTON_MODE_NONE, '');
           }
+          updatePreviewButtonState();
         });
 
         mp3Select.addEventListener('change', () => {
@@ -694,6 +727,7 @@
           } else {
             saveButtonAction(code, BUTTON_MODE_NONE, '');
           }
+          updatePreviewButtonState();
         });
 
         const handleCommandSave = () => {
@@ -716,6 +750,7 @@
         });
       });
       buttonActionsContainer.append(fragment);
+      updatePreviewButtonState();
     };
 
     const applyButtonActionToControls = (code, assignment) => {
@@ -743,6 +778,7 @@
         controls.mp3Select.value = '';
       }
       syncingButtonActions = false;
+      updatePreviewButtonState();
     };
 
     const updateButtonMp3Options = () => {
@@ -802,6 +838,7 @@
         select.value = normalized || '';
         syncingButtonActions = false;
       });
+      updatePreviewButtonState();
     };
 
     const syncButtonActions = (info) => {
@@ -813,6 +850,7 @@
         buttonAssignments = {};
         buttonActionControls.clear();
         buttonActionsContainer.innerHTML = '';
+        updatePreviewButtonState();
         return null;
       }
       const normalizedDefinitions = info.definitions
