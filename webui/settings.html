@@ -1544,6 +1544,10 @@
         connectedSoundSelect.value = '';
         currentSoundFiles = [];
       } else {
+        const startNoneOption = document.createElement('option');
+        startNoneOption.value = '';
+        startNoneOption.textContent = 'Kein Sound';
+        startSoundSelect.append(startNoneOption);
         const noneOption = document.createElement('option');
         noneOption.value = '';
         noneOption.textContent = 'Kein Sound';
@@ -1561,7 +1565,7 @@
         const normalized = startSound
           ? files.find((file) => file.toLowerCase() === startSound.toLowerCase())
           : null;
-        selected = normalized || files[0];
+        selected = startSound ? (normalized || files[0]) : '';
         startSoundSelect.value = selected;
         startSoundSelect.disabled = false;
         const normalizedConnected = connectedSound
@@ -1946,9 +1950,6 @@
         return;
       }
       const value = typeof fileName === 'string' ? fileName.trim() : '';
-      if (!value) {
-        return;
-      }
       try {
         setStatus('Speichere Startsound …');
         const payload = { start_sound: value };
@@ -1972,11 +1973,15 @@
         const soundInfo = syncSoundSettings(data.sound);
         syncGamepadSettings(data.gamepad);
         syncButtonActions(data.button_actions);
-        if (soundInfo && soundInfo.startSound && soundInfo.startSound.toLowerCase() === value.toLowerCase()) {
-          setStatus('Startsound gespeichert.', 'success');
-        } else {
-          setStatus('Startsound konnte nicht gespeichert werden.', 'error');
-        }
+        const requested = value ? value.toLowerCase() : '';
+        const saved = soundInfo && typeof soundInfo.startSound === 'string'
+          ? soundInfo.startSound.toLowerCase()
+          : '';
+        const success = requested ? requested === saved : saved === '';
+        setStatus(
+          success ? 'Startsound gespeichert.' : 'Startsound konnte nicht gespeichert werden.',
+          success ? 'success' : 'error'
+        );
       } catch (err) {
         console.error('Speichern des Startsounds fehlgeschlagen', err);
         setStatus('Startsound konnte nicht gespeichert werden.', 'error');
