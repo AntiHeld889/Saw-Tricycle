@@ -495,19 +495,50 @@ def sanitize_soundboard_port(value):
 def sanitize_camera_port(value):
     if value is None:
         return None
-    try:
-        if isinstance(value, str):
-            stripped = value.strip()
-            if not stripped:
-                return None
-            numeric = int(stripped, 10)
+    numeric = None
+    path_part = ""
+    if isinstance(value, int):
+        numeric = value
+    else:
+        try:
+            raw = str(value).strip()
+        except Exception:
+            return None
+        if not raw:
+            return None
+        slash_index = raw.find("/")
+        if slash_index != -1:
+            port_part = raw[:slash_index]
+            remainder = raw[slash_index + 1 :]
         else:
-            numeric = int(value)
-    except (TypeError, ValueError):
-        return None
+            port_part = raw
+            remainder = ""
+        try:
+            numeric = int(port_part, 10)
+        except (TypeError, ValueError):
+            return None
+        path_part = remainder.strip()
+    if not isinstance(numeric, int):
+        try:
+            numeric = int(numeric)
+        except (TypeError, ValueError):
+            return None
     if not (CAMERA_PORT_MIN <= numeric <= CAMERA_PORT_MAX):
         return None
-    return numeric
+    normalized_path = ""
+    if path_part:
+        segments = []
+        for piece in path_part.split("/"):
+            trimmed = piece.strip()
+            if trimmed:
+                segments.append(trimmed)
+        if segments:
+            normalized_path = "/" + "/".join(segments)
+            if path_part.endswith("/") and not normalized_path.endswith("/"):
+                normalized_path += "/"
+    if normalized_path:
+        return f"{numeric}{normalized_path}"
+    return str(numeric)
 
 
 def sanitize_disconnect_command(value, *, max_length=1024):

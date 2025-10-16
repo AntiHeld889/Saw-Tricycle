@@ -411,12 +411,12 @@
         </div>
       </div>
       <div class="field">
-        <label for="cameraPort">Kamera Port</label>
+        <label for="cameraPort">Kamera Port/Pfad</label>
         <div class="text-input">
-          <input id="cameraPort" type="text" inputmode="numeric" pattern="[0-9]*" autocomplete="off" placeholder="8080" aria-label="Port für die Kamera">
+          <input id="cameraPort" type="text" autocomplete="off" placeholder="8080/cam" aria-label="Port und optionaler Pfad für die Kamera">
         </div>
         <div class="button-row">
-          <button type="button" class="button" id="cameraPortSave">Port speichern</button>
+          <button type="button" class="button" id="cameraPortSave">Adresse speichern</button>
         </div>
       </div>
       <div class="field">
@@ -1095,6 +1095,43 @@
       return null;
     };
 
+    const parseCameraTarget = (value) => {
+      if (typeof value === 'number') {
+        if (Number.isInteger(value) && value >= 1 && value <= 65535) {
+          return { port: value, path: '', raw: String(value) };
+        }
+        return null;
+      }
+      if (typeof value !== 'string') {
+        return null;
+      }
+      const trimmed = value.trim();
+      if (!trimmed) {
+        return null;
+      }
+      const slashIndex = trimmed.indexOf('/');
+      const portPart = slashIndex === -1 ? trimmed : trimmed.slice(0, slashIndex);
+      const pathPart = slashIndex === -1 ? '' : trimmed.slice(slashIndex + 1);
+      const numeric = Number.parseInt(portPart, 10);
+      if (!Number.isInteger(numeric) || numeric < 1 || numeric > 65535) {
+        return null;
+      }
+      let normalizedPath = '';
+      if (pathPart) {
+        const segments = pathPart
+          .split('/')
+          .map((segment) => segment.trim())
+          .filter(Boolean);
+        if (segments.length > 0) {
+          normalizedPath = `/${segments.join('/')}`;
+          if (pathPart.trim().endsWith('/') && !normalizedPath.endsWith('/')) {
+            normalizedPath += '/';
+          }
+        }
+      }
+      return { port: numeric, path: normalizedPath, raw: `${numeric}${normalizedPath}` };
+    };
+
     const syncMotorLimits = (info) => {
       if (!motorForward || !motorReverse || !motorForwardValue || !motorReverseValue) {
         return null;
@@ -1473,7 +1510,7 @@
       const startSound = typeof info.start_sound === 'string' ? info.start_sound : '';
       const connectedSound = typeof info.connected_sound === 'string' ? info.connected_sound : '';
       const soundboardPort = parseSoundboardPort(info.soundboard_port);
-      const cameraPort = parseSoundboardPort(info.camera_port);
+      const cameraTarget = parseCameraTarget(info.camera_port);
       soundDirectoryInput.disabled = false;
       soundDirectoryInput.value = directory;
       soundDirectorySave.disabled = false;
@@ -1486,7 +1523,7 @@
       }
       if (cameraPortInput) {
         cameraPortInput.disabled = false;
-        cameraPortInput.value = cameraPort !== null ? String(cameraPort) : '';
+        cameraPortInput.value = cameraTarget ? cameraTarget.raw : '';
       }
       if (cameraPortSave) {
         cameraPortSave.disabled = false;
@@ -1543,7 +1580,7 @@
         startSound: selected || '',
         connectedSound: connectedSelected || '',
         soundboardPort,
-        cameraPort,
+        cameraTarget,
       };
     };
 
@@ -1819,19 +1856,19 @@
       }
       const rawValue = typeof rawPort === 'string' ? rawPort.trim() : String(rawPort ?? '').trim();
       if (!rawValue) {
-        setStatus('Bitte einen gültigen Port eingeben.', 'error');
+        setStatus('Bitte eine gültige Kamera-Adresse eingeben.', 'error');
         cameraPortInput.focus();
         return;
       }
-      const numeric = Number.parseInt(rawValue, 10);
-      if (!Number.isInteger(numeric) || numeric < 1 || numeric > 65535) {
-        setStatus('Port muss zwischen 1 und 65535 liegen.', 'error');
+      const parsed = parseCameraTarget(rawValue);
+      if (!parsed) {
+        setStatus('Port muss zwischen 1 und 65535 liegen. Optionaler Pfad beginnt mit "/".', 'error');
         cameraPortInput.focus();
         return;
       }
       try {
-        setStatus('Speichere Kamera-Port …');
-        const payload = { camera_port: numeric };
+        setStatus('Speichere Kamera-Adresse …');
+        const payload = { camera_port: parsed.raw };
         const currentDevice = audioSelect.value;
         if (currentDevice) {
           payload.audio_device = currentDevice;
@@ -1852,15 +1889,15 @@
         const soundInfo = syncSoundSettings(data.sound);
         syncGamepadSettings(data.gamepad);
         syncButtonActions(data.button_actions);
-        const savedPort = soundInfo ? soundInfo.cameraPort : null;
-        if (savedPort === numeric) {
-          setStatus('Kamera-Port gespeichert.', 'success');
+        const savedTarget = soundInfo && soundInfo.cameraTarget ? soundInfo.cameraTarget.raw : null;
+        if (savedTarget === parsed.raw) {
+          setStatus('Kamera-Adresse gespeichert.', 'success');
         } else {
-          setStatus('Kamera-Port konnte nicht gespeichert werden.', 'error');
+          setStatus('Kamera-Adresse konnte nicht gespeichert werden.', 'error');
         }
       } catch (err) {
-        console.error('Speichern des Kamera-Ports fehlgeschlagen', err);
-        setStatus('Kamera-Port konnte nicht gespeichert werden.', 'error');
+        console.error('Speichern der Kamera-Adresse fehlgeschlagen', err);
+        setStatus('Kamera-Adresse konnte nicht gespeichert werden.', 'error');
       }
     }
 

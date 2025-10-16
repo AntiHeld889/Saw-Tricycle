@@ -531,7 +531,7 @@
       return Math.max(-1, Math.min(1, num));
     };
 
-    const state = { steering: 0, motor: 0, head: 0, override: false, audioDevice: null, audioVolume: null, soundboardPort: null, cameraPort: null };
+    const state = { steering: 0, motor: 0, head: 0, override: false, audioDevice: null, audioVolume: null, soundboardPort: null, cameraTarget: null };
     const steeringVal = document.getElementById('steeringVal');
     const motorVal = document.getElementById('motorVal');
     const headButtons = Array.from(document.querySelectorAll('[data-head-value]'));
@@ -571,7 +571,42 @@
       return null;
     };
 
-    const parseCameraPort = parseSoundboardPort;
+    const parseCameraTarget = (value) => {
+      if (typeof value === 'number') {
+        if (Number.isInteger(value) && value >= 1 && value <= 65535) {
+          return { port: value, path: '', raw: String(value) };
+        }
+        return null;
+      }
+      if (typeof value !== 'string') {
+        return null;
+      }
+      const trimmed = value.trim();
+      if (!trimmed) {
+        return null;
+      }
+      const slashIndex = trimmed.indexOf('/');
+      const portPart = slashIndex === -1 ? trimmed : trimmed.slice(0, slashIndex);
+      const pathPart = slashIndex === -1 ? '' : trimmed.slice(slashIndex + 1);
+      const numeric = Number.parseInt(portPart, 10);
+      if (!Number.isInteger(numeric) || numeric < 1 || numeric > 65535) {
+        return null;
+      }
+      let normalizedPath = '';
+      if (pathPart) {
+        const segments = pathPart
+          .split('/')
+          .map((segment) => segment.trim())
+          .filter(Boolean);
+        if (segments.length > 0) {
+          normalizedPath = `/${segments.join('/')}`;
+          if (pathPart.trim().endsWith('/') && !normalizedPath.endsWith('/')) {
+            normalizedPath += '/';
+          }
+        }
+      }
+      return { port: numeric, path: normalizedPath, raw: `${numeric}${normalizedPath}` };
+    };
 
     const buildServiceUrl = (port) => {
       const protocol = window.location.protocol === 'https:' ? 'https:' : 'http:';
@@ -584,7 +619,17 @@
     };
 
     const buildSoundboardUrl = (port) => buildServiceUrl(port);
-    const buildCameraUrl = (port) => buildServiceUrl(port);
+    const buildCameraUrl = (target) => {
+      if (!target || !target.port) {
+        return '#';
+      }
+      const base = buildServiceUrl(target.port);
+      if (!target.path) {
+        return base;
+      }
+      const trimmedBase = base.endsWith('/') ? base.slice(0, -1) : base;
+      return `${trimmedBase}${target.path}`;
+    };
 
     const updateSoundboardButton = (port) => {
       if (!soundboardButton) {
@@ -605,22 +650,29 @@
       soundboardButton.href = url;
     };
 
-    const updateCameraButton = (port) => {
+    const updateCameraButton = (target) => {
       if (!cameraButton) {
         return;
       }
-      const numeric = parseCameraPort(port);
-      if (numeric === null) {
+      if (!target) {
         cameraButton.hidden = true;
         cameraButton.dataset.url = '';
         cameraButton.removeAttribute('data-port');
+        cameraButton.removeAttribute('data-path');
+        cameraButton.removeAttribute('data-raw');
         cameraButton.href = '#';
         return;
       }
-      const url = buildCameraUrl(numeric);
+      const url = buildCameraUrl(target);
       cameraButton.hidden = false;
       cameraButton.dataset.url = url;
-      cameraButton.dataset.port = String(numeric);
+      cameraButton.dataset.port = String(target.port);
+      if (target.path) {
+        cameraButton.dataset.path = target.path;
+      } else {
+        cameraButton.removeAttribute('data-path');
+      }
+      cameraButton.dataset.raw = target.raw;
       cameraButton.href = url;
     };
 
@@ -990,9 +1042,9 @@
         updateBattery(data.battery ?? null);
         const soundInfo = data.sound && typeof data.sound === 'object' ? data.sound : null;
         const portValue = soundInfo ? parseSoundboardPort(soundInfo.soundboard_port) : null;
-        const cameraValue = soundInfo ? parseCameraPort(soundInfo.camera_port) : null;
+        const cameraValue = soundInfo ? parseCameraTarget(soundInfo.camera_port) : null;
         state.soundboardPort = portValue;
-        state.cameraPort = cameraValue;
+        state.cameraTarget = cameraValue;
         updateSoundboardButton(portValue);
         updateCameraButton(cameraValue);
       } catch (err) {
