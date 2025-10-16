@@ -8,7 +8,6 @@
 # ---- Audio & Dateien ----
 SOUND_DIRECTORY_DEFAULT = "/opt/python/sawsounds"
 START_SOUND_DEFAULT = "Start.mp3"
-START_MP3_PATH       = f"{SOUND_DIRECTORY_DEFAULT}/{START_SOUND_DEFAULT}"
 ALSA_HP_DEVICE       = "plughw:0,0"           # Analoger Kopfhörer-Ausgang (mit 'aplay -l' prüfen)
 ALSA_USB_DEVICE      = "plughw:1,0"           # USB-Soundkarte (mit 'aplay -l' prüfen)
 HEADPHONE_VOLUME_DEFAULT = 100
@@ -228,7 +227,7 @@ def _resolve_button_event_code(code_str):
     if isinstance(event_code, int):
         return event_code
     # KEY_304 etc. enthalten bereits die numerische Event-ID als Suffix.
-    prefix, sep, suffix = code_str.rpartition("_")
+    _prefix, sep, suffix = code_str.rpartition("_")
     if sep and suffix.isdigit():
         try:
             return int(suffix)
@@ -366,13 +365,6 @@ def _sanitize_volume_value(value, profile):
     return int(round(vol))
 
 
-def get_default_volume(audio_id):
-    profile = _get_volume_profile(audio_id)
-    if not profile:
-        return None
-    return profile["default"]
-
-
 def load_persisted_audio_state(default_id=DEFAULT_AUDIO_OUTPUT_ID, *, _payload=None):
     default_audio = _normalize_audio_output_id(default_id) or DEFAULT_AUDIO_OUTPUT_ID
     state = {
@@ -410,14 +402,6 @@ def load_persisted_audio_state(default_id=DEFAULT_AUDIO_OUTPUT_ID, *, _payload=N
 
     state["volumes"] = volumes
     return state
-
-
-def load_persisted_audio_output(default_id=DEFAULT_AUDIO_OUTPUT_ID):
-    return load_persisted_audio_state(default_id).get("audio_device")
-
-
-def load_persisted_audio_volumes():
-    return load_persisted_audio_state().get("volumes", {})
 
 
 def persist_audio_state(*, audio_device=None, volume_updates=None):
@@ -1688,7 +1672,7 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
         body = json.dumps(state)
         self._write_response(200, body, "application/json")
 
-    def log_message(self, format, *args):  # noqa: A003 - Überschreibt BaseHTTPRequestHandler
+    def log_message(self, format, *_args):  # noqa: A003 - Überschreibt BaseHTTPRequestHandler
         # Unterdrückt Standard-Logging, um die Konsole sauber zu halten.
         return
 
@@ -1791,11 +1775,6 @@ def run_audio_setup(commands):
             subprocess.run(cmd, check=False, timeout=AUDIO_ROUTE_TIMEOUT)
         except Exception:
             pass
-
-
-def route_audio_to_headphones():
-    """Route Audio → Kopfhörerbuchse & setze Lautstärke."""
-    run_audio_setup(HEADPHONE_ROUTE_COMMANDS)
 
 
 def apply_audio_output(audio_id):
