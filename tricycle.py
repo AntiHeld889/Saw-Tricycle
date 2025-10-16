@@ -5,6 +5,8 @@
 #   KONFIGURATION (OBEN)
 # =========================
 
+from types import MappingProxyType
+
 # ---- Audio & Dateien ----
 SOUND_DIRECTORY_DEFAULT = "/opt/python/sawsounds"
 START_SOUND_DEFAULT = "Start.mp3"
@@ -183,6 +185,7 @@ HEAD_SAFE_START_S    = 0.8
 HEAD_UPDATE_HYSTERESIS_DEG = 0.2
 
 # ---- GPIO-Konfiguration ----
+
 GPIO_PIN_MIN = 0
 GPIO_PIN_MAX = 27
 
@@ -265,7 +268,6 @@ import threading
 import subprocess
 from functools import lru_cache
 from pathlib import Path
-from types import MappingProxyType
 from urllib.parse import parse_qs, urlparse
 
 try:
