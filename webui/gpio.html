@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Weitere Einstellungen · Saw Tricycle</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --safe-top: env(safe-area-inset-top, 0px);
+      --safe-bottom: env(safe-area-inset-bottom, 0px);
+      --safe-left: env(safe-area-inset-left, 0px);
+      --safe-right: env(safe-area-inset-right, 0px);
+    }
+    * { box-sizing: border-box; }
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background: #0d0d0d;
+      color: #f2f2f2;
+      margin: 0;
+      min-height: 100vh;
+      min-height: 100dvh;
+      padding: calc(1.4rem + var(--safe-top)) calc(1.4rem + var(--safe-right)) calc(1.4rem + var(--safe-bottom)) calc(1.4rem + var(--safe-left));
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      -webkit-text-size-adjust: 100%;
+      touch-action: manipulation;
+    }
+    .settings-card {
+      width: 100%;
+      max-width: 520px;
+      background: #151515;
+      border-radius: 16px;
+      padding: clamp(1.2rem, 4vw + 0.4rem, 1.8rem);
+      box-shadow: 0 0 40px rgba(0,0,0,0.45);
+      display: flex;
+      flex-direction: column;
+      gap: 1.4rem;
+    }
+    .settings-header {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
+    .back-button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 42px;
+      height: 42px;
+      border-radius: 12px;
+      background: rgba(229,9,20,0.16);
+      border: 1px solid rgba(229,9,20,0.3);
+      color: #fff;
+      text-decoration: none;
+      transition: background 0.2s ease, transform 0.2s ease, border-color 0.2s ease;
+    }
+    .back-button:hover {
+      background: rgba(229,9,20,0.28);
+      border-color: rgba(229,9,20,0.55);
+    }
+    .back-button:active {
+      transform: translateY(1px);
+    }
+    .settings-header h1 {
+      margin: 0;
+      font-size: clamp(1.25rem, 3vw, 1.7rem);
+      font-weight: 600;
+    }
+    .settings-section {
+      background: rgba(255,255,255,0.04);
+      border-radius: 14px;
+      padding: 1.2rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+    .settings-section h2 {
+      margin: 0;
+      font-size: 1.1rem;
+      font-weight: 600;
+    }
+    .gpio-grid {
+      display: grid;
+      gap: 0.75rem;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    }
+    .field {
+      display: flex;
+      flex-direction: column;
+      gap: 0.45rem;
+    }
+    label { font-size: 0.95rem; }
+    .number-input {
+      display: flex;
+      align-items: center;
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 12px;
+      padding: 0.35rem 0.6rem;
+      transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    }
+    .number-input input {
+      flex: 1 1 auto;
+      background: transparent;
+      border: none;
+      color: inherit;
+      font: inherit;
+      min-width: 0;
+      padding: 0;
+      -moz-appearance: textfield;
+    }
+    .number-input input:focus {
+      outline: none;
+    }
+    .number-input input::-webkit-outer-spin-button,
+    .number-input input::-webkit-inner-spin-button {
+      -webkit-appearance: none;
+      margin: 0;
+    }
+    .number-input:focus-within {
+      border-color: rgba(229,9,20,0.55);
+      box-shadow: 0 0 0 3px rgba(229,9,20,0.2);
+    }
+    .button-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.6rem;
+    }
+    .button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0.55rem 1.1rem;
+      border-radius: 12px;
+      border: 1px solid rgba(229,9,20,0.4);
+      background: rgba(229,9,20,0.16);
+      color: #fff;
+      text-decoration: none;
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
+    }
+    .button:hover:not(:disabled) {
+      background: rgba(229,9,20,0.28);
+      border-color: rgba(229,9,20,0.55);
+    }
+    .button:active:not(:disabled) {
+      transform: translateY(1px);
+    }
+    .button:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+    .status {
+      font-size: 0.95rem;
+      color: #bbb;
+      min-height: 1.2em;
+    }
+    .status.success { color: #63f58c; }
+    .status.error { color: #ff7a7a; }
+    .hint {
+      margin: 0;
+      color: #bbb;
+      font-size: 0.9rem;
+    }
+    @media (max-width: 640px) {
+      body {
+        padding: calc(1rem + var(--safe-top)) calc(1rem + var(--safe-right)) calc(1rem + var(--safe-bottom)) calc(1rem + var(--safe-left));
+      }
+      .settings-card {
+        border-radius: 12px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="settings-card">
+    <div class="settings-header">
+      <a class="back-button" href="/settings" aria-label="Zurück zu den Einstellungen" title="Zurück">⟵</a>
+      <h1>Weitere Einstellungen</h1>
+    </div>
+    <section class="settings-section">
+      <h2>GPIO-Belegung</h2>
+      <p class="hint">Lege fest, welche GPIO-Pins für Lenkungsservo, Kopfservo sowie den Cytron&nbsp;MD13S genutzt werden.</p>
+      <form id="gpioForm" novalidate>
+        <div class="gpio-grid">
+          <div class="field">
+            <label for="gpioSteering">Lenkungsservo</label>
+            <div class="number-input">
+              <input id="gpioSteering" type="number" inputmode="numeric" min="0" max="27" step="1" autocomplete="off" required aria-label="GPIO-Pin für den Lenkungsservo">
+            </div>
+          </div>
+          <div class="field">
+            <label for="gpioHead">Kopfservo</label>
+            <div class="number-input">
+              <input id="gpioHead" type="number" inputmode="numeric" min="0" max="27" step="1" autocomplete="off" required aria-label="GPIO-Pin für den Kopfservo">
+            </div>
+          </div>
+          <div class="field">
+            <label for="gpioMotorPwm">Cytron MD13S · PWM</label>
+            <div class="number-input">
+              <input id="gpioMotorPwm" type="number" inputmode="numeric" min="0" max="27" step="1" autocomplete="off" required aria-label="GPIO-Pin für das PWM-Signal des Cytron MD13S">
+            </div>
+          </div>
+          <div class="field">
+            <label for="gpioMotorDir">Cytron MD13S · Richtung</label>
+            <div class="number-input">
+              <input id="gpioMotorDir" type="number" inputmode="numeric" min="0" max="27" step="1" autocomplete="off" required aria-label="GPIO-Pin für das Richtungssignal des Cytron MD13S">
+            </div>
+          </div>
+        </div>
+        <p class="hint">Hinweis: Eine Änderung wird vollständig nach einem Neustart der Anwendung aktiv.</p>
+        <div class="button-row">
+          <button type="submit" class="button" id="gpioSave">Pins speichern</button>
+        </div>
+      </form>
+      <p id="gpioStatus" class="status" role="status" aria-live="polite"></p>
+    </section>
+  </div>
+  <script>
+    (function() {
+      const form = document.getElementById('gpioForm');
+      const statusEl = document.getElementById('gpioStatus');
+      const saveButton = document.getElementById('gpioSave');
+      const inputs = {
+        steering_servo: document.getElementById('gpioSteering'),
+        head_servo: document.getElementById('gpioHead'),
+        motor_pwm: document.getElementById('gpioMotorPwm'),
+        motor_dir: document.getElementById('gpioMotorDir'),
+      };
+      let gpioRange = { min: 0, max: 27 };
+      let hasLoaded = false;
+
+      const setStatus = (message, tone) => {
+        if (!statusEl) {
+          return;
+        }
+        statusEl.textContent = message || '';
+        statusEl.classList.remove('success', 'error');
+        if (tone) {
+          statusEl.classList.add(tone);
+        }
+      };
+
+      const setLoadingState = (isLoading) => {
+        Object.values(inputs).forEach((input) => {
+          if (input) {
+            input.disabled = isLoading;
+          }
+        });
+        if (saveButton) {
+          saveButton.disabled = isLoading;
+        }
+      };
+
+      const updateRangeAttributes = () => {
+        Object.values(inputs).forEach((input) => {
+          if (!input) {
+            return;
+          }
+          input.min = gpioRange.min;
+          input.max = gpioRange.max;
+        });
+      };
+
+      const applyGpioState = (state) => {
+        if (!state || typeof state !== 'object') {
+          return;
+        }
+        const gpio = state.gpio || {};
+        if (Number.isFinite(gpio.min)) {
+          gpioRange.min = gpio.min;
+        }
+        if (Number.isFinite(gpio.max)) {
+          gpioRange.max = gpio.max;
+        }
+        updateRangeAttributes();
+        const pins = (gpio && gpio.pins) || {};
+        Object.entries(inputs).forEach(([key, input]) => {
+          if (!input) {
+            return;
+          }
+          const value = pins[key];
+          if (Number.isFinite(value)) {
+            input.value = String(value);
+          } else {
+            input.value = '';
+          }
+        });
+        hasLoaded = true;
+        setLoadingState(false);
+      };
+
+      const sanitizeValue = (input) => {
+        if (!input) {
+          return null;
+        }
+        const raw = input.value.trim();
+        if (raw === '') {
+          return null;
+        }
+        const parsed = Number.parseInt(raw, 10);
+        if (!Number.isFinite(parsed)) {
+          return null;
+        }
+        if (parsed < gpioRange.min || parsed > gpioRange.max) {
+          return null;
+        }
+        return parsed;
+      };
+
+      const collectPins = () => {
+        const result = {};
+        for (const [key, input] of Object.entries(inputs)) {
+          const value = sanitizeValue(input);
+          if (value === null) {
+            return null;
+          }
+          result[key] = value;
+        }
+        return result;
+      };
+
+      const loadInitialState = async () => {
+        setLoadingState(true);
+        setStatus('Lade aktuelle Belegung …');
+        try {
+          const resp = await fetch('/api/state');
+          if (!resp.ok) {
+            throw new Error('HTTP ' + resp.status);
+          }
+          const data = await resp.json();
+          applyGpioState(data);
+          setStatus('');
+        } catch (error) {
+          console.error('GPIO-Status konnte nicht geladen werden:', error);
+          setStatus('GPIO-Belegung konnte nicht geladen werden.', 'error');
+          setLoadingState(true);
+        }
+      };
+
+      form.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        if (!hasLoaded) {
+          return;
+        }
+        const pins = collectPins();
+        if (!pins) {
+          setStatus(`Bitte gültige Pins zwischen ${gpioRange.min} und ${gpioRange.max} eintragen.`, 'error');
+          return;
+        }
+        setLoadingState(true);
+        setStatus('Speichere …');
+        try {
+          const resp = await fetch('/api/control', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ gpio_pins: pins }),
+          });
+          if (!resp.ok) {
+            throw new Error('HTTP ' + resp.status);
+          }
+          const data = await resp.json();
+          applyGpioState(data);
+          setStatus('GPIO-Pins gespeichert.', 'success');
+        } catch (error) {
+          console.error('GPIO-Pins konnten nicht gespeichert werden:', error);
+          setStatus('Speichern fehlgeschlagen. Bitte erneut versuchen.', 'error');
+          setLoadingState(false);
+        }
+      });
+
+      Object.values(inputs).forEach((input) => {
+        if (!input) {
+          return;
+        }
+        input.addEventListener('input', () => {
+          if (statusEl && statusEl.classList.contains('error')) {
+            setStatus('');
+          }
+        });
+      });
+
+      loadInitialState();
+    })();
+  </script>
+</body>
+</html>

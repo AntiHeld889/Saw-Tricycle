@@ -204,6 +204,7 @@
       border: 1px solid rgba(229,9,20,0.4);
       background: rgba(229,9,20,0.16);
       color: #fff;
+      text-decoration: none;
       font-size: 0.95rem;
       font-weight: 600;
       cursor: pointer;
@@ -497,6 +498,13 @@
           <input id="motorReverse" type="range" min="0" max="100" step="1" aria-label="Rückwärtslimit einstellen">
           <output id="motorReverseValue" for="motorReverse">–</output>
         </div>
+      </div>
+    </section>
+    <section class="settings-section">
+      <h2>Weitere Einstellungen</h2>
+      <p class="hint">GPIO-Belegung für Servos und Motor konfigurieren.</p>
+      <div class="button-row">
+        <a class="button" href="/settings/gpio">GPIO-Einstellungen öffnen</a>
       </div>
     </section>
     <audio id="soundPreviewPlayer" preload="none" hidden></audio>
