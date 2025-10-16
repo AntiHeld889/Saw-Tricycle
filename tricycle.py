@@ -242,12 +242,20 @@ for code_str, _label in BUTTON_LAYOUT:
         BUTTON_EVENT_TO_CODE[event_code] = code_str
 
 
-SETTINGS_FILE = Path("/opt/python/Saw-Tricycle") / "settings.json"
+def _default_state_dir():
+    env_path = os.environ.get("SAW_TRICYCLE_STATE_DIR")
+    if env_path:
+        return Path(env_path)
+    return Path.home() / ".config" / "saw-tricycle"
+
+
+STATE_DIR = _default_state_dir()
+AUDIO_SELECTION_FILE = STATE_DIR / "audio-selection.json"
 
 
 def _load_persisted_state():
     try:
-        with SETTINGS_FILE.open("r", encoding="utf-8") as fh:
+        with AUDIO_SELECTION_FILE.open("r", encoding="utf-8") as fh:
             data = json.load(fh)
     except FileNotFoundError:
         return {}
@@ -260,11 +268,11 @@ def _load_persisted_state():
 
 def _persist_state(payload):
     try:
-        SETTINGS_FILE.parent.mkdir(parents=True, exist_ok=True)
-        tmp_path = SETTINGS_FILE.with_suffix(".tmp")
+        STATE_DIR.mkdir(parents=True, exist_ok=True)
+        tmp_path = AUDIO_SELECTION_FILE.with_suffix(".tmp")
         with tmp_path.open("w", encoding="utf-8") as fh:
             json.dump(payload, fh)
-        os.replace(tmp_path, SETTINGS_FILE)
+        os.replace(tmp_path, AUDIO_SELECTION_FILE)
         return True
     except Exception:
         return False
