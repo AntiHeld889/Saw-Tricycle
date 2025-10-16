@@ -402,6 +402,19 @@
         <p class="hint">Alle MP3-Dateien aus diesem Ordner stehen für Sounds zur Auswahl.</p>
       </div>
       <div class="field">
+        <label for="connectedSound">Connected Sound</label>
+        <div class="sound-row">
+          <select id="connectedSound" aria-label="Connected Sound auswählen"></select>
+          <button type="button" class="sound-preview-button" data-sound-preview="connected" aria-label="Connected Sound probehören">
+            <span aria-hidden="true">▶</span>
+          </button>
+        </div>
+        <p class="hint">Wird nach erfolgreicher Controller-Verbindung abgespielt.</p>
+      </div>
+    </section>
+    <section class="settings-section">
+      <h2>Weblinks</h2>
+      <div class="field">
         <label for="soundboardPort">Soundboard URL PORT</label>
         <div class="text-input">
           <input id="soundboardPort" type="text" inputmode="numeric" pattern="[0-9]*" autocomplete="off" placeholder="3000" aria-label="Port für das Soundboard">
@@ -418,16 +431,6 @@
         <div class="button-row">
           <button type="button" class="button" id="cameraPortSave">Adresse speichern</button>
         </div>
-      </div>
-      <div class="field">
-        <label for="connectedSound">Connected Sound</label>
-        <div class="sound-row">
-          <select id="connectedSound" aria-label="Connected Sound auswählen"></select>
-          <button type="button" class="sound-preview-button" data-sound-preview="connected" aria-label="Connected Sound probehören">
-            <span aria-hidden="true">▶</span>
-          </button>
-        </div>
-        <p class="hint">Wird nach erfolgreicher Controller-Verbindung abgespielt.</p>
       </div>
     </section>
     <section class="settings-section">
