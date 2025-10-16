@@ -106,6 +106,57 @@
       flex-direction: column;
       gap: 0.55rem;
     }
+    .motor-limits {
+      display: flex;
+      flex-direction: column;
+      gap: 0.55rem;
+    }
+    .steering-grid {
+      display: grid;
+      gap: 0.75rem;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    }
+    .steering-grid .field {
+      display: flex;
+      flex-direction: column;
+      gap: 0.45rem;
+    }
+    .number-input {
+      display: flex;
+      align-items: center;
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 12px;
+      padding: 0.35rem 0.6rem;
+      transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    }
+    .number-input input {
+      flex: 1 1 auto;
+      background: transparent;
+      border: none;
+      color: inherit;
+      font: inherit;
+      min-width: 0;
+      padding: 0;
+      -moz-appearance: textfield;
+    }
+    .number-input input:focus {
+      outline: none;
+    }
+    .number-input input::-webkit-outer-spin-button,
+    .number-input input::-webkit-inner-spin-button {
+      -webkit-appearance: none;
+      margin: 0;
+    }
+    .number-input span {
+      margin-left: 0.35rem;
+      opacity: 0.7;
+      font-size: 0.9rem;
+    }
+    .number-input:focus-within {
+      border-color: rgba(229,9,20,0.55);
+      box-shadow: 0 0 0 3px rgba(229,9,20,0.2);
+    }
     .slider-row {
       display: flex;
       align-items: center;
@@ -405,8 +456,53 @@
       </div>
     </section>
     <section class="settings-section">
+      <h2>Lenkwinkel</h2>
+      <p class="hint">Definiert Mittelstellung und maximale Ausschläge des Servos.</p>
+      <div class="steering-grid">
+        <div class="field">
+          <label for="steeringLeft">Links (max.)</label>
+          <div class="number-input">
+            <input id="steeringLeft" type="number" inputmode="decimal" min="0" max="270" step="0.5" aria-label="Maximaler Lenkwinkel nach links" autocomplete="off">
+            <span>°</span>
+          </div>
+        </div>
+        <div class="field">
+          <label for="steeringMid">Mitte</label>
+          <div class="number-input">
+            <input id="steeringMid" type="number" inputmode="decimal" min="0" max="270" step="0.5" aria-label="Neutralstellung des Lenkservos" autocomplete="off">
+            <span>°</span>
+          </div>
+        </div>
+        <div class="field">
+          <label for="steeringRight">Rechts (max.)</label>
+          <div class="number-input">
+            <input id="steeringRight" type="number" inputmode="decimal" min="0" max="270" step="0.5" aria-label="Maximaler Lenkwinkel nach rechts" autocomplete="off">
+            <span>°</span>
+          </div>
+        </div>
+      </div>
+    </section>
+    <section class="settings-section">
+      <h2>Motorgrenzen</h2>
+      <p class="hint">Begrenzt den maximalen PWM-Anteil für den DC-Motor (0–100&nbsp;%).</p>
+      <div class="motor-limits">
+        <label for="motorForward">Vorwärts</label>
+        <div class="slider-row">
+          <input id="motorForward" type="range" min="0" max="100" step="1" aria-label="Vorwärtslimit einstellen">
+          <output id="motorForwardValue" for="motorForward">–</output>
+        </div>
+      </div>
+      <div class="motor-limits">
+        <label for="motorReverse">Rückwärts</label>
+        <div class="slider-row">
+          <input id="motorReverse" type="range" min="0" max="100" step="1" aria-label="Rückwärtslimit einstellen">
+          <output id="motorReverseValue" for="motorReverse">–</output>
+        </div>
+      </div>
+    </section>
+    <section class="settings-section">
       <h2>Weitere Einstellungen</h2>
-      <p class="hint">GPIO-Belegung, Lenkwinkel und Motorgrenzen konfigurieren.</p>
+      <p class="hint">GPIO-Belegung für Servos und Motor konfigurieren.</p>
       <div class="button-row">
         <a class="button" href="/settings/gpio">GPIO-Einstellungen öffnen</a>
       </div>
@@ -419,6 +515,14 @@
     const volumeContainer = document.getElementById('audioVolumeContainer');
     const volumeSlider = document.getElementById('audioVolume');
     const volumeValue = document.getElementById('audioVolumeValue');
+    const motorForward = document.getElementById('motorForward');
+    const motorReverse = document.getElementById('motorReverse');
+    const motorForwardValue = document.getElementById('motorForwardValue');
+    const motorReverseValue = document.getElementById('motorReverseValue');
+    const steeringLeft = document.getElementById('steeringLeft');
+    const steeringMid = document.getElementById('steeringMid');
+    const steeringRight = document.getElementById('steeringRight');
+    const steeringInputs = [steeringLeft, steeringMid, steeringRight].filter((input) => input);
     const soundDirectoryInput = document.getElementById('soundDirectory');
     const soundDirectorySave = document.getElementById('soundDirectorySave');
     const soundboardPortInput = document.getElementById('soundboardPort');
@@ -444,11 +548,33 @@
     audioSelect.disabled = true;
     let audioOptionsSignature = '';
     let volumeConfig = null;
+    let motorConfig = null;
+    let steeringConfig = null;
     if (volumeSlider) {
       volumeSlider.disabled = true;
     }
     if (volumeContainer) {
       volumeContainer.hidden = true;
+    }
+    if (motorForward) {
+      motorForward.disabled = true;
+      motorForward.value = '0';
+    }
+    if (motorReverse) {
+      motorReverse.disabled = true;
+      motorReverse.value = '0';
+    }
+    if (motorForwardValue) {
+      motorForwardValue.textContent = '–';
+    }
+    if (motorReverseValue) {
+      motorReverseValue.textContent = '–';
+    }
+    if (steeringInputs.length > 0) {
+      steeringInputs.forEach((input) => {
+        input.disabled = true;
+        input.value = '';
+      });
     }
     if (soundDirectoryInput) {
       soundDirectoryInput.disabled = true;
@@ -878,6 +1004,8 @@
         const selected = typeof data.audio_device === 'string' ? data.audio_device : null;
         syncAudioSelection(data.audio_outputs, selected);
         const volumeValue = syncVolume(data.audio_volume);
+        syncMotorLimits(data.motor_limits);
+        syncSteeringAngles(data.steering_angles);
         const soundInfo = syncSoundSettings(data.sound);
         const buttonInfo = syncButtonActions(data.button_actions);
         let success = false;
@@ -924,6 +1052,288 @@
       } else if (tone === 'error') {
         statusEl.classList.add('error');
       }
+    };
+
+    const formatMotorPercent = (value) => `${Math.round((Number.parseFloat(value) || 0) * 100)}%`;
+
+    const clampMotorLimit = (value) => {
+      if (!motorConfig) {
+        return null;
+      }
+      const { min, max, step } = motorConfig;
+      const numeric = Number.parseFloat(value);
+      if (!Number.isFinite(numeric)) {
+        return null;
+      }
+      const limited = Math.max(min, Math.min(max, numeric));
+      const steps = Math.round((limited - min) / step);
+      const quantized = min + steps * step;
+      const clamped = Math.max(min, Math.min(max, quantized));
+      return Number.parseFloat(clamped.toFixed(4));
+    };
+
+    const clampMotorFromSlider = (value) => {
+      if (!motorConfig) {
+        return null;
+      }
+      const numeric = Number.parseFloat(value);
+      if (!Number.isFinite(numeric)) {
+        return null;
+      }
+      return clampMotorLimit(numeric / 100);
+    };
+
+    const parseSoundboardPort = (value) => {
+      if (typeof value === 'number') {
+        if (Number.isInteger(value) && value >= 1 && value <= 65535) {
+          return value;
+        }
+        return null;
+      }
+      if (typeof value === 'string') {
+        const trimmed = value.trim();
+        if (!trimmed) {
+          return null;
+        }
+        const parsed = Number.parseInt(trimmed, 10);
+        if (Number.isInteger(parsed) && parsed >= 1 && parsed <= 65535) {
+          return parsed;
+        }
+      }
+      return null;
+    };
+
+    const parseCameraTarget = (value) => {
+      if (typeof value === 'number') {
+        if (Number.isInteger(value) && value >= 1 && value <= 65535) {
+          return { port: value, path: '', raw: String(value) };
+        }
+        return null;
+      }
+      if (typeof value !== 'string') {
+        return null;
+      }
+      const trimmed = value.trim();
+      if (!trimmed) {
+        return null;
+      }
+      const slashIndex = trimmed.indexOf('/');
+      const portPart = slashIndex === -1 ? trimmed : trimmed.slice(0, slashIndex);
+      const pathPart = slashIndex === -1 ? '' : trimmed.slice(slashIndex + 1);
+      const numeric = Number.parseInt(portPart, 10);
+      if (!Number.isInteger(numeric) || numeric < 1 || numeric > 65535) {
+        return null;
+      }
+      let normalizedPath = '';
+      if (pathPart) {
+        const segments = pathPart
+          .split('/')
+          .map((segment) => segment.trim())
+          .filter(Boolean);
+        if (segments.length > 0) {
+          normalizedPath = `/${segments.join('/')}`;
+          if (pathPart.trim().endsWith('/') && !normalizedPath.endsWith('/')) {
+            normalizedPath += '/';
+          }
+        }
+      }
+      return { port: numeric, path: normalizedPath, raw: `${numeric}${normalizedPath}` };
+    };
+
+    const syncMotorLimits = (info) => {
+      if (!motorForward || !motorReverse || !motorForwardValue || !motorReverseValue) {
+        return null;
+      }
+      if (!info || !Number.isFinite(info.forward) || !Number.isFinite(info.reverse)) {
+        motorConfig = null;
+        motorForward.disabled = true;
+        motorReverse.disabled = true;
+        motorForwardValue.textContent = '–';
+        motorReverseValue.textContent = '–';
+        return null;
+      }
+      const min = Number.isFinite(info.min) ? info.min : 0;
+      const max = Number.isFinite(info.max) ? info.max : 1;
+      const step = Number.isFinite(info.step) && info.step > 0 ? info.step : 0.01;
+      motorConfig = { min, max, step };
+      const sliderMin = Math.round(min * 100);
+      const sliderMax = Math.round(max * 100);
+      const sliderStep = Math.max(1, Math.round(step * 100));
+      motorForward.min = String(sliderMin);
+      motorForward.max = String(sliderMax);
+      motorForward.step = String(sliderStep);
+      motorReverse.min = String(sliderMin);
+      motorReverse.max = String(sliderMax);
+      motorReverse.step = String(sliderStep);
+      const forwardValue = clampMotorLimit(info.forward);
+      const reverseValue = clampMotorLimit(info.reverse);
+      if (forwardValue === null || reverseValue === null) {
+        motorConfig = null;
+        motorForward.disabled = true;
+        motorReverse.disabled = true;
+        motorForwardValue.textContent = '–';
+        motorReverseValue.textContent = '–';
+        return null;
+      }
+      motorForward.disabled = false;
+      motorReverse.disabled = false;
+      motorForward.value = String(Math.round(forwardValue * 100));
+      motorReverse.value = String(Math.round(reverseValue * 100));
+      motorForwardValue.textContent = formatMotorPercent(forwardValue);
+      motorReverseValue.textContent = formatMotorPercent(reverseValue);
+      return { forward: forwardValue, reverse: reverseValue };
+    };
+
+    const getCurrentMotorValues = () => {
+      if (!motorConfig || !motorForward || !motorReverse) {
+        return null;
+      }
+      const forward = clampMotorFromSlider(motorForward.value);
+      const reverse = clampMotorFromSlider(motorReverse.value);
+      if (forward === null || reverse === null) {
+        return null;
+      }
+      return { forward, reverse };
+    };
+
+    const determineAnglePrecision = (step) => {
+      if (!Number.isFinite(step) || step <= 0) {
+        return 2;
+      }
+      if (step >= 1) {
+        return 0;
+      }
+      if (step >= 0.1) {
+        return 1;
+      }
+      return 2;
+    };
+
+    const quantizeAngle = (value, min, max, step) => {
+      const numeric = Number.parseFloat(value);
+      if (!Number.isFinite(numeric)) {
+        return null;
+      }
+      const limited = Math.max(min, Math.min(max, numeric));
+      if (!Number.isFinite(step) || step <= 0) {
+        return Number.parseFloat(limited.toFixed(3));
+      }
+      const steps = Math.round((limited - min) / step);
+      const quantized = min + steps * step;
+      const clamped = Math.max(min, Math.min(max, quantized));
+      return Number.parseFloat(clamped.toFixed(3));
+    };
+
+    const formatAngleInput = (value, precision) => {
+      if (!Number.isFinite(value)) {
+        return '';
+      }
+      const digits = Number.isInteger(precision) ? precision : 1;
+      const clampedDigits = Math.max(0, Math.min(3, digits));
+      const normalized = Number.parseFloat(value.toFixed(clampedDigits));
+      return Number.isFinite(normalized) ? String(normalized) : '';
+    };
+
+    const clampSteeringValue = (rawValue) => {
+      if (!steeringConfig) {
+        return null;
+      }
+      if (rawValue === undefined || rawValue === null || rawValue === '') {
+        return null;
+      }
+      const { min, max, step } = steeringConfig;
+      return quantizeAngle(rawValue, min, max, step);
+    };
+
+    const applySteeringInputs = (values) => {
+      if (!steeringConfig) {
+        return;
+      }
+      const precision = steeringConfig.precision ?? 1;
+      if (steeringLeft) {
+        steeringLeft.value = formatAngleInput(values.left, precision);
+      }
+      if (steeringMid) {
+        steeringMid.value = formatAngleInput(values.mid, precision);
+      }
+      if (steeringRight) {
+        steeringRight.value = formatAngleInput(values.right, precision);
+      }
+    };
+
+    const revertSteeringInputs = () => {
+      if (!steeringConfig || !steeringConfig.values) {
+        steeringInputs.forEach((input) => {
+          input.value = '';
+        });
+        return;
+      }
+      applySteeringInputs(steeringConfig.values);
+    };
+
+    const syncSteeringAngles = (info) => {
+      if (steeringInputs.length === 0) {
+        return null;
+      }
+      if (
+        !info ||
+        !Number.isFinite(info.left) ||
+        !Number.isFinite(info.mid) ||
+        !Number.isFinite(info.right)
+      ) {
+        steeringConfig = null;
+        steeringInputs.forEach((input) => {
+          input.disabled = true;
+          input.value = '';
+        });
+        return null;
+      }
+      const min = Number.isFinite(info.min) ? info.min : 0;
+      const max = Number.isFinite(info.max) ? info.max : 270;
+      const step = Number.isFinite(info.step) && info.step > 0 ? info.step : 0.5;
+      const precision = determineAnglePrecision(step);
+      const left = quantizeAngle(info.left, min, max, step);
+      const mid = quantizeAngle(info.mid, min, max, step);
+      const right = quantizeAngle(info.right, min, max, step);
+      if (left === null || mid === null || right === null || !(left <= mid && mid <= right)) {
+        steeringConfig = null;
+        steeringInputs.forEach((input) => {
+          input.disabled = true;
+          input.value = '';
+        });
+        return null;
+      }
+      steeringConfig = {
+        min,
+        max,
+        step,
+        precision,
+        values: { left, mid, right },
+      };
+      steeringInputs.forEach((input) => {
+        input.disabled = false;
+        input.min = String(min);
+        input.max = String(max);
+        input.step = String(step);
+      });
+      applySteeringInputs(steeringConfig.values);
+      return steeringConfig.values;
+    };
+
+    const getCurrentSteeringValues = () => {
+      if (!steeringConfig) {
+        return null;
+      }
+      const left = clampSteeringValue(steeringLeft?.value);
+      const mid = clampSteeringValue(steeringMid?.value);
+      const right = clampSteeringValue(steeringRight?.value);
+      if (left === null || mid === null || right === null) {
+        return null;
+      }
+      if (!(left <= mid && mid <= right)) {
+        return null;
+      }
+      return { left, mid, right };
     };
 
     const syncAudioSelection = (options, selectedId) => {
@@ -1210,6 +1620,8 @@
         const selected = typeof data.audio_device === 'string' ? data.audio_device : null;
         const current = syncAudioSelection(data.audio_outputs, selected);
         const volumeValue = syncVolume(data.audio_volume);
+        const motorValues = syncMotorLimits(data.motor_limits);
+        const steeringValues = syncSteeringAngles(data.steering_angles);
         const soundInfo = syncSoundSettings(data.sound);
         const gamepadInfo = syncGamepadSettings(data.gamepad);
         const buttonInfo = syncButtonActions(data.button_actions);
@@ -1225,6 +1637,18 @@
         } else {
           messageParts.push('Keine Audio-Ausgabegeräte verfügbar');
           tone = 'error';
+        }
+        if (motorValues) {
+          messageParts.push('Motor-Limits geladen');
+          if (!tone) {
+            tone = 'success';
+          }
+        }
+        if (steeringValues) {
+          messageParts.push('Lenkwinkel geladen');
+          if (!tone) {
+            tone = 'success';
+          }
         }
         if (soundInfo) {
           if (soundInfo.files.length > 0) {
@@ -1254,6 +1678,8 @@
         console.error('Laden fehlgeschlagen', err);
         setStatus('Konnte Einstellungen nicht laden.', 'error');
         audioSelect.disabled = true;
+        syncMotorLimits(null);
+        syncSteeringAngles(null);
         syncSoundSettings(null);
         syncButtonActions(null);
         syncGamepadSettings(null);
@@ -1277,6 +1703,8 @@
         const data = await resp.json();
         syncAudioSelection(data.audio_outputs, data.audio_device);
         const volumeValue = syncVolume(data.audio_volume);
+        syncMotorLimits(data.motor_limits);
+        syncSteeringAngles(data.steering_angles);
         syncSoundSettings(data.sound);
         syncGamepadSettings(data.gamepad);
         syncButtonActions(data.button_actions);
@@ -1316,6 +1744,8 @@
         }
         const data = await resp.json();
         syncAudioSelection(data.audio_outputs, data.audio_device);
+        syncMotorLimits(data.motor_limits);
+        syncSteeringAngles(data.steering_angles);
         const updated = syncVolume(data.audio_volume);
         syncSoundSettings(data.sound);
         syncGamepadSettings(data.gamepad);
@@ -1359,6 +1789,8 @@
         const data = await resp.json();
         syncAudioSelection(data.audio_outputs, data.audio_device);
         syncVolume(data.audio_volume);
+        syncMotorLimits(data.motor_limits);
+        syncSteeringAngles(data.steering_angles);
         const soundInfo = syncSoundSettings(data.sound);
         syncGamepadSettings(data.gamepad);
         syncButtonActions(data.button_actions);
@@ -1409,6 +1841,8 @@
         const data = await resp.json();
         syncAudioSelection(data.audio_outputs, data.audio_device);
         syncVolume(data.audio_volume);
+        syncMotorLimits(data.motor_limits);
+        syncSteeringAngles(data.steering_angles);
         const soundInfo = syncSoundSettings(data.sound);
         syncGamepadSettings(data.gamepad);
         syncButtonActions(data.button_actions);
@@ -1458,6 +1892,8 @@
         const data = await resp.json();
         syncAudioSelection(data.audio_outputs, data.audio_device);
         syncVolume(data.audio_volume);
+        syncMotorLimits(data.motor_limits);
+        syncSteeringAngles(data.steering_angles);
         const soundInfo = syncSoundSettings(data.sound);
         syncGamepadSettings(data.gamepad);
         syncButtonActions(data.button_actions);
@@ -1496,6 +1932,8 @@
         const data = await resp.json();
         syncAudioSelection(data.audio_outputs, data.audio_device);
         syncVolume(data.audio_volume);
+        syncMotorLimits(data.motor_limits);
+        syncSteeringAngles(data.steering_angles);
         syncSoundSettings(data.sound);
         const gamepadInfo = syncGamepadSettings(data.gamepad);
         syncButtonActions(data.button_actions);
@@ -1536,6 +1974,8 @@
         }
         const data = await resp.json();
         syncAudioSelection(data.audio_outputs, data.audio_device);
+        syncMotorLimits(data.motor_limits);
+        syncSteeringAngles(data.steering_angles);
         syncVolume(data.audio_volume);
         const soundInfo = syncSoundSettings(data.sound);
         syncGamepadSettings(data.gamepad);
@@ -1573,6 +2013,8 @@
         }
         const data = await resp.json();
         syncAudioSelection(data.audio_outputs, data.audio_device);
+        syncMotorLimits(data.motor_limits);
+        syncSteeringAngles(data.steering_angles);
         syncVolume(data.audio_volume);
         const soundInfo = syncSoundSettings(data.sound);
         syncGamepadSettings(data.gamepad);
@@ -1592,6 +2034,78 @@
       }
     }
 
+    async function saveMotorLimits(forward, reverse) {
+      if (!motorForward || !motorReverse) {
+        return;
+      }
+      try {
+        setStatus('Speichere Motor-Grenzen …');
+        const payload = { motor_limits: { forward, reverse } };
+        const currentDevice = audioSelect.value;
+        if (currentDevice) {
+          payload.audio_device = currentDevice;
+        }
+        const resp = await fetch('/api/control', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        if (!resp.ok) {
+          throw new Error(`Status ${resp.status}`);
+        }
+        const data = await resp.json();
+        syncAudioSelection(data.audio_outputs, data.audio_device);
+        syncMotorLimits(data.motor_limits);
+        syncSteeringAngles(data.steering_angles);
+        syncVolume(data.audio_volume);
+        syncSoundSettings(data.sound);
+        syncGamepadSettings(data.gamepad);
+        syncButtonActions(data.button_actions);
+        setStatus('Motor-Grenzen gespeichert.', 'success');
+      } catch (err) {
+        console.error('Speichern der Motor-Grenzen fehlgeschlagen', err);
+        setStatus('Motor-Grenzen konnten nicht gespeichert werden.', 'error');
+      }
+    }
+
+    async function saveSteeringAngles(values) {
+      if (!values) {
+        return;
+      }
+      try {
+        setStatus('Speichere Lenkwinkel …');
+        const payload = { steering_angles: values };
+        const currentDevice = audioSelect.value;
+        if (currentDevice) {
+          payload.audio_device = currentDevice;
+        }
+        const resp = await fetch('/api/control', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        if (!resp.ok) {
+          throw new Error(`Status ${resp.status}`);
+        }
+        const data = await resp.json();
+        syncAudioSelection(data.audio_outputs, data.audio_device);
+        syncMotorLimits(data.motor_limits);
+        syncVolume(data.audio_volume);
+        syncSoundSettings(data.sound);
+        syncButtonActions(data.button_actions);
+        const updated = syncSteeringAngles(data.steering_angles);
+        if (updated) {
+          setStatus('Lenkwinkel gespeichert.', 'success');
+        } else {
+          setStatus('Lenkwinkel konnten nicht übernommen werden.', 'error');
+        }
+      } catch (err) {
+        console.error('Speichern der Lenkwinkel fehlgeschlagen', err);
+        revertSteeringInputs();
+        setStatus('Lenkwinkel konnten nicht gespeichert werden.', 'error');
+      }
+    }
+
     audioSelect.addEventListener('change', () => {
       const value = audioSelect.value;
       if (value) {
@@ -1599,6 +2113,73 @@
       }
     });
 
+    if (motorForward && motorForwardValue) {
+      motorForward.addEventListener('input', () => {
+        const value = clampMotorFromSlider(motorForward.value);
+        motorForwardValue.textContent = value === null ? '–' : formatMotorPercent(value);
+      });
+      motorForward.addEventListener('change', () => {
+        const values = getCurrentMotorValues();
+        if (!values) {
+          return;
+        }
+        motorForward.value = String(Math.round(values.forward * 100));
+        motorForwardValue.textContent = formatMotorPercent(values.forward);
+        motorReverse.value = String(Math.round(values.reverse * 100));
+        motorReverseValue.textContent = formatMotorPercent(values.reverse);
+        saveMotorLimits(values.forward, values.reverse);
+      });
+    }
+
+    if (motorReverse && motorReverseValue) {
+      motorReverse.addEventListener('input', () => {
+        const value = clampMotorFromSlider(motorReverse.value);
+        motorReverseValue.textContent = value === null ? '–' : formatMotorPercent(value);
+      });
+      motorReverse.addEventListener('change', () => {
+        const values = getCurrentMotorValues();
+        if (!values) {
+          return;
+        }
+        motorForward.value = String(Math.round(values.forward * 100));
+        motorForwardValue.textContent = formatMotorPercent(values.forward);
+        motorReverse.value = String(Math.round(values.reverse * 100));
+        motorReverseValue.textContent = formatMotorPercent(values.reverse);
+        saveMotorLimits(values.forward, values.reverse);
+      });
+    }
+
+    if (steeringInputs.length > 0) {
+      const handleSteeringChange = () => {
+        const values = getCurrentSteeringValues();
+        if (!values) {
+          setStatus('Ungültige Lenkwinkel. Bitte Werte prüfen.', 'error');
+          revertSteeringInputs();
+          return;
+        }
+        if (
+          steeringConfig &&
+          steeringConfig.values &&
+          values.left === steeringConfig.values.left &&
+          values.mid === steeringConfig.values.mid &&
+          values.right === steeringConfig.values.right
+        ) {
+          applySteeringInputs(steeringConfig.values);
+          return;
+        }
+        applySteeringInputs(values);
+        saveSteeringAngles(values);
+      };
+      steeringInputs.forEach((input) => {
+        input.addEventListener('input', () => {
+          const value = clampSteeringValue(input.value);
+          if (value === null || !steeringConfig) {
+            return;
+          }
+          input.value = formatAngleInput(value, steeringConfig.precision);
+        });
+        input.addEventListener('change', handleSteeringChange);
+      });
     }
 
     if (volumeSlider) {
