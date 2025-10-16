@@ -7,7 +7,6 @@
 
 # ---- Audio & Dateien ----
 SOUND_DIRECTORY_DEFAULT = "/opt/python/sawsounds"
-START_SOUND_DEFAULT = "Start.mp3"
 ALSA_HP_DEVICE       = "plughw:0,0"           # Analoger Kopfhörer-Ausgang (mit 'aplay -l' prüfen)
 ALSA_USB_DEVICE      = "plughw:1,0"           # USB-Soundkarte (mit 'aplay -l' prüfen)
 HEADPHONE_VOLUME_DEFAULT = 100
@@ -662,8 +661,6 @@ def load_persisted_sound_settings():
         camera_port = sanitize_camera_port(stored.get("camera_port"))
     if not directory:
         directory = SOUND_DIRECTORY_DEFAULT
-    if not start_sound:
-        start_sound = START_SOUND_DEFAULT
     return {
         "directory": directory,
         "start_sound": start_sound,
@@ -1167,8 +1164,7 @@ class WebControlState:
         if normalized_start:
             self._start_sound = normalized_start
         else:
-            preferred = sanitize_start_sound(START_SOUND_DEFAULT, self._sound_files)
-            self._start_sound = preferred if preferred else None
+            self._start_sound = None
         normalized_connected = sanitize_start_sound(self._connected_sound, self._sound_files)
         self._connected_sound = normalized_connected
         return self._start_sound
