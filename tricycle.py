@@ -540,7 +540,7 @@ def sanitize_disconnect_command(value, *, max_length=1024):
     return trimmed
 
 
-def sanitize_start_sound(name, available_files=None):
+def sanitize_sounds(name, available_files=None):
     if name is None:
         return None
     try:
@@ -587,7 +587,7 @@ def sanitize_button_action(code, value, available_files=None):
     if not mode:
         return None
     if mode == BUTTON_MODE_MP3:
-        mp3_value = sanitize_start_sound(value.get("value"), available_files)
+        mp3_value = sanitize_sounds(value.get("value"), available_files)
         if mp3_value:
             return {"mode": BUTTON_MODE_MP3, "value": mp3_value}
         return None
@@ -1085,7 +1085,7 @@ class WebControlState:
         initial_directory = sanitize_sound_directory(initial_sound_directory) or SOUND_DIRECTORY_DEFAULT
         self._sound_directory = initial_directory
         self._sound_files = []
-        self._connected_sound = sanitize_start_sound(initial_connected_sound)
+        self._connected_sound = sanitize_sounds(initial_connected_sound)
         self._disconnect_command = sanitize_disconnect_command(initial_disconnect_command)
         self._soundboard_port = sanitize_soundboard_port(initial_soundboard_port)
         self._camera_port = sanitize_camera_port(initial_camera_port)
@@ -1144,7 +1144,7 @@ class WebControlState:
         if not self._sound_files:
             self._connected_sound = None
             return None
-        normalized_connected = sanitize_start_sound(self._connected_sound, self._sound_files)
+        normalized_connected = sanitize_sounds(self._connected_sound, self._sound_files)
         self._connected_sound = normalized_connected
         return self._connected_sound
 
@@ -1216,7 +1216,7 @@ class WebControlState:
             files = list(self._sound_files)
         if not directory or not files:
             return None
-        normalized = sanitize_start_sound(requested, files)
+        normalized = sanitize_sounds(requested, files)
         if not normalized:
             return None
         candidate = os.path.join(directory, normalized)
@@ -1359,7 +1359,7 @@ class WebControlState:
                 if refreshed:
                     button_actions_to_persist = dict(self._button_actions)
             if connected_sound is not None:
-                sanitized_connected = sanitize_start_sound(connected_sound, self._sound_files)
+                sanitized_connected = sanitize_sounds(connected_sound, self._sound_files)
                 if sanitized_connected is not None:
                     if sanitized_connected != self._connected_sound:
                         self._connected_sound = sanitized_connected
