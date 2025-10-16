@@ -188,7 +188,9 @@ import time
 import json
 import threading
 import subprocess
+from functools import lru_cache
 from pathlib import Path
+from types import MappingProxyType
 from urllib.parse import parse_qs, urlparse
 
 try:
@@ -292,8 +294,9 @@ def _coerce_int(value, fallback):
         return fallback
 
 
-def _get_volume_profile(audio_id):
-    profile = _AUDIO_OUTPUT_MAP.get(str(audio_id))
+@lru_cache(maxsize=None)
+def _build_volume_profile(audio_id_str):
+    profile = _AUDIO_OUTPUT_MAP.get(audio_id_str)
     if not profile:
         return None
     volume_cfg = profile.get("volume")
@@ -302,7 +305,7 @@ def _get_volume_profile(audio_id):
     command = volume_cfg.get("command")
     if not isinstance(command, (list, tuple)) or not command:
         return None
-    command = [str(part) for part in command]
+    command_tuple = tuple(str(part) for part in command)
 
     min_val = _coerce_int(volume_cfg.get("min"), 0)
     max_val = _coerce_int(volume_cfg.get("max"), 100)
@@ -314,13 +317,21 @@ def _get_volume_profile(audio_id):
     default_val = _coerce_int(volume_cfg.get("default"), max_val)
     default_val = max(min_val, min(max_val, default_val))
 
-    return {
-        "command": command,
-        "min": min_val,
-        "max": max_val,
-        "step": step_val,
-        "default": default_val,
-    }
+    return MappingProxyType(
+        {
+            "command": command_tuple,
+            "min": min_val,
+            "max": max_val,
+            "step": step_val,
+            "default": default_val,
+        }
+    )
+
+
+def _get_volume_profile(audio_id):
+    if audio_id is None:
+        return None
+    return _build_volume_profile(str(audio_id))
 
 
 def _sanitize_volume_value(value, profile):
@@ -354,13 +365,13 @@ def get_default_volume(audio_id):
     return profile["default"]
 
 
-def load_persisted_audio_state(default_id=DEFAULT_AUDIO_OUTPUT_ID):
+def load_persisted_audio_state(default_id=DEFAULT_AUDIO_OUTPUT_ID, *, _payload=None):
     default_audio = _normalize_audio_output_id(default_id) or DEFAULT_AUDIO_OUTPUT_ID
     state = {
         "audio_device": default_audio,
         "volumes": {},
     }
-    data = _load_persisted_state()
+    data = _payload if _payload is not None else _load_persisted_state()
     if not data:
         return state
 
@@ -402,7 +413,8 @@ def load_persisted_audio_volumes():
 
 
 def persist_audio_state(*, audio_device=None, volume_updates=None):
-    state = load_persisted_audio_state()
+    payload = _load_persisted_state()
+    state = load_persisted_audio_state(_payload=payload)
     changed = False
 
     if audio_device is not None:
@@ -427,7 +439,6 @@ def persist_audio_state(*, audio_device=None, volume_updates=None):
     if not changed:
         return False
 
-    payload = _load_persisted_state()
     payload["audio_device"] = state["audio_device"]
     payload["audio_volume"] = state["volumes"]
     return _persist_state(payload)
@@ -541,10 +552,13 @@ def list_mp3_files(directory):
     try:
         if not path.is_dir():
             return []
-        return sorted(
-            [entry.name for entry in path.iterdir() if entry.is_file() and entry.suffix.lower() == ".mp3"],
-            key=str.casefold,
-        )
+        with os.scandir(path) as it:
+            files = [
+                entry.name
+                for entry in it
+                if entry.is_file() and entry.name.lower().endswith(".mp3")
+            ]
+        return sorted(files, key=str.casefold)
     except Exception:
         return []
 
@@ -647,7 +661,10 @@ def sanitize_motor_limit(value, *, step=MOTOR_LIMIT_STEP):
 
 
 def load_persisted_motor_limits(
-    default_forward=MOTOR_LIMIT_FWD, default_reverse=MOTOR_LIMIT_REV
+    default_forward=MOTOR_LIMIT_FWD,
+    default_reverse=MOTOR_LIMIT_REV,
+    *,
+    _payload=None,
 ):
     limits = {
         "forward": sanitize_motor_limit(default_forward, step=None)
@@ -655,7 +672,7 @@ def load_persisted_motor_limits(
         "reverse": sanitize_motor_limit(default_reverse, step=None)
         or MOTOR_LIMIT_REV,
     }
-    data = _load_persisted_state()
+    data = _payload if _payload is not None else _load_persisted_state()
     raw_limits = data.get("motor_limits") if isinstance(data, dict) else None
     if isinstance(raw_limits, dict):
         forward = sanitize_motor_limit(raw_limits.get("forward"))
@@ -668,7 +685,8 @@ def load_persisted_motor_limits(
 
 
 def persist_motor_limits(*, forward=None, reverse=None):
-    current = load_persisted_motor_limits()
+    payload = _load_persisted_state()
+    current = load_persisted_motor_limits(_payload=payload)
     changed = False
 
     if forward is not None:
@@ -686,7 +704,6 @@ def persist_motor_limits(*, forward=None, reverse=None):
     if not changed:
         return False
 
-    payload = _load_persisted_state()
     payload["motor_limits"] = {
         "forward": current["forward"],
         "reverse": current["reverse"],
