@@ -402,6 +402,15 @@
         <p class="hint">Alle MP3-Dateien aus diesem Ordner stehen für den Startsound zur Auswahl.</p>
       </div>
       <div class="field">
+        <label for="soundboardPort">Soundboard URL PORT</label>
+        <div class="text-input">
+          <input id="soundboardPort" type="text" inputmode="numeric" pattern="[0-9]*" autocomplete="off" placeholder="3000" aria-label="Port für das Soundboard">
+        </div>
+        <div class="button-row">
+          <button type="button" class="button" id="soundboardPortSave">Port speichern</button>
+        </div>
+      </div>
+      <div class="field">
         <label for="startSound">Startsound</label>
         <div class="sound-row">
           <select id="startSound" aria-label="Startsound auswählen"></select>
@@ -489,6 +498,8 @@
     const steeringInputs = [steeringLeft, steeringMid, steeringRight].filter((input) => input);
     const soundDirectoryInput = document.getElementById('soundDirectory');
     const soundDirectorySave = document.getElementById('soundDirectorySave');
+    const soundboardPortInput = document.getElementById('soundboardPort');
+    const soundboardPortSave = document.getElementById('soundboardPortSave');
     const startSoundSelect = document.getElementById('startSound');
     const connectedSoundSelect = document.getElementById('connectedSound');
     const startSoundPreviewButton = document.querySelector('[data-sound-preview="start"]');
@@ -540,6 +551,13 @@
     }
     if (soundDirectorySave) {
       soundDirectorySave.disabled = true;
+    }
+    if (soundboardPortInput) {
+      soundboardPortInput.disabled = true;
+      soundboardPortInput.value = '';
+    }
+    if (soundboardPortSave) {
+      soundboardPortSave.disabled = true;
     }
     if (startSoundSelect) {
       startSoundSelect.disabled = true;
@@ -1020,6 +1038,26 @@
       return clampMotorLimit(numeric / 100);
     };
 
+    const parseSoundboardPort = (value) => {
+      if (typeof value === 'number') {
+        if (Number.isInteger(value) && value >= 1 && value <= 65535) {
+          return value;
+        }
+        return null;
+      }
+      if (typeof value === 'string') {
+        const trimmed = value.trim();
+        if (!trimmed) {
+          return null;
+        }
+        const parsed = Number.parseInt(trimmed, 10);
+        if (Number.isInteger(parsed) && parsed >= 1 && parsed <= 65535) {
+          return parsed;
+        }
+      }
+      return null;
+    };
+
     const syncMotorLimits = (info) => {
       if (!motorForward || !motorReverse || !motorForwardValue || !motorReverseValue) {
         return null;
@@ -1361,6 +1399,13 @@
         soundDirectoryInput.value = '';
         soundDirectoryInput.disabled = true;
         soundDirectorySave.disabled = true;
+        if (soundboardPortInput) {
+          soundboardPortInput.value = '';
+          soundboardPortInput.disabled = true;
+        }
+        if (soundboardPortSave) {
+          soundboardPortSave.disabled = true;
+        }
         const option = document.createElement('option');
         option.value = '';
         option.textContent = 'Keine MP3-Dateien gefunden';
@@ -1383,9 +1428,17 @@
         : [];
       const startSound = typeof info.start_sound === 'string' ? info.start_sound : '';
       const connectedSound = typeof info.connected_sound === 'string' ? info.connected_sound : '';
+      const soundboardPort = parseSoundboardPort(info.soundboard_port);
       soundDirectoryInput.disabled = false;
       soundDirectoryInput.value = directory;
       soundDirectorySave.disabled = false;
+      if (soundboardPortInput) {
+        soundboardPortInput.disabled = false;
+        soundboardPortInput.value = soundboardPort !== null ? String(soundboardPort) : '';
+      }
+      if (soundboardPortSave) {
+        soundboardPortSave.disabled = false;
+      }
       let selected = '';
       let connectedSelected = '';
       if (files.length === 0) {
@@ -1437,6 +1490,7 @@
         files,
         startSound: selected || '',
         connectedSound: connectedSelected || '',
+        soundboardPort,
       };
     };
 
@@ -1624,6 +1678,56 @@
       } catch (err) {
         console.error('Speichern des Sound-Pfads fehlgeschlagen', err);
         setStatus('Sound-Pfad konnte nicht gespeichert werden.', 'error');
+      }
+    }
+
+    async function saveSoundboardPort(rawPort) {
+      if (!soundboardPortInput || !soundboardPortSave) {
+        return;
+      }
+      const rawValue = typeof rawPort === 'string' ? rawPort.trim() : String(rawPort ?? '').trim();
+      if (!rawValue) {
+        setStatus('Bitte einen gültigen Port eingeben.', 'error');
+        soundboardPortInput.focus();
+        return;
+      }
+      const numeric = Number.parseInt(rawValue, 10);
+      if (!Number.isInteger(numeric) || numeric < 1 || numeric > 65535) {
+        setStatus('Port muss zwischen 1 und 65535 liegen.', 'error');
+        soundboardPortInput.focus();
+        return;
+      }
+      try {
+        setStatus('Speichere Soundboard-Port …');
+        const payload = { soundboard_port: numeric };
+        const currentDevice = audioSelect.value;
+        if (currentDevice) {
+          payload.audio_device = currentDevice;
+        }
+        const resp = await fetch('/api/control', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        if (!resp.ok) {
+          throw new Error(`Status ${resp.status}`);
+        }
+        const data = await resp.json();
+        syncAudioSelection(data.audio_outputs, data.audio_device);
+        syncVolume(data.audio_volume);
+        syncMotorLimits(data.motor_limits);
+        syncSteeringAngles(data.steering_angles);
+        const soundInfo = syncSoundSettings(data.sound);
+        syncButtonActions(data.button_actions);
+        const savedPort = soundInfo ? soundInfo.soundboardPort : null;
+        if (savedPort === numeric) {
+          setStatus('Soundboard-Port gespeichert.', 'success');
+        } else {
+          setStatus('Soundboard-Port konnte nicht gespeichert werden.', 'error');
+        }
+      } catch (err) {
+        console.error('Speichern des Soundboard-Ports fehlgeschlagen', err);
+        setStatus('Soundboard-Port konnte nicht gespeichert werden.', 'error');
       }
     }
 
@@ -1879,6 +1983,19 @@
         if (event.key === 'Enter') {
           event.preventDefault();
           saveSoundDirectory(soundDirectoryInput.value ?? '');
+        }
+      });
+    }
+    if (soundboardPortSave && soundboardPortInput) {
+      soundboardPortSave.addEventListener('click', () => {
+        saveSoundboardPort(soundboardPortInput.value ?? '');
+      });
+    }
+    if (soundboardPortInput) {
+      soundboardPortInput.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter') {
+          event.preventDefault();
+          saveSoundboardPort(soundboardPortInput.value ?? '');
         }
       });
     }
