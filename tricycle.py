@@ -1400,6 +1400,7 @@ class WebControlState:
         soundboard_port=None,
         camera_port=None,
         button_actions=None,
+        gpio_pins=None,
     ):
         new_audio_id = None
         persist_audio_id = None
