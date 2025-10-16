@@ -77,16 +77,7 @@ RESTART_SAME_TRACK   = True
 _UNSET = object()
 
 # Sound-Tastenbelegung (NUMERISCHE Codes; siehe evdev Events)
-SOUND_KEY_MAP = {
-    310: "/opt/python/sawsounds/Soundtrack.mp3",  # KEY_310
-    311: "/opt/python/sawsounds/game2.mp3",        # KEY_311
-    305:  "/opt/python/sawsounds/Klingel.mp3",    # KEY_305
-    307:  "/opt/python/sawsounds/Lache.mp3",      # KEY_307
-    314:  "/opt/python/sawsounds/phub.mp3",    # KEY_314  (neu)
-}
-
-# ---- Reboot-Key ----
-REBOOT_KEY_CODE      = 308  # [KEY ] KEY_308 DOWN => sudo reboot
+SOUND_KEY_MAP = {}
 
 # ---- Gamepad ----
 GAMEPAD_NAME_EXACT   = "8BitDo Ultimate C 2.4G Wireless Controller"
@@ -1700,7 +1691,6 @@ def main():
 
     print("Bereit. A = Zentrieren, Start = Beenden. D-Pad L/R setzt Kopf, D-Pad ↑ zentriert (latchend).")
     print(f"Motorachsen: centered={have_center} GAS={have_gas} BRAKE={have_brake}")
-    print(f"Reboot-Key: KEY_{REBOOT_KEY_CODE} (DOWN) startet Systemneustart.")
 
     try:
         while True:
@@ -1722,23 +1712,6 @@ def main():
                             raise KeyboardInterrupt
                         elif e.code in SOUND_KEY_MAP:
                             play_sound_switch(SOUND_KEY_MAP[e.code], web_state.get_selected_alsa_device())
-                        elif e.code == REBOOT_KEY_CODE:
-                            print("[REBOOT] Stoppe Motor/Servos und starte Neustart …")
-                            try:
-                                set_motor(pi, 0.0)
-                                pi.set_servo_pulsewidth(GPIO_PIN_SERVO, 0)
-                                pi.set_servo_pulsewidth(GPIO_PIN_HEAD, 0)
-                                stop_current_sound()
-                            except Exception:
-                                pass
-                            try:
-                                subprocess.Popen(["sudo", "reboot", "now"])
-                            except Exception:
-                                try:
-                                    subprocess.Popen(["sudo", "/sbin/shutdown", "-r", "now"])
-                                except Exception as ex:
-                                    print(f"[REBOOT] Fehlgeschlagen: {ex}", file=sys.stderr)
-                            raise KeyboardInterrupt
 
                     elif e.type == ecodes.EV_ABS and now >= safe_start_head_until:
                         # Kopfservo LATCHEND via D-Pad:
