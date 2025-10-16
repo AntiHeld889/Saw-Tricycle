@@ -323,6 +323,11 @@
         <label for="startSound">Startsound</label>
         <select id="startSound" aria-label="Startsound auswählen"></select>
       </div>
+      <div class="field">
+        <label for="connectedSound">Connected Sound</label>
+        <select id="connectedSound" aria-label="Connected Sound auswählen"></select>
+        <p class="hint">Wird nach erfolgreicher Controller-Verbindung abgespielt.</p>
+      </div>
     </section>
     <section class="settings-section">
       <h2>Lenkwinkel</h2>
@@ -387,6 +392,7 @@
     const soundDirectoryInput = document.getElementById('soundDirectory');
     const soundDirectorySave = document.getElementById('soundDirectorySave');
     const startSoundSelect = document.getElementById('startSound');
+    const connectedSoundSelect = document.getElementById('connectedSound');
     audioSelect.disabled = true;
     let audioOptionsSignature = '';
     let volumeConfig = null;
@@ -427,6 +433,9 @@
     }
     if (startSoundSelect) {
       startSoundSelect.disabled = true;
+    }
+    if (connectedSoundSelect) {
+      connectedSoundSelect.disabled = true;
     }
 
     const setStatus = (message, tone = '') => {
@@ -742,10 +751,11 @@
     };
 
     const syncSoundSettings = (info) => {
-      if (!soundDirectoryInput || !soundDirectorySave || !startSoundSelect) {
+      if (!soundDirectoryInput || !soundDirectorySave || !startSoundSelect || !connectedSoundSelect) {
         return null;
       }
       startSoundSelect.innerHTML = '';
+      connectedSoundSelect.innerHTML = '';
       if (!info || typeof info !== 'object') {
         soundDirectoryInput.value = '';
         soundDirectoryInput.disabled = true;
@@ -755,6 +765,12 @@
         option.textContent = 'Keine MP3-Dateien gefunden';
         startSoundSelect.append(option);
         startSoundSelect.disabled = true;
+        const connectedOption = document.createElement('option');
+        connectedOption.value = '';
+        connectedOption.textContent = 'Keine MP3-Dateien gefunden';
+        connectedSoundSelect.append(connectedOption);
+        connectedSoundSelect.disabled = true;
+        connectedSoundSelect.value = '';
         return null;
       }
       const directory = typeof info.directory === 'string' ? info.directory : '';
@@ -762,22 +778,38 @@
         ? info.files.filter((value) => typeof value === 'string')
         : [];
       const startSound = typeof info.start_sound === 'string' ? info.start_sound : '';
+      const connectedSound = typeof info.connected_sound === 'string' ? info.connected_sound : '';
       soundDirectoryInput.disabled = false;
       soundDirectoryInput.value = directory;
       soundDirectorySave.disabled = false;
       let selected = '';
+      let connectedSelected = '';
       if (files.length === 0) {
         const option = document.createElement('option');
         option.value = '';
         option.textContent = 'Keine MP3-Dateien gefunden';
         startSoundSelect.append(option);
         startSoundSelect.disabled = true;
+        const connectedOption = document.createElement('option');
+        connectedOption.value = '';
+        connectedOption.textContent = 'Keine MP3-Dateien gefunden';
+        connectedSoundSelect.append(connectedOption);
+        connectedSoundSelect.disabled = true;
+        connectedSoundSelect.value = '';
       } else {
+        const noneOption = document.createElement('option');
+        noneOption.value = '';
+        noneOption.textContent = 'Kein Sound';
+        connectedSoundSelect.append(noneOption);
         files.forEach((file) => {
           const option = document.createElement('option');
           option.value = file;
           option.textContent = file;
           startSoundSelect.append(option);
+          const connectedOption = document.createElement('option');
+          connectedOption.value = file;
+          connectedOption.textContent = file;
+          connectedSoundSelect.append(connectedOption);
         });
         const normalized = startSound
           ? files.find((file) => file.toLowerCase() === startSound.toLowerCase())
@@ -785,11 +817,18 @@
         selected = normalized || files[0];
         startSoundSelect.value = selected;
         startSoundSelect.disabled = false;
+        const normalizedConnected = connectedSound
+          ? files.find((file) => file.toLowerCase() === connectedSound.toLowerCase())
+          : null;
+        connectedSelected = normalizedConnected || '';
+        connectedSoundSelect.value = connectedSelected;
+        connectedSoundSelect.disabled = false;
       }
       return {
         directory,
         files,
         startSound: selected || '',
+        connectedSound: connectedSelected || '',
       };
     };
 
@@ -1009,6 +1048,47 @@
       }
     }
 
+    async function saveConnectedSound(fileName) {
+      if (!connectedSoundSelect) {
+        return;
+      }
+      const value = typeof fileName === 'string' ? fileName.trim() : '';
+      try {
+        setStatus('Speichere Connected Sound …');
+        const payload = { connected_sound: value };
+        const currentDevice = audioSelect.value;
+        if (currentDevice) {
+          payload.audio_device = currentDevice;
+        }
+        const resp = await fetch('/api/control', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        if (!resp.ok) {
+          throw new Error(`Status ${resp.status}`);
+        }
+        const data = await resp.json();
+        syncAudioSelection(data.audio_outputs, data.audio_device);
+        syncMotorLimits(data.motor_limits);
+        syncSteeringAngles(data.steering_angles);
+        syncVolume(data.audio_volume);
+        const soundInfo = syncSoundSettings(data.sound);
+        const requested = value ? value.toLowerCase() : '';
+        const saved = soundInfo && typeof soundInfo.connectedSound === 'string'
+          ? soundInfo.connectedSound.toLowerCase()
+          : '';
+        const success = requested ? requested === saved : saved === '';
+        setStatus(
+          success ? 'Connected Sound gespeichert.' : 'Connected Sound konnte nicht gespeichert werden.',
+          success ? 'success' : 'error'
+        );
+      } catch (err) {
+        console.error('Speichern des Connected Sounds fehlgeschlagen', err);
+        setStatus('Connected Sound konnte nicht gespeichert werden.', 'error');
+      }
+    }
+
     async function saveMotorLimits(forward, reverse) {
       if (!motorForward || !motorReverse) {
         return;
@@ -1186,6 +1266,12 @@
           return;
         }
         saveStartSound(value);
+      });
+    }
+    if (connectedSoundSelect) {
+      connectedSoundSelect.addEventListener('change', () => {
+        const value = connectedSoundSelect.value ?? '';
+        saveConnectedSound(value);
       });
     }
 
