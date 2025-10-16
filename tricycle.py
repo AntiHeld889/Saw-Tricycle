@@ -111,7 +111,7 @@ BUTTON_MODE_MP3 = "mp3"
 BUTTON_MODE_COMMAND = "command"
 
 # ---- Servo 1 (Lenkung auf ABS_Z) ----
-GPIO_PIN_SERVO       = 17
+GPIO_PIN_SERVO_DEFAULT = 17
 US_MIN               = 600
 US_MAX               = 2400
 SERVO_RANGE_DEG      = 270.0
@@ -149,8 +149,8 @@ MOTOR_AXIS_CENTERED_NAME = "ABS_Y"
 MOTOR_AXIS_GAS_NAME      = "ABS_GAS"
 MOTOR_AXIS_BRAKE_NAME    = "ABS_BRAKE"
 
-GPIO_PIN_MOTOR_PWM   = 18
-GPIO_PIN_MOTOR_DIR   = 27
+GPIO_PIN_MOTOR_PWM_DEFAULT = 18
+GPIO_PIN_MOTOR_DIR_DEFAULT = 27
 PWM_FREQ_HZ          = 20000
 INVERT_MOTOR         = True
 
@@ -171,7 +171,7 @@ MOTOR_NEUTRAL_THRESH = 0.08
 MOTOR_DIR_SWITCH_PAUSE_S = 0.005
 
 # ---- Servo 2 (Kopf per D-Pad, LATCHEND) ----
-GPIO_PIN_HEAD        = 24
+GPIO_PIN_HEAD_DEFAULT = 24
 HEAD_MIN_DEG         = 30.0
 HEAD_MAX_DEG         = 150.0
 HEAD_LEFT_DEG        = 30.0
@@ -181,6 +181,73 @@ HEAD_SMOOTH_A        = 0.8
 HEAD_RATE_DEG_S      = 100.0
 HEAD_SAFE_START_S    = 0.8
 HEAD_UPDATE_HYSTERESIS_DEG = 0.2
+
+# ---- GPIO-Konfiguration ----
+GPIO_PIN_MIN = 0
+GPIO_PIN_MAX = 27
+
+GPIO_PIN_DEFAULTS = MappingProxyType(
+    {
+        "steering_servo": GPIO_PIN_SERVO_DEFAULT,
+        "head_servo": GPIO_PIN_HEAD_DEFAULT,
+        "motor_pwm": GPIO_PIN_MOTOR_PWM_DEFAULT,
+        "motor_dir": GPIO_PIN_MOTOR_DIR_DEFAULT,
+    }
+)
+
+ACTIVE_GPIO_PINS = dict(GPIO_PIN_DEFAULTS)
+
+
+def sanitize_gpio_pin(value):
+    try:
+        numeric = int(value)
+    except (TypeError, ValueError):
+        return None
+    if not (GPIO_PIN_MIN <= numeric <= GPIO_PIN_MAX):
+        return None
+    return numeric
+
+
+def sanitize_gpio_pin_map(payload, *, allow_partial=False):
+    if not isinstance(payload, dict):
+        return None
+    sanitized = {}
+    known_keys = set(GPIO_PIN_DEFAULTS.keys())
+    for key, raw in payload.items():
+        if key not in known_keys:
+            continue
+        value = sanitize_gpio_pin(raw)
+        if value is None:
+            return None
+        sanitized[key] = value
+    if not allow_partial and sanitized.keys() != known_keys:
+        missing = known_keys - sanitized.keys()
+        if missing:
+            return None
+    return sanitized
+
+
+def apply_gpio_pins(pins, *, allow_partial=False):
+    global ACTIVE_GPIO_PINS
+    sanitized = sanitize_gpio_pin_map(pins, allow_partial=allow_partial)
+    if sanitized is None:
+        return False
+    base = dict(GPIO_PIN_DEFAULTS)
+    if allow_partial:
+        base.update(ACTIVE_GPIO_PINS)
+    base.update(sanitized)
+    ACTIVE_GPIO_PINS = base
+    return True
+
+
+def get_gpio_pin(name):
+    if name not in GPIO_PIN_DEFAULTS:
+        raise KeyError(name)
+    return ACTIVE_GPIO_PINS.get(name, GPIO_PIN_DEFAULTS[name])
+
+
+def get_active_gpio_pins():
+    return dict(ACTIVE_GPIO_PINS)
 
 # ---- Debug/Output ----
 PRINT_EVERY_S        = 0.3
@@ -756,6 +823,28 @@ def persist_gamepad_settings(*, disconnect_command=_UNSET):
     return _persist_state(payload)
 
 
+def load_persisted_gpio_pins(defaults=None):
+    if defaults is None:
+        defaults = GPIO_PIN_DEFAULTS
+    base = {key: defaults[key] for key in defaults}
+    data = _load_persisted_state()
+    stored = data.get("gpio") if isinstance(data, dict) else None
+    if isinstance(stored, dict):
+        sanitized = sanitize_gpio_pin_map(stored, allow_partial=True)
+        if sanitized:
+            base.update(sanitized)
+    return base
+
+
+def persist_gpio_pins(pins):
+    sanitized = sanitize_gpio_pin_map(pins, allow_partial=False)
+    if sanitized is None:
+        return False
+    payload = _load_persisted_state()
+    payload["gpio"] = sanitized
+    return _persist_state(payload)
+
+
 def load_persisted_button_actions():
     data = _load_persisted_state()
     raw_actions = data.get("button_actions") if isinstance(data, dict) else None
@@ -1095,6 +1184,7 @@ class WebControlState:
         initial_soundboard_port=None,
         initial_camera_port=None,
         initial_button_actions=None,
+        initial_gpio_pins=None,
         battery_monitor=None,
     ):
         self._lock = threading.Lock()
@@ -1125,6 +1215,11 @@ class WebControlState:
         self._camera_port = sanitize_camera_port(initial_camera_port)
         self._button_actions = normalize_button_actions_map(initial_button_actions)
         self._refresh_sound_files_locked()
+        self._gpio_pins = dict(GPIO_PIN_DEFAULTS)
+        initial_gpio = sanitize_gpio_pin_map(initial_gpio_pins or {}, allow_partial=True)
+        if initial_gpio:
+            self._gpio_pins.update(initial_gpio)
+        apply_gpio_pins(self._gpio_pins)
         self._motor_limit_forward = MOTOR_LIMIT_FWD
         self._motor_limit_reverse = MOTOR_LIMIT_REV
         if isinstance(initial_motor_limits, dict):
@@ -1202,6 +1297,13 @@ class WebControlState:
     def _build_gamepad_snapshot_locked(self):
         return {
             "disconnect_command": self._disconnect_command,
+        }
+
+    def _build_gpio_snapshot_locked(self):
+        return {
+            "pins": dict(self._gpio_pins),
+            "min": GPIO_PIN_MIN,
+            "max": GPIO_PIN_MAX,
         }
 
     def _build_button_actions_snapshot_locked(self):
@@ -1325,6 +1427,7 @@ class WebControlState:
         sound_settings_to_persist = None
         gamepad_settings_to_persist = None
         button_actions_to_persist = None
+        gpio_pins_to_persist = None
         with self._lock:
             previous_directory = self._sound_directory
             previous_start_sound = self._start_sound
@@ -1430,6 +1533,15 @@ class WebControlState:
             if button_actions is not None:
                 if self._apply_button_action_updates_locked(button_actions):
                     button_actions_to_persist = dict(self._button_actions)
+            if gpio_pins is not None:
+                sanitized_gpio = sanitize_gpio_pin_map(gpio_pins, allow_partial=False)
+                if sanitized_gpio is not None:
+                    merged_gpio = dict(GPIO_PIN_DEFAULTS)
+                    merged_gpio.update(sanitized_gpio)
+                    if merged_gpio != self._gpio_pins:
+                        self._gpio_pins = merged_gpio
+                        gpio_pins_to_persist = dict(self._gpio_pins)
+                        apply_gpio_pins(self._gpio_pins)
             if (
                 self._sound_directory != previous_directory
                 or self._start_sound != previous_start_sound
@@ -1465,6 +1577,8 @@ class WebControlState:
             persist_gamepad_settings(**gamepad_settings_to_persist)
         if button_actions_to_persist is not None:
             persist_button_actions(button_actions_to_persist)
+        if gpio_pins_to_persist is not None:
+            persist_gpio_pins(gpio_pins_to_persist)
         if new_audio_id is not None:
             apply_audio_output(new_audio_id)
         if apply_volume_change is not None:
@@ -1505,6 +1619,7 @@ class WebControlState:
             "button_actions": self._build_button_actions_snapshot_locked(),
             "sound": self._build_sound_snapshot_locked(),
             "gamepad": self._build_gamepad_snapshot_locked(),
+            "gpio": self._build_gpio_snapshot_locked(),
             "audio_volume": self._build_volume_snapshot_locked(),
             "last_update": self._last_update,
         }
@@ -1583,6 +1698,7 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
     CONTROL_PAGE_NAME = "control.html"
     SETTINGS_PAGE_NAME = "settings.html"
     BATTERY_PAGE_NAME = "battery.html"
+    GPIO_PAGE_NAME = "gpio.html"
 
     def _write_response(self, status, body, content_type="text/html; charset=utf-8"):
         encoded = body.encode("utf-8")
@@ -1610,6 +1726,9 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
             return
         if self.path == "/settings":
             self._write_response(200, load_asset(self.SETTINGS_PAGE_NAME))
+            return
+        if self.path == "/settings/gpio":
+            self._write_response(200, load_asset(self.GPIO_PAGE_NAME))
             return
         if self.path == "/battery":
             self._write_response(200, load_asset(self.BATTERY_PAGE_NAME))
@@ -1955,9 +2074,11 @@ def read_abs(dev, code):
 
 # --------- pigpio / Motor-Pins ---------
 def setup_motor_pins(pi):
-    pi.set_mode(GPIO_PIN_MOTOR_DIR, pigpio.OUTPUT)
-    pi.write(GPIO_PIN_MOTOR_DIR, 0)
-    pi.hardware_PWM(GPIO_PIN_MOTOR_PWM, PWM_FREQ_HZ, 0)
+    dir_pin = get_gpio_pin("motor_dir")
+    pwm_pin = get_gpio_pin("motor_pwm")
+    pi.set_mode(dir_pin, pigpio.OUTPUT)
+    pi.write(dir_pin, 0)
+    pi.hardware_PWM(pwm_pin, PWM_FREQ_HZ, 0)
 
 _last_motor_direction = None
 
@@ -1965,23 +2086,25 @@ _last_motor_direction = None
 def set_motor(pi, speed_norm):
     global _last_motor_direction
 
+    dir_pin = get_gpio_pin("motor_dir")
+    pwm_pin = get_gpio_pin("motor_pwm")
     s = clamp(speed_norm, -1.0, +1.0)
     if abs(s) < 1e-3:
-        pi.hardware_PWM(GPIO_PIN_MOTOR_PWM, PWM_FREQ_HZ, 0)
+        pi.hardware_PWM(pwm_pin, PWM_FREQ_HZ, 0)
         _last_motor_direction = None
         return
 
     direction = 1 if s > 0 else 0
     if _last_motor_direction is None:
-        pi.write(GPIO_PIN_MOTOR_DIR, direction)
+        pi.write(dir_pin, direction)
     elif direction != _last_motor_direction:
-        pi.hardware_PWM(GPIO_PIN_MOTOR_PWM, PWM_FREQ_HZ, 0)
+        pi.hardware_PWM(pwm_pin, PWM_FREQ_HZ, 0)
         if MOTOR_DIR_SWITCH_PAUSE_S > 0:
             time.sleep(MOTOR_DIR_SWITCH_PAUSE_S)
-        pi.write(GPIO_PIN_MOTOR_DIR, direction)
+        pi.write(dir_pin, direction)
 
     duty = int(abs(s) * 1_000_000)   # pigpio hardware_PWM erwartet 0..1_000_000
-    pi.hardware_PWM(GPIO_PIN_MOTOR_PWM, PWM_FREQ_HZ, duty)
+    pi.hardware_PWM(pwm_pin, PWM_FREQ_HZ, duty)
     _last_motor_direction = direction
 
 
@@ -1990,6 +2113,8 @@ def main():
     persisted_steering = load_persisted_steering_angles()
     if not apply_steering_angles(persisted_steering):
         apply_steering_angles(DEFAULT_STEERING_ANGLES)
+    persisted_gpio = load_persisted_gpio_pins()
+    apply_gpio_pins(persisted_gpio)
     validate_configuration()
 
     MOTOR_AXIS_CENTERED = getattr(ecodes, MOTOR_AXIS_CENTERED_NAME)
@@ -2028,6 +2153,7 @@ def main():
         initial_soundboard_port=persisted_sound.get("soundboard_port"),
         initial_camera_port=persisted_sound.get("camera_port"),
         initial_button_actions=persisted_button_actions,
+        initial_gpio_pins=persisted_gpio,
         battery_monitor=battery_monitor,
     )
     web_server = None
@@ -2101,7 +2227,7 @@ def main():
             last_loop_ts     = time.monotonic()
             in_deadzone_hold = True
 
-            pi.set_servo_pulsewidth(GPIO_PIN_SERVO, deg_to_us_lenkung(MID_DEG))
+            pi.set_servo_pulsewidth(get_gpio_pin("steering_servo"), deg_to_us_lenkung(MID_DEG))
 
             motor_speed  = 0.0
             motor_target = 0.0
@@ -2119,7 +2245,7 @@ def main():
             head_motion_start_ts = time.monotonic()
             head_motion_duration = 0.0
             head_last_sent   = head_current
-            pi.set_servo_pulsewidth(GPIO_PIN_HEAD, deg_to_us_unclamped(head_current))
+            pi.set_servo_pulsewidth(get_gpio_pin("head_servo"), deg_to_us_unclamped(head_current))
 
             missing_servo_reads = 0
 
@@ -2256,7 +2382,7 @@ def main():
 
                     # Puls ausgeben
                     pi.set_servo_pulsewidth(
-                        GPIO_PIN_SERVO,
+                        get_gpio_pin("steering_servo"),
                         deg_to_us_lenkung(current_deg if current_deg != MID_DEG else MID_DEG),
                     )
 
@@ -2373,7 +2499,10 @@ def main():
                             head_motion_duration = 0.0
 
                     if abs(head_current - head_last_sent) >= HEAD_UPDATE_HYSTERESIS_DEG:
-                        pi.set_servo_pulsewidth(GPIO_PIN_HEAD, deg_to_us_unclamped(head_current))
+                        pi.set_servo_pulsewidth(
+                            get_gpio_pin("head_servo"),
+                            deg_to_us_unclamped(head_current),
+                        )
                         head_last_sent = head_current
 
                     # Debug-Ausgabe
@@ -2395,8 +2524,10 @@ def main():
                 except Exception:
                     pass
                 set_motor(pi, 0.0)
-                pi.set_servo_pulsewidth(GPIO_PIN_SERVO, deg_to_us_lenkung(MID_DEG))
-                pi.set_servo_pulsewidth(GPIO_PIN_HEAD, deg_to_us_unclamped(HEAD_CENTER_DEG))
+                pi.set_servo_pulsewidth(get_gpio_pin("steering_servo"), deg_to_us_lenkung(MID_DEG))
+                pi.set_servo_pulsewidth(
+                    get_gpio_pin("head_servo"), deg_to_us_unclamped(HEAD_CENTER_DEG)
+                )
                 execute_disconnect_action()
                 safe_start_motor_until = time.monotonic() + MOTOR_SAFE_START_S
                 safe_start_servo_until = time.monotonic() + SERVO_SAFE_START_S
@@ -2408,8 +2539,8 @@ def main():
         print("\nBeende – Servo & Motor freigeben …")
     finally:
         try:
-            pi.set_servo_pulsewidth(GPIO_PIN_SERVO, 0)
-            pi.set_servo_pulsewidth(GPIO_PIN_HEAD, 0)
+            pi.set_servo_pulsewidth(get_gpio_pin("steering_servo"), 0)
+            pi.set_servo_pulsewidth(get_gpio_pin("head_servo"), 0)
             set_motor(pi, 0.0)
         except Exception:
             pass
