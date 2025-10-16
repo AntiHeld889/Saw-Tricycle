@@ -394,7 +394,7 @@
       <div class="field">
         <label for="soundDirectory">MP3-Verzeichnis</label>
         <div class="text-input">
-          <input id="soundDirectory" type="text" inputmode="text" autocomplete="off" placeholder="/opt/python/sawsounds" aria-label="Pfad zum MP3-Verzeichnis">
+          <input id="soundDirectory" type="text" inputmode="text" autocomplete="off" placeholder="z. B. /home/pi/Musik" aria-label="Pfad zum MP3-Verzeichnis">
         </div>
         <div class="button-row">
           <button type="button" class="button" id="soundDirectorySave">Pfad speichern</button>
@@ -525,6 +525,7 @@
     let buttonAssignments = {};
     let buttonDefinitions = [];
     let currentSoundFiles = [];
+    let soundDirectoryConfigured = false;
     let syncingButtonActions = false;
     audioSelect.disabled = true;
     let audioOptionsSignature = '';
@@ -703,6 +704,7 @@
           mp3Wrapper,
           mp3Select,
           mp3PreviewButton,
+          mp3Option: optionMp3,
           commandWrapper,
           commandInput,
         });
@@ -795,16 +797,21 @@
       const normalizedMode = [BUTTON_MODE_NONE, BUTTON_MODE_MP3, BUTTON_MODE_COMMAND].includes(mode)
         ? mode
         : BUTTON_MODE_NONE;
+      const mp3Available = soundDirectoryConfigured && Array.isArray(currentSoundFiles) && currentSoundFiles.length > 0;
       syncingButtonActions = true;
-      controls.modeSelect.value = normalizedMode;
-      controls.mp3Wrapper.hidden = normalizedMode !== BUTTON_MODE_MP3;
-      controls.commandWrapper.hidden = normalizedMode !== BUTTON_MODE_COMMAND;
+      if (controls.mp3Option) {
+        controls.mp3Option.disabled = !mp3Available;
+      }
+      const appliedMode = !mp3Available && normalizedMode === BUTTON_MODE_MP3 ? BUTTON_MODE_NONE : normalizedMode;
+      controls.modeSelect.value = appliedMode;
+      controls.mp3Wrapper.hidden = appliedMode !== BUTTON_MODE_MP3;
+      controls.commandWrapper.hidden = appliedMode !== BUTTON_MODE_COMMAND;
       if (normalizedMode === BUTTON_MODE_COMMAND) {
         controls.commandInput.value = value || '';
       } else if (!controls.commandInput.value) {
         controls.commandInput.value = value || '';
       }
-      if (normalizedMode !== BUTTON_MODE_MP3) {
+      if (appliedMode !== BUTTON_MODE_MP3) {
         controls.mp3Select.value = '';
       }
       syncingButtonActions = false;
@@ -820,14 +827,20 @@
         if (!select) {
           return;
         }
+        const fileList = Array.isArray(currentSoundFiles) ? currentSoundFiles : [];
+        const mp3Available = soundDirectoryConfigured && fileList.length > 0;
         while (select.firstChild) {
           select.removeChild(select.firstChild);
         }
-        const fileList = Array.isArray(currentSoundFiles) ? currentSoundFiles : [];
+        if (controls.mp3Option) {
+          controls.mp3Option.disabled = !mp3Available;
+        }
         if (fileList.length === 0) {
           const option = document.createElement('option');
           option.value = '';
-          option.textContent = 'Keine MP3-Dateien gefunden';
+          option.textContent = soundDirectoryConfigured
+            ? 'Keine MP3-Dateien gefunden'
+            : 'Kein MP3-Verzeichnis konfiguriert';
           select.append(option);
           select.disabled = true;
         } else {
@@ -997,8 +1010,12 @@
               messages.push('Audio-Ausgabe synchronisiert');
             }
           }
-          if (soundInfo && Array.isArray(soundInfo.files) && soundInfo.files.length === 0) {
-            messages.push('Keine MP3-Dateien gefunden');
+          if (soundInfo) {
+            if (!soundInfo.configured) {
+              messages.push('Kein MP3-Verzeichnis konfiguriert');
+            } else if (Array.isArray(soundInfo.files) && soundInfo.files.length === 0) {
+              messages.push('Keine MP3-Dateien gefunden');
+            }
           }
           messages.push('Tasten-Aktion gespeichert');
           setStatus(`${messages.join(' · ')}.`, 'success');
@@ -1447,6 +1464,7 @@
         soundDirectoryInput.value = '';
         soundDirectoryInput.disabled = true;
         soundDirectorySave.disabled = true;
+        soundDirectoryConfigured = false;
         if (soundboardPortInput) {
           soundboardPortInput.value = '';
           soundboardPortInput.disabled = true;
@@ -1463,7 +1481,7 @@
         }
         const option = document.createElement('option');
         option.value = '';
-        option.textContent = 'Keine MP3-Dateien gefunden';
+        option.textContent = 'Kein MP3-Verzeichnis konfiguriert';
         connectedSoundSelect.append(option);
         connectedSoundSelect.disabled = true;
         connectedSoundSelect.value = '';
@@ -1479,6 +1497,7 @@
       const connectedSound = typeof info.connected_sound === 'string' ? info.connected_sound : '';
       const soundboardPort = parseSoundboardPort(info.soundboard_port);
       const cameraTarget = parseCameraTarget(info.camera_port);
+      soundDirectoryConfigured = Boolean(directory);
       soundDirectoryInput.disabled = false;
       soundDirectoryInput.value = directory;
       soundDirectorySave.disabled = false;
@@ -1500,7 +1519,9 @@
       if (files.length === 0) {
         const option = document.createElement('option');
         option.value = '';
-        option.textContent = 'Keine MP3-Dateien gefunden';
+        option.textContent = soundDirectoryConfigured
+          ? 'Keine MP3-Dateien gefunden'
+          : 'Kein MP3-Verzeichnis konfiguriert';
         connectedSoundSelect.append(option);
         connectedSoundSelect.disabled = true;
         connectedSoundSelect.value = '';
@@ -1532,6 +1553,7 @@
         connectedSound: connectedSelected || '',
         soundboardPort,
         cameraTarget,
+        configured: soundDirectoryConfigured,
       };
     };
 
@@ -1594,7 +1616,9 @@
           }
         }
         if (soundInfo) {
-          if (soundInfo.files.length > 0) {
+          if (!soundInfo.configured) {
+            messageParts.push('MP3-Verzeichnis nicht konfiguriert');
+          } else if (soundInfo.files.length > 0) {
             messageParts.push('Sound-Einstellungen geladen');
           } else {
             messageParts.push('MP3-Verzeichnis geladen (keine Dateien gefunden)');
@@ -1709,13 +1733,9 @@
         return;
       }
       const value = typeof rawPath === 'string' ? rawPath.trim() : '';
-      if (!value) {
-        setStatus('Bitte einen gültigen MP3-Pfad eingeben.', 'error');
-        soundDirectoryInput.focus();
-        return;
-      }
+      const removingDirectory = value === '';
       try {
-        setStatus('Speichere Sound-Pfad …');
+        setStatus(removingDirectory ? 'Entferne MP3-Verzeichnis …' : 'Speichere Sound-Pfad …');
         const payload = { sound_directory: value };
         const currentDevice = audioSelect.value;
         if (currentDevice) {
@@ -1737,13 +1757,15 @@
         const soundInfo = syncSoundSettings(data.sound);
         syncGamepadSettings(data.gamepad);
         syncButtonActions(data.button_actions);
-        const hasFiles = !!soundInfo && soundInfo.files.length > 0;
-        setStatus(
-          hasFiles
-            ? 'MP3-Verzeichnis gespeichert.'
-            : 'MP3-Verzeichnis gespeichert (keine MP3-Dateien gefunden).',
-          'success'
-        );
+        const configured = !!soundInfo && soundInfo.configured;
+        const hasFiles = configured && Array.isArray(soundInfo.files) && soundInfo.files.length > 0;
+        if (!configured) {
+          setStatus('MP3-Verzeichnis entfernt.', 'success');
+        } else if (hasFiles) {
+          setStatus('MP3-Verzeichnis gespeichert.', 'success');
+        } else {
+          setStatus('MP3-Verzeichnis gespeichert (keine MP3-Dateien gefunden).', 'success');
+        }
       } catch (err) {
         console.error('Speichern des Sound-Pfads fehlgeschlagen', err);
         setStatus('Sound-Pfad konnte nicht gespeichert werden.', 'error');
