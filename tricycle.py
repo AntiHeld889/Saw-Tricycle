@@ -206,10 +206,31 @@ import pigpio
 from webui import load_asset
 
 
+def _resolve_button_event_code(code_str):
+    if not isinstance(code_str, str):
+        return None
+    # Bevorzugt das Mapping aus der ecodes-Tabelle, da hier auch Alias-Namen
+    # (z. B. BTN_SOUTH, KEY_304, ...) hinterlegt sind.
+    event_code = ecodes.ecodes.get(code_str)
+    if isinstance(event_code, int):
+        return event_code
+    event_code = getattr(ecodes, code_str, None)
+    if isinstance(event_code, int):
+        return event_code
+    # KEY_304 etc. enthalten bereits die numerische Event-ID als Suffix.
+    prefix, sep, suffix = code_str.rpartition("_")
+    if sep and suffix.isdigit():
+        try:
+            return int(suffix)
+        except ValueError:
+            return None
+    return None
+
+
 BUTTON_CODE_TO_EVENT = {}
 BUTTON_EVENT_TO_CODE = {}
 for code_str, _label in BUTTON_LAYOUT:
-    event_code = getattr(ecodes, code_str, None)
+    event_code = _resolve_button_event_code(code_str)
     if isinstance(event_code, int):
         BUTTON_CODE_TO_EVENT[code_str] = event_code
         BUTTON_EVENT_TO_CODE[event_code] = code_str
