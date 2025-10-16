@@ -1384,8 +1384,12 @@ class WebControlState:
                     button_actions_to_persist = dict(self._button_actions)
             if start_sound is not None:
                 sanitized_sound = sanitize_start_sound(start_sound, self._sound_files)
-                if sanitized_sound is not None and sanitized_sound != self._start_sound:
-                    self._start_sound = sanitized_sound
+                if sanitized_sound is not None:
+                    if sanitized_sound != self._start_sound:
+                        self._start_sound = sanitized_sound
+                elif isinstance(start_sound, str) and not start_sound.strip():
+                    if self._start_sound is not None:
+                        self._start_sound = None
             if connected_sound is not None:
                 sanitized_connected = sanitize_start_sound(connected_sound, self._sound_files)
                 if sanitized_connected is not None:
