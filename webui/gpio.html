@@ -119,9 +119,43 @@
       -webkit-appearance: none;
       margin: 0;
     }
+    .number-input span {
+      margin-left: 0.35rem;
+      opacity: 0.7;
+      font-size: 0.9rem;
+    }
     .number-input:focus-within {
       border-color: rgba(229,9,20,0.55);
       box-shadow: 0 0 0 3px rgba(229,9,20,0.2);
+    }
+    .steering-grid {
+      display: grid;
+      gap: 0.75rem;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    }
+    .steering-grid .field {
+      display: flex;
+      flex-direction: column;
+      gap: 0.45rem;
+    }
+    .motor-limits {
+      display: flex;
+      flex-direction: column;
+      gap: 0.55rem;
+    }
+    .slider-row {
+      display: flex;
+      align-items: center;
+      gap: 0.9rem;
+    }
+    input[type="range"] {
+      width: 100%;
+      accent-color: #e50914;
+    }
+    output {
+      min-width: 3ch;
+      text-align: right;
+      font-variant-numeric: tabular-nums;
     }
     .button-row {
       display: flex;
@@ -217,22 +251,79 @@
           <button type="submit" class="button" id="gpioSave">Pins speichern</button>
         </div>
       </form>
-      <p id="gpioStatus" class="status" role="status" aria-live="polite"></p>
     </section>
+    <section class="settings-section">
+      <h2>Lenkwinkel</h2>
+      <p class="hint">Definiert Mittelstellung und maximale Ausschläge des Servos.</p>
+      <div class="steering-grid">
+        <div class="field">
+          <label for="steeringLeft">Links (max.)</label>
+          <div class="number-input">
+            <input id="steeringLeft" type="number" inputmode="decimal" min="0" max="270" step="0.5" aria-label="Maximaler Lenkwinkel nach links" autocomplete="off">
+            <span>°</span>
+          </div>
+        </div>
+        <div class="field">
+          <label for="steeringMid">Mitte</label>
+          <div class="number-input">
+            <input id="steeringMid" type="number" inputmode="decimal" min="0" max="270" step="0.5" aria-label="Neutralstellung des Lenkservos" autocomplete="off">
+            <span>°</span>
+          </div>
+        </div>
+        <div class="field">
+          <label for="steeringRight">Rechts (max.)</label>
+          <div class="number-input">
+            <input id="steeringRight" type="number" inputmode="decimal" min="0" max="270" step="0.5" aria-label="Maximaler Lenkwinkel nach rechts" autocomplete="off">
+            <span>°</span>
+          </div>
+        </div>
+      </div>
+    </section>
+    <section class="settings-section">
+      <h2>Motorgrenzen</h2>
+      <p class="hint">Begrenzt den maximalen PWM-Anteil für den DC-Motor (0–100&nbsp;%).</p>
+      <div class="motor-limits">
+        <label for="motorForward">Vorwärts</label>
+        <div class="slider-row">
+          <input id="motorForward" type="range" min="0" max="100" step="1" aria-label="Vorwärtslimit einstellen">
+          <output id="motorForwardValue" for="motorForward">–</output>
+        </div>
+      </div>
+      <div class="motor-limits">
+        <label for="motorReverse">Rückwärts</label>
+        <div class="slider-row">
+          <input id="motorReverse" type="range" min="0" max="100" step="1" aria-label="Rückwärtslimit einstellen">
+          <output id="motorReverseValue" for="motorReverse">–</output>
+        </div>
+      </div>
+    </section>
+    <p id="gpioStatus" class="status" role="status" aria-live="polite"></p>
   </div>
-  <script>
+    <script>
     (function() {
       const form = document.getElementById('gpioForm');
       const statusEl = document.getElementById('gpioStatus');
       const saveButton = document.getElementById('gpioSave');
-      const inputs = {
+      const gpioInputs = {
         steering_servo: document.getElementById('gpioSteering'),
         head_servo: document.getElementById('gpioHead'),
         motor_pwm: document.getElementById('gpioMotorPwm'),
         motor_dir: document.getElementById('gpioMotorDir'),
       };
+      const motorForward = document.getElementById('motorForward');
+      const motorReverse = document.getElementById('motorReverse');
+      const motorForwardValue = document.getElementById('motorForwardValue');
+      const motorReverseValue = document.getElementById('motorReverseValue');
+      const motorInputs = [motorForward, motorReverse].filter(Boolean);
+      const steeringLeft = document.getElementById('steeringLeft');
+      const steeringMid = document.getElementById('steeringMid');
+      const steeringRight = document.getElementById('steeringRight');
+      const steeringInputs = [steeringLeft, steeringMid, steeringRight].filter(Boolean);
+
       let gpioRange = { min: 0, max: 27 };
       let hasLoaded = false;
+      let motorConfig = null;
+      let steeringConfig = null;
 
       const setStatus = (message, tone) => {
         if (!statusEl) {
@@ -246,7 +337,7 @@
       };
 
       const setLoadingState = (isLoading) => {
-        Object.values(inputs).forEach((input) => {
+        Object.values(gpioInputs).forEach((input) => {
           if (input) {
             input.disabled = isLoading;
           }
@@ -256,8 +347,40 @@
         }
       };
 
+      const disableMotorInputs = () => {
+        motorInputs.forEach((input) => {
+          input.disabled = true;
+        });
+      };
+
+      const enableMotorInputs = () => {
+        if (!motorConfig) {
+          disableMotorInputs();
+          return;
+        }
+        motorInputs.forEach((input) => {
+          input.disabled = false;
+        });
+      };
+
+      const disableSteeringInputs = () => {
+        steeringInputs.forEach((input) => {
+          input.disabled = true;
+        });
+      };
+
+      const enableSteeringInputs = () => {
+        if (!steeringConfig) {
+          disableSteeringInputs();
+          return;
+        }
+        steeringInputs.forEach((input) => {
+          input.disabled = false;
+        });
+      };
+
       const updateRangeAttributes = () => {
-        Object.values(inputs).forEach((input) => {
+        Object.values(gpioInputs).forEach((input) => {
           if (!input) {
             return;
           }
@@ -279,19 +402,13 @@
         }
         updateRangeAttributes();
         const pins = (gpio && gpio.pins) || {};
-        Object.entries(inputs).forEach(([key, input]) => {
+        Object.entries(gpioInputs).forEach(([key, input]) => {
           if (!input) {
             return;
           }
           const value = pins[key];
-          if (Number.isFinite(value)) {
-            input.value = String(value);
-          } else {
-            input.value = '';
-          }
+          input.value = Number.isFinite(value) ? String(value) : '';
         });
-        hasLoaded = true;
-        setLoadingState(false);
       };
 
       const sanitizeValue = (input) => {
@@ -314,7 +431,7 @@
 
       const collectPins = () => {
         const result = {};
-        for (const [key, input] of Object.entries(inputs)) {
+        for (const [key, input] of Object.entries(gpioInputs)) {
           const value = sanitizeValue(input);
           if (value === null) {
             return null;
@@ -324,20 +441,291 @@
         return result;
       };
 
+      const formatMotorPercent = (value) => `${Math.round((Number.parseFloat(value) || 0) * 100)}%`;
+
+      const clampMotorLimit = (value) => {
+        if (!motorConfig) {
+          return null;
+        }
+        const { min, max, step } = motorConfig;
+        const numeric = Number.parseFloat(value);
+        if (!Number.isFinite(numeric)) {
+          return null;
+        }
+        const limited = Math.max(min, Math.min(max, numeric));
+        const steps = Math.round((limited - min) / step);
+        const quantized = min + steps * step;
+        const clamped = Math.max(min, Math.min(max, quantized));
+        return Number.parseFloat(clamped.toFixed(4));
+      };
+
+      const clampMotorFromSlider = (value) => {
+        if (!motorConfig) {
+          return null;
+        }
+        const numeric = Number.parseFloat(value);
+        if (!Number.isFinite(numeric)) {
+          return null;
+        }
+        return clampMotorLimit(numeric / 100);
+      };
+
+      const revertMotorInputs = () => {
+        if (!motorForward || !motorReverse || !motorForwardValue || !motorReverseValue) {
+          return;
+        }
+        if (!motorConfig || !motorConfig.values) {
+          motorForward.value = '0';
+          motorReverse.value = '0';
+          motorForwardValue.textContent = '–';
+          motorReverseValue.textContent = '–';
+          disableMotorInputs();
+          return;
+        }
+        motorForward.value = String(Math.round(motorConfig.values.forward * 100));
+        motorReverse.value = String(Math.round(motorConfig.values.reverse * 100));
+        motorForwardValue.textContent = formatMotorPercent(motorConfig.values.forward);
+        motorReverseValue.textContent = formatMotorPercent(motorConfig.values.reverse);
+        enableMotorInputs();
+      };
+
+      const syncMotorLimits = (info) => {
+        if (!motorForward || !motorReverse || !motorForwardValue || !motorReverseValue) {
+          return null;
+        }
+        if (!info || !Number.isFinite(info.forward) || !Number.isFinite(info.reverse)) {
+          motorConfig = null;
+          motorForwardValue.textContent = '–';
+          motorReverseValue.textContent = '–';
+          motorForward.value = '0';
+          motorReverse.value = '0';
+          disableMotorInputs();
+          return null;
+        }
+        const min = Number.isFinite(info.min) ? info.min : 0;
+        const max = Number.isFinite(info.max) ? info.max : 1;
+        const step = Number.isFinite(info.step) && info.step > 0 ? info.step : 0.01;
+        motorConfig = { min, max, step };
+        const forwardValue = clampMotorLimit(info.forward);
+        const reverseValue = clampMotorLimit(info.reverse);
+        if (forwardValue === null || reverseValue === null) {
+          motorConfig = null;
+          motorForwardValue.textContent = '–';
+          motorReverseValue.textContent = '–';
+          motorForward.value = '0';
+          motorReverse.value = '0';
+          disableMotorInputs();
+          return null;
+        }
+        const sliderMin = Math.round(min * 100);
+        const sliderMax = Math.round(max * 100);
+        const sliderStep = Math.max(1, Math.round(step * 100));
+        motorForward.min = String(sliderMin);
+        motorForward.max = String(sliderMax);
+        motorForward.step = String(sliderStep);
+        motorReverse.min = String(sliderMin);
+        motorReverse.max = String(sliderMax);
+        motorReverse.step = String(sliderStep);
+        motorForward.value = String(Math.round(forwardValue * 100));
+        motorReverse.value = String(Math.round(reverseValue * 100));
+        motorForwardValue.textContent = formatMotorPercent(forwardValue);
+        motorReverseValue.textContent = formatMotorPercent(reverseValue);
+        motorConfig = {
+          min,
+          max,
+          step,
+          values: { forward: forwardValue, reverse: reverseValue },
+        };
+        enableMotorInputs();
+        return motorConfig.values;
+      };
+
+      const getCurrentMotorValues = () => {
+        if (!motorConfig || !motorForward || !motorReverse) {
+          return null;
+        }
+        const forward = clampMotorFromSlider(motorForward.value);
+        const reverse = clampMotorFromSlider(motorReverse.value);
+        if (forward === null || reverse === null) {
+          return null;
+        }
+        return { forward, reverse };
+      };
+
+      const determineAnglePrecision = (step) => {
+        if (!Number.isFinite(step) || step <= 0) {
+          return 2;
+        }
+        if (step >= 1) {
+          return 0;
+        }
+        if (step >= 0.1) {
+          return 1;
+        }
+        return 2;
+      };
+
+      const quantizeAngle = (value, min, max, step) => {
+        const numeric = Number.parseFloat(value);
+        if (!Number.isFinite(numeric)) {
+          return null;
+        }
+        const limited = Math.max(min, Math.min(max, numeric));
+        if (!Number.isFinite(step) || step <= 0) {
+          return Number.parseFloat(limited.toFixed(3));
+        }
+        const steps = Math.round((limited - min) / step);
+        const quantized = min + steps * step;
+        const clamped = Math.max(min, Math.min(max, quantized));
+        return Number.parseFloat(clamped.toFixed(3));
+      };
+
+      const formatAngleInput = (value, precision) => {
+        if (!Number.isFinite(value)) {
+          return '';
+        }
+        const digits = Number.isInteger(precision) ? precision : 1;
+        const clampedDigits = Math.max(0, Math.min(3, digits));
+        const normalized = Number.parseFloat(value.toFixed(clampedDigits));
+        return Number.isFinite(normalized) ? String(normalized) : '';
+      };
+
+      const clampSteeringValue = (rawValue) => {
+        if (!steeringConfig) {
+          return null;
+        }
+        if (rawValue === undefined || rawValue === null || rawValue === '') {
+          return null;
+        }
+        const { min, max, step } = steeringConfig;
+        return quantizeAngle(rawValue, min, max, step);
+      };
+
+      const applySteeringInputs = (values) => {
+        if (!steeringConfig) {
+          return;
+        }
+        const precision = steeringConfig.precision ?? 1;
+        if (steeringLeft) {
+          steeringLeft.value = formatAngleInput(values.left, precision);
+        }
+        if (steeringMid) {
+          steeringMid.value = formatAngleInput(values.mid, precision);
+        }
+        if (steeringRight) {
+          steeringRight.value = formatAngleInput(values.right, precision);
+        }
+      };
+
+      const revertSteeringInputs = () => {
+        if (!steeringConfig || !steeringConfig.values) {
+          steeringInputs.forEach((input) => {
+            input.value = '';
+          });
+          return;
+        }
+        applySteeringInputs(steeringConfig.values);
+      };
+
+      const syncSteeringAngles = (info) => {
+        if (steeringInputs.length === 0) {
+          return null;
+        }
+        if (
+          !info ||
+          !Number.isFinite(info.left) ||
+          !Number.isFinite(info.mid) ||
+          !Number.isFinite(info.right)
+        ) {
+          steeringConfig = null;
+          steeringInputs.forEach((input) => {
+            input.disabled = true;
+            input.value = '';
+          });
+          return null;
+        }
+        const min = Number.isFinite(info.min) ? info.min : 0;
+        const max = Number.isFinite(info.max) ? info.max : 270;
+        const step = Number.isFinite(info.step) && info.step > 0 ? info.step : 0.5;
+        const precision = determineAnglePrecision(step);
+        const left = quantizeAngle(info.left, min, max, step);
+        const mid = quantizeAngle(info.mid, min, max, step);
+        const right = quantizeAngle(info.right, min, max, step);
+        if (left === null || mid === null || right === null || !(left <= mid && mid <= right)) {
+          steeringConfig = null;
+          steeringInputs.forEach((input) => {
+            input.disabled = true;
+            input.value = '';
+          });
+          return null;
+        }
+        steeringConfig = {
+          min,
+          max,
+          step,
+          precision,
+          values: { left, mid, right },
+        };
+        steeringInputs.forEach((input) => {
+          input.disabled = false;
+          input.min = String(min);
+          input.max = String(max);
+          input.step = String(step);
+        });
+        applySteeringInputs(steeringConfig.values);
+        return steeringConfig.values;
+      };
+
+      const getCurrentSteeringValues = () => {
+        if (!steeringConfig) {
+          return null;
+        }
+        const left = clampSteeringValue(steeringLeft?.value);
+        const mid = clampSteeringValue(steeringMid?.value);
+        const right = clampSteeringValue(steeringRight?.value);
+        if (left === null || mid === null || right === null) {
+          return null;
+        }
+        if (!(left <= mid && mid <= right)) {
+          return null;
+        }
+        return { left, mid, right };
+      };
+
+      const applyState = (state) => {
+        applyGpioState(state);
+        const motorValues = syncMotorLimits(state ? state.motor_limits : null);
+        const steeringValues = syncSteeringAngles(state ? state.steering_angles : null);
+        return { motorValues, steeringValues };
+      };
+
       const loadInitialState = async () => {
         setLoadingState(true);
-        setStatus('Lade aktuelle Belegung …');
+        disableMotorInputs();
+        disableSteeringInputs();
+        setStatus('Lade Einstellungen …');
         try {
           const resp = await fetch('/api/state');
           if (!resp.ok) {
             throw new Error('HTTP ' + resp.status);
           }
           const data = await resp.json();
-          applyGpioState(data);
-          setStatus('');
+          const { motorValues, steeringValues } = applyState(data);
+          hasLoaded = true;
+          setLoadingState(false);
+          enableMotorInputs();
+          enableSteeringInputs();
+          const messages = ['GPIO-Pins geladen'];
+          if (motorValues) {
+            messages.push('Motorgrenzen geladen');
+          }
+          if (steeringValues) {
+            messages.push('Lenkwinkel geladen');
+          }
+          setStatus(messages.join(' · '), 'success');
         } catch (error) {
-          console.error('GPIO-Status konnte nicht geladen werden:', error);
-          setStatus('GPIO-Belegung konnte nicht geladen werden.', 'error');
+          console.error('Einstellungen konnten nicht geladen werden:', error);
+          setStatus('Einstellungen konnten nicht geladen werden.', 'error');
           setLoadingState(true);
         }
       };
@@ -353,7 +741,7 @@
           return;
         }
         setLoadingState(true);
-        setStatus('Speichere …');
+        setStatus('Speichere GPIO-Pins …');
         try {
           const resp = await fetch('/api/control', {
             method: 'POST',
@@ -364,16 +752,88 @@
             throw new Error('HTTP ' + resp.status);
           }
           const data = await resp.json();
-          applyGpioState(data);
-          setStatus('GPIO-Pins gespeichert.', 'success');
+          const { motorValues, steeringValues } = applyState(data);
+          setStatus(
+            [
+              'GPIO-Pins gespeichert',
+              motorValues ? 'Motorgrenzen aktualisiert' : null,
+              steeringValues ? 'Lenkwinkel aktualisiert' : null,
+            ].filter(Boolean).join(' · '),
+            'success'
+          );
         } catch (error) {
           console.error('GPIO-Pins konnten nicht gespeichert werden:', error);
-          setStatus('Speichern fehlgeschlagen. Bitte erneut versuchen.', 'error');
+          setStatus('GPIO-Pins konnten nicht gespeichert werden.', 'error');
+        } finally {
           setLoadingState(false);
+          enableMotorInputs();
+          enableSteeringInputs();
         }
       });
 
-      Object.values(inputs).forEach((input) => {
+      const saveMotorLimits = async (forward, reverse) => {
+        if (!hasLoaded) {
+          return;
+        }
+        disableMotorInputs();
+        setStatus('Speichere Motorgrenzen …');
+        try {
+          const resp = await fetch('/api/control', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ motor_limits: { forward, reverse } }),
+          });
+          if (!resp.ok) {
+            throw new Error('HTTP ' + resp.status);
+          }
+          const data = await resp.json();
+          const { motorValues } = applyState(data);
+          if (motorValues) {
+            setStatus('Motorgrenzen gespeichert.', 'success');
+          } else {
+            setStatus('Motorgrenzen konnten nicht übernommen werden.', 'error');
+          }
+        } catch (error) {
+          console.error('Motorgrenzen konnten nicht gespeichert werden:', error);
+          revertMotorInputs();
+          setStatus('Motorgrenzen konnten nicht gespeichert werden.', 'error');
+        } finally {
+          enableMotorInputs();
+        }
+      };
+
+      const saveSteeringAngles = async (values) => {
+        if (!hasLoaded) {
+          return;
+        }
+        disableSteeringInputs();
+        setStatus('Speichere Lenkwinkel …');
+        try {
+          const resp = await fetch('/api/control', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ steering_angles: values }),
+          });
+          if (!resp.ok) {
+            throw new Error('HTTP ' + resp.status);
+          }
+          const data = await resp.json();
+          const { steeringValues } = applyState(data);
+          if (steeringValues) {
+            setStatus('Lenkwinkel gespeichert.', 'success');
+          } else {
+            setStatus('Lenkwinkel konnten nicht übernommen werden.', 'error');
+          }
+        } catch (error) {
+          console.error('Lenkwinkel konnten nicht gespeichert werden:', error);
+          revertSteeringInputs();
+          setStatus('Lenkwinkel konnten nicht gespeichert werden.', 'error');
+        } finally {
+          enableSteeringInputs();
+        }
+      };
+
+      Object.values(gpioInputs).forEach((input) => {
         if (!input) {
           return;
         }
@@ -384,6 +844,83 @@
         });
       });
 
+      if (motorForward && motorForwardValue) {
+        motorForward.addEventListener('input', () => {
+          const value = clampMotorFromSlider(motorForward.value);
+          motorForwardValue.textContent = value === null ? '–' : formatMotorPercent(value);
+          if (statusEl && statusEl.classList.contains('error')) {
+            setStatus('');
+          }
+        });
+        motorForward.addEventListener('change', () => {
+          const values = getCurrentMotorValues();
+          if (!values) {
+            revertMotorInputs();
+            setStatus('Ungültige Motorgrenzen. Bitte Werte prüfen.', 'error');
+            return;
+          }
+          saveMotorLimits(values.forward, values.reverse);
+        });
+      }
+
+      if (motorReverse && motorReverseValue) {
+        motorReverse.addEventListener('input', () => {
+          const value = clampMotorFromSlider(motorReverse.value);
+          motorReverseValue.textContent = value === null ? '–' : formatMotorPercent(value);
+          if (statusEl && statusEl.classList.contains('error')) {
+            setStatus('');
+          }
+        });
+        motorReverse.addEventListener('change', () => {
+          const values = getCurrentMotorValues();
+          if (!values) {
+            revertMotorInputs();
+            setStatus('Ungültige Motorgrenzen. Bitte Werte prüfen.', 'error');
+            return;
+          }
+          saveMotorLimits(values.forward, values.reverse);
+        });
+      }
+
+      if (steeringInputs.length > 0) {
+        const handleSteeringChange = () => {
+          const values = getCurrentSteeringValues();
+          if (!values) {
+            setStatus('Ungültige Lenkwinkel. Bitte Werte prüfen.', 'error');
+            revertSteeringInputs();
+            return;
+          }
+          if (
+            steeringConfig &&
+            steeringConfig.values &&
+            values.left === steeringConfig.values.left &&
+            values.mid === steeringConfig.values.mid &&
+            values.right === steeringConfig.values.right
+          ) {
+            applySteeringInputs(steeringConfig.values);
+            return;
+          }
+          applySteeringInputs(values);
+          saveSteeringAngles(values);
+        };
+
+        steeringInputs.forEach((input) => {
+          input.addEventListener('input', () => {
+            const value = clampSteeringValue(input.value);
+            if (value === null || !steeringConfig) {
+              return;
+            }
+            input.value = formatAngleInput(value, steeringConfig.precision);
+            if (statusEl && statusEl.classList.contains('error')) {
+              setStatus('');
+            }
+          });
+          input.addEventListener('change', handleSteeringChange);
+        });
+      }
+
+      disableMotorInputs();
+      disableSteeringInputs();
       loadInitialState();
     })();
   </script>
