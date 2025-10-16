@@ -220,6 +220,49 @@
       opacity: 0.6;
       cursor: not-allowed;
     }
+    .sound-row {
+      display: flex;
+      gap: 0.6rem;
+      align-items: center;
+    }
+    .sound-row select {
+      flex: 1 1 auto;
+    }
+    .sound-preview-button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.35rem;
+      padding: 0.55rem 0.85rem;
+      border-radius: 12px;
+      border: 1px solid rgba(229,9,20,0.4);
+      background: rgba(229,9,20,0.12);
+      color: #fff;
+      font-size: 0.9rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
+      white-space: nowrap;
+      min-height: 44px;
+    }
+    .sound-preview-button:hover:not(:disabled) {
+      background: rgba(229,9,20,0.24);
+      border-color: rgba(229,9,20,0.55);
+    }
+    .sound-preview-button:active:not(:disabled) {
+      transform: translateY(1px);
+    }
+    .sound-preview-button:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+    .sound-preview-button span[aria-hidden="true"] {
+      font-size: 1rem;
+      line-height: 1;
+    }
+    .sound-preview-text {
+      display: inline-block;
+    }
     input[type="range"] {
       width: 100%;
       accent-color: #e50914;
@@ -284,6 +327,14 @@
         gap: 0.6rem;
       }
     }
+    @media (max-width: 420px) {
+      .sound-preview-button {
+        padding: 0.55rem;
+      }
+      .sound-preview-text {
+        display: none;
+      }
+    }
   </style>
 </head>
 <body>
@@ -321,11 +372,23 @@
       </div>
       <div class="field">
         <label for="startSound">Startsound</label>
-        <select id="startSound" aria-label="Startsound auswählen"></select>
+        <div class="sound-row">
+          <select id="startSound" aria-label="Startsound auswählen"></select>
+          <button type="button" class="sound-preview-button" data-sound-preview="start" aria-label="Startsound probehören">
+            <span aria-hidden="true">▶</span>
+            <span class="sound-preview-text">Probehören</span>
+          </button>
+        </div>
       </div>
       <div class="field">
         <label for="connectedSound">Connected Sound</label>
-        <select id="connectedSound" aria-label="Connected Sound auswählen"></select>
+        <div class="sound-row">
+          <select id="connectedSound" aria-label="Connected Sound auswählen"></select>
+          <button type="button" class="sound-preview-button" data-sound-preview="connected" aria-label="Connected Sound probehören">
+            <span aria-hidden="true">▶</span>
+            <span class="sound-preview-text">Probehören</span>
+          </button>
+        </div>
         <p class="hint">Wird nach erfolgreicher Controller-Verbindung abgespielt.</p>
       </div>
     </section>
@@ -374,6 +437,7 @@
         </div>
       </div>
     </section>
+    <audio id="soundPreviewPlayer" preload="none" hidden></audio>
   </div>
   <script>
     const audioSelect = document.getElementById('audioDevice');
@@ -393,6 +457,9 @@
     const soundDirectorySave = document.getElementById('soundDirectorySave');
     const startSoundSelect = document.getElementById('startSound');
     const connectedSoundSelect = document.getElementById('connectedSound');
+    const startSoundPreviewButton = document.querySelector('[data-sound-preview="start"]');
+    const connectedSoundPreviewButton = document.querySelector('[data-sound-preview="connected"]');
+    const soundPreviewPlayer = document.getElementById('soundPreviewPlayer');
     audioSelect.disabled = true;
     let audioOptionsSignature = '';
     let volumeConfig = null;
@@ -436,6 +503,38 @@
     }
     if (connectedSoundSelect) {
       connectedSoundSelect.disabled = true;
+    }
+    if (startSoundPreviewButton) {
+      startSoundPreviewButton.disabled = true;
+    }
+    if (connectedSoundPreviewButton) {
+      connectedSoundPreviewButton.disabled = true;
+    }
+    const updatePreviewButtonState = () => {
+      if (!soundPreviewPlayer) {
+        if (startSoundPreviewButton) {
+          startSoundPreviewButton.disabled = true;
+        }
+        if (connectedSoundPreviewButton) {
+          connectedSoundPreviewButton.disabled = true;
+        }
+        return;
+      }
+      if (startSoundPreviewButton) {
+        const disabled = !startSoundSelect || startSoundSelect.disabled || !startSoundSelect.value;
+        startSoundPreviewButton.disabled = disabled;
+      }
+      if (connectedSoundPreviewButton) {
+        const disabled = !connectedSoundSelect || connectedSoundSelect.disabled || !connectedSoundSelect.value;
+        connectedSoundPreviewButton.disabled = disabled;
+      }
+    };
+    updatePreviewButtonState();
+    if (soundPreviewPlayer) {
+      soundPreviewPlayer.addEventListener('error', (event) => {
+        console.error('Sound-Vorschau fehlgeschlagen', event);
+        setStatus('Sound konnte nicht abgespielt werden.', 'error');
+      });
     }
 
     const setStatus = (message, tone = '') => {
@@ -750,6 +849,64 @@
       return value;
     };
 
+    const getSelectLabel = (select) => {
+      if (!select) {
+        return '';
+      }
+      const option = select.options[select.selectedIndex];
+      return option ? option.textContent.trim() : select.value;
+    };
+
+    const playSoundPreview = (select, button) => {
+      if (!select || !button || !soundPreviewPlayer) {
+        return;
+      }
+      if (select.disabled) {
+        updatePreviewButtonState();
+        return;
+      }
+      const value = select.value;
+      if (!value) {
+        setStatus('Bitte zuerst einen Sound auswählen.', 'error');
+        updatePreviewButtonState();
+        return;
+      }
+      const label = getSelectLabel(select);
+      const url = `/api/sound-preview?file=${encodeURIComponent(value)}&v=${Date.now()}`;
+      button.disabled = true;
+      try {
+        soundPreviewPlayer.pause();
+        soundPreviewPlayer.currentTime = 0;
+      } catch (err) {
+        console.error('Zurücksetzen der Sound-Vorschau fehlgeschlagen', err);
+      }
+      soundPreviewPlayer.src = url;
+      let playback;
+      try {
+        playback = soundPreviewPlayer.play();
+      } catch (err) {
+        console.error('Sound-Vorschau konnte nicht gestartet werden', err);
+        setStatus('Sound konnte nicht abgespielt werden.', 'error');
+        button.disabled = false;
+        return;
+      }
+      const onSuccess = () => {
+        setStatus(`Spiele „${label}“ …`, 'success');
+      };
+      const onError = (err) => {
+        console.error('Sound-Vorschau fehlgeschlagen', err);
+        setStatus('Sound konnte nicht abgespielt werden.', 'error');
+      };
+      if (playback && typeof playback.then === 'function') {
+        playback.then(onSuccess).catch(onError).finally(() => {
+          button.disabled = false;
+        });
+      } else {
+        onSuccess();
+        button.disabled = false;
+      }
+    };
+
     const syncSoundSettings = (info) => {
       if (!soundDirectoryInput || !soundDirectorySave || !startSoundSelect || !connectedSoundSelect) {
         return null;
@@ -771,6 +928,7 @@
         connectedSoundSelect.append(connectedOption);
         connectedSoundSelect.disabled = true;
         connectedSoundSelect.value = '';
+        updatePreviewButtonState();
         return null;
       }
       const directory = typeof info.directory === 'string' ? info.directory : '';
@@ -796,6 +954,7 @@
         connectedSoundSelect.append(connectedOption);
         connectedSoundSelect.disabled = true;
         connectedSoundSelect.value = '';
+        updatePreviewButtonState();
       } else {
         const noneOption = document.createElement('option');
         noneOption.value = '';
@@ -824,6 +983,7 @@
         connectedSoundSelect.value = connectedSelected;
         connectedSoundSelect.disabled = false;
       }
+      updatePreviewButtonState();
       return {
         directory,
         files,
@@ -1261,6 +1421,7 @@
     }
     if (startSoundSelect) {
       startSoundSelect.addEventListener('change', () => {
+        updatePreviewButtonState();
         const value = startSoundSelect.value;
         if (!value) {
           return;
@@ -1270,8 +1431,19 @@
     }
     if (connectedSoundSelect) {
       connectedSoundSelect.addEventListener('change', () => {
+        updatePreviewButtonState();
         const value = connectedSoundSelect.value ?? '';
         saveConnectedSound(value);
+      });
+    }
+    if (startSoundPreviewButton && startSoundSelect) {
+      startSoundPreviewButton.addEventListener('click', () => {
+        playSoundPreview(startSoundSelect, startSoundPreviewButton);
+      });
+    }
+    if (connectedSoundPreviewButton && connectedSoundSelect) {
+      connectedSoundPreviewButton.addEventListener('click', () => {
+        playSoundPreview(connectedSoundSelect, connectedSoundPreviewButton);
       });
     }
 

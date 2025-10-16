@@ -184,6 +184,7 @@ import json
 import threading
 import subprocess
 from pathlib import Path
+from urllib.parse import parse_qs, urlparse
 
 try:
     import board  # type: ignore
@@ -907,6 +908,33 @@ class WebControlState:
             "connected_sound": self._connected_sound,
         }
 
+    def get_sound_file_path(self, filename):
+        if filename is None:
+            return None
+        try:
+            requested = str(filename)
+        except Exception:
+            return None
+        with self._lock:
+            directory = self._sound_directory
+            files = list(self._sound_files)
+        if not directory or not files:
+            return None
+        normalized = sanitize_start_sound(requested, files)
+        if not normalized:
+            return None
+        candidate = os.path.join(directory, normalized)
+        try:
+            base_dir = os.path.realpath(directory)
+            resolved = os.path.realpath(candidate)
+        except Exception:
+            return None
+        if not resolved.startswith(base_dir + os.sep) and resolved != base_dir:
+            return None
+        if not os.path.isfile(resolved):
+            return None
+        return resolved
+
     def _build_volume_snapshot_locked(self):
         audio_id = self._audio_device
         profile = get_audio_volume_profile(audio_id)
@@ -1169,6 +1197,17 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(encoded)
 
+    def _write_binary_response(self, status, body, content_type="application/octet-stream"):
+        data = body if isinstance(body, (bytes, bytearray)) else b""
+        self.send_response(status)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(data)))
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Accept-Ranges", "none")
+        self.end_headers()
+        if data:
+            self.wfile.write(data)
+
     def do_GET(self):
         if self.path == "/":
             self._write_response(200, load_asset(self.CONTROL_PAGE_NAME))
@@ -1192,6 +1231,28 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
                     payload = state
             body = json.dumps(payload)
             self._write_response(200, body, "application/json")
+            return
+        if self.path.startswith("/api/sound-preview"):
+            if not self.control_state:
+                self._write_response(503, "Soundvorschau ist nicht verfügbar.", "text/plain; charset=utf-8")
+                return
+            parsed = urlparse(self.path)
+            params = parse_qs(parsed.query)
+            requested = params.get("file", [""])[0]
+            if not requested:
+                self._write_response(400, "Parameter \"file\" fehlt.", "text/plain; charset=utf-8")
+                return
+            path = self.control_state.get_sound_file_path(requested)
+            if not path:
+                self._write_response(404, "Sounddatei nicht gefunden.", "text/plain; charset=utf-8")
+                return
+            try:
+                with open(path, "rb") as handle:
+                    data = handle.read()
+            except OSError:
+                self._write_response(500, "Sounddatei konnte nicht gelesen werden.", "text/plain; charset=utf-8")
+                return
+            self._write_binary_response(200, data, "audio/mpeg")
             return
         self._write_response(404, "Not found", "text/plain; charset=utf-8")
 
