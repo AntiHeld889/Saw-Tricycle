@@ -81,6 +81,11 @@
       font-size: 1.1rem;
       font-weight: 600;
     }
+    .field {
+      display: flex;
+      flex-direction: column;
+      gap: 0.45rem;
+    }
     label { font-size: 0.95rem; }
     select {
       background: rgba(255,255,255,0.05);
@@ -156,6 +161,64 @@
       display: flex;
       align-items: center;
       gap: 0.9rem;
+    }
+    .text-input {
+      display: flex;
+      align-items: center;
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 12px;
+      padding: 0.45rem 0.6rem;
+      transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    }
+    .text-input:focus-within {
+      border-color: rgba(229,9,20,0.55);
+      box-shadow: 0 0 0 3px rgba(229,9,20,0.2);
+    }
+    .text-input input {
+      flex: 1 1 auto;
+      background: transparent;
+      border: none;
+      color: inherit;
+      font: inherit;
+      padding: 0;
+      min-width: 0;
+    }
+    .text-input input:focus {
+      outline: none;
+    }
+    .text-input input::placeholder {
+      color: rgba(255,255,255,0.45);
+    }
+    .button-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.6rem;
+    }
+    .button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0.55rem 1.1rem;
+      border-radius: 12px;
+      border: 1px solid rgba(229,9,20,0.4);
+      background: rgba(229,9,20,0.16);
+      color: #fff;
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
+    }
+    .button:hover:not(:disabled) {
+      background: rgba(229,9,20,0.28);
+      border-color: rgba(229,9,20,0.55);
+    }
+    .button:active:not(:disabled) {
+      transform: translateY(1px);
+    }
+    .button:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
     }
     input[type="range"] {
       width: 100%;
@@ -245,6 +308,23 @@
       <p id="status" class="status"></p>
     </section>
     <section class="settings-section">
+      <h2>Sounds</h2>
+      <div class="field">
+        <label for="soundDirectory">MP3-Verzeichnis</label>
+        <div class="text-input">
+          <input id="soundDirectory" type="text" inputmode="text" autocomplete="off" placeholder="/opt/python/sawsounds" aria-label="Pfad zum MP3-Verzeichnis">
+        </div>
+        <div class="button-row">
+          <button type="button" class="button" id="soundDirectorySave">Pfad speichern</button>
+        </div>
+        <p class="hint">Alle MP3-Dateien aus diesem Ordner stehen für den Startsound zur Auswahl.</p>
+      </div>
+      <div class="field">
+        <label for="startSound">Startsound</label>
+        <select id="startSound" aria-label="Startsound auswählen"></select>
+      </div>
+    </section>
+    <section class="settings-section">
       <h2>Lenkwinkel</h2>
       <p class="hint">Definiert Mittelstellung und maximale Ausschläge des Servos.</p>
       <div class="steering-grid">
@@ -304,6 +384,9 @@
     const steeringMid = document.getElementById('steeringMid');
     const steeringRight = document.getElementById('steeringRight');
     const steeringInputs = [steeringLeft, steeringMid, steeringRight].filter((input) => input);
+    const soundDirectoryInput = document.getElementById('soundDirectory');
+    const soundDirectorySave = document.getElementById('soundDirectorySave');
+    const startSoundSelect = document.getElementById('startSound');
     audioSelect.disabled = true;
     let audioOptionsSignature = '';
     let volumeConfig = null;
@@ -334,6 +417,16 @@
         input.disabled = true;
         input.value = '';
       });
+    }
+    if (soundDirectoryInput) {
+      soundDirectoryInput.disabled = true;
+      soundDirectoryInput.value = '';
+    }
+    if (soundDirectorySave) {
+      soundDirectorySave.disabled = true;
+    }
+    if (startSoundSelect) {
+      startSoundSelect.disabled = true;
     }
 
     const setStatus = (message, tone = '') => {
@@ -648,6 +741,58 @@
       return value;
     };
 
+    const syncSoundSettings = (info) => {
+      if (!soundDirectoryInput || !soundDirectorySave || !startSoundSelect) {
+        return null;
+      }
+      startSoundSelect.innerHTML = '';
+      if (!info || typeof info !== 'object') {
+        soundDirectoryInput.value = '';
+        soundDirectoryInput.disabled = true;
+        soundDirectorySave.disabled = true;
+        const option = document.createElement('option');
+        option.value = '';
+        option.textContent = 'Keine MP3-Dateien gefunden';
+        startSoundSelect.append(option);
+        startSoundSelect.disabled = true;
+        return null;
+      }
+      const directory = typeof info.directory === 'string' ? info.directory : '';
+      const files = Array.isArray(info.files)
+        ? info.files.filter((value) => typeof value === 'string')
+        : [];
+      const startSound = typeof info.start_sound === 'string' ? info.start_sound : '';
+      soundDirectoryInput.disabled = false;
+      soundDirectoryInput.value = directory;
+      soundDirectorySave.disabled = false;
+      let selected = '';
+      if (files.length === 0) {
+        const option = document.createElement('option');
+        option.value = '';
+        option.textContent = 'Keine MP3-Dateien gefunden';
+        startSoundSelect.append(option);
+        startSoundSelect.disabled = true;
+      } else {
+        files.forEach((file) => {
+          const option = document.createElement('option');
+          option.value = file;
+          option.textContent = file;
+          startSoundSelect.append(option);
+        });
+        const normalized = startSound
+          ? files.find((file) => file.toLowerCase() === startSound.toLowerCase())
+          : null;
+        selected = normalized || files[0];
+        startSoundSelect.value = selected;
+        startSoundSelect.disabled = false;
+      }
+      return {
+        directory,
+        files,
+        startSound: selected || '',
+      };
+    };
+
     async function loadState() {
       try {
         setStatus('Lade aktuelle Einstellungen …');
@@ -661,6 +806,7 @@
         const volumeValue = syncVolume(data.audio_volume);
         const motorValues = syncMotorLimits(data.motor_limits);
         const steeringValues = syncSteeringAngles(data.steering_angles);
+        const soundInfo = syncSoundSettings(data.sound);
         const messageParts = [];
         let tone = '';
         if (current) {
@@ -686,6 +832,16 @@
             tone = 'success';
           }
         }
+        if (soundInfo) {
+          if (soundInfo.files.length > 0) {
+            messageParts.push('Sound-Einstellungen geladen');
+          } else {
+            messageParts.push('MP3-Verzeichnis geladen (keine Dateien gefunden)');
+          }
+          if (!tone) {
+            tone = 'success';
+          }
+        }
         const message = messageParts.length > 0 ? `${messageParts.join(' · ')}.` : '';
         setStatus(message, tone);
       } catch (err) {
@@ -694,6 +850,7 @@
         audioSelect.disabled = true;
         syncMotorLimits(null);
         syncSteeringAngles(null);
+        syncSoundSettings(null);
       }
     }
 
@@ -716,6 +873,7 @@
         const volumeValue = syncVolume(data.audio_volume);
         syncMotorLimits(data.motor_limits);
         syncSteeringAngles(data.steering_angles);
+        syncSoundSettings(data.sound);
         if (volumeValue !== null) {
           setStatus('Audio-Ausgabe und Lautstärke gespeichert.', 'success');
         } else {
@@ -755,6 +913,7 @@
         syncMotorLimits(data.motor_limits);
         syncSteeringAngles(data.steering_angles);
         const updated = syncVolume(data.audio_volume);
+        syncSoundSettings(data.sound);
         if (updated !== null) {
           setStatus('Lautstärke gespeichert.', 'success');
         } else {
@@ -763,6 +922,90 @@
       } catch (err) {
         console.error('Speichern der Lautstärke fehlgeschlagen', err);
         setStatus('Speichern der Lautstärke fehlgeschlagen.', 'error');
+      }
+    }
+
+    async function saveSoundDirectory(rawPath) {
+      if (!soundDirectoryInput || !soundDirectorySave) {
+        return;
+      }
+      const value = typeof rawPath === 'string' ? rawPath.trim() : '';
+      if (!value) {
+        setStatus('Bitte einen gültigen MP3-Pfad eingeben.', 'error');
+        soundDirectoryInput.focus();
+        return;
+      }
+      try {
+        setStatus('Speichere Sound-Pfad …');
+        const payload = { sound_directory: value };
+        const currentDevice = audioSelect.value;
+        if (currentDevice) {
+          payload.audio_device = currentDevice;
+        }
+        const resp = await fetch('/api/control', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        if (!resp.ok) {
+          throw new Error(`Status ${resp.status}`);
+        }
+        const data = await resp.json();
+        syncAudioSelection(data.audio_outputs, data.audio_device);
+        syncVolume(data.audio_volume);
+        syncMotorLimits(data.motor_limits);
+        syncSteeringAngles(data.steering_angles);
+        const soundInfo = syncSoundSettings(data.sound);
+        const hasFiles = !!soundInfo && soundInfo.files.length > 0;
+        setStatus(
+          hasFiles
+            ? 'MP3-Verzeichnis gespeichert.'
+            : 'MP3-Verzeichnis gespeichert (keine MP3-Dateien gefunden).',
+          'success'
+        );
+      } catch (err) {
+        console.error('Speichern des Sound-Pfads fehlgeschlagen', err);
+        setStatus('Sound-Pfad konnte nicht gespeichert werden.', 'error');
+      }
+    }
+
+    async function saveStartSound(fileName) {
+      if (!startSoundSelect) {
+        return;
+      }
+      const value = typeof fileName === 'string' ? fileName.trim() : '';
+      if (!value) {
+        return;
+      }
+      try {
+        setStatus('Speichere Startsound …');
+        const payload = { start_sound: value };
+        const currentDevice = audioSelect.value;
+        if (currentDevice) {
+          payload.audio_device = currentDevice;
+        }
+        const resp = await fetch('/api/control', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        if (!resp.ok) {
+          throw new Error(`Status ${resp.status}`);
+        }
+        const data = await resp.json();
+        syncAudioSelection(data.audio_outputs, data.audio_device);
+        syncMotorLimits(data.motor_limits);
+        syncSteeringAngles(data.steering_angles);
+        syncVolume(data.audio_volume);
+        const soundInfo = syncSoundSettings(data.sound);
+        if (soundInfo && soundInfo.startSound && soundInfo.startSound.toLowerCase() === value.toLowerCase()) {
+          setStatus('Startsound gespeichert.', 'success');
+        } else {
+          setStatus('Startsound konnte nicht gespeichert werden.', 'error');
+        }
+      } catch (err) {
+        console.error('Speichern des Startsounds fehlgeschlagen', err);
+        setStatus('Startsound konnte nicht gespeichert werden.', 'error');
       }
     }
 
@@ -790,6 +1033,7 @@
         syncMotorLimits(data.motor_limits);
         syncSteeringAngles(data.steering_angles);
         syncVolume(data.audio_volume);
+        syncSoundSettings(data.sound);
         setStatus('Motor-Grenzen gespeichert.', 'success');
       } catch (err) {
         console.error('Speichern der Motor-Grenzen fehlgeschlagen', err);
@@ -820,6 +1064,7 @@
         syncAudioSelection(data.audio_outputs, data.audio_device);
         syncMotorLimits(data.motor_limits);
         syncVolume(data.audio_volume);
+        syncSoundSettings(data.sound);
         const updated = syncSteeringAngles(data.steering_angles);
         if (updated) {
           setStatus('Lenkwinkel gespeichert.', 'success');
@@ -918,6 +1163,29 @@
         if (value !== null) {
           saveVolume(value);
         }
+      });
+    }
+
+    if (soundDirectorySave && soundDirectoryInput) {
+      soundDirectorySave.addEventListener('click', () => {
+        saveSoundDirectory(soundDirectoryInput.value ?? '');
+      });
+    }
+    if (soundDirectoryInput) {
+      soundDirectoryInput.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter') {
+          event.preventDefault();
+          saveSoundDirectory(soundDirectoryInput.value ?? '');
+        }
+      });
+    }
+    if (startSoundSelect) {
+      startSoundSelect.addEventListener('change', () => {
+        const value = startSoundSelect.value;
+        if (!value) {
+          return;
+        }
+        saveStartSound(value);
       });
     }
 
