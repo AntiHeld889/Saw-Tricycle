@@ -317,6 +317,31 @@
     }
     .status.success { color: #63f58c; }
     .status.error { color: #ff7a7a; }
+    .settings-footer {
+      display: flex;
+      justify-content: flex-end;
+    }
+    .more-settings-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      padding: 0.55rem 1.1rem;
+      border-radius: 12px;
+      background: rgba(229,9,20,0.16);
+      border: 1px solid rgba(229,9,20,0.4);
+      color: #fff;
+      font-size: 0.95rem;
+      font-weight: 600;
+      text-decoration: none;
+      transition: background 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
+    }
+    .more-settings-link:hover {
+      background: rgba(229,9,20,0.28);
+      border-color: rgba(229,9,20,0.55);
+    }
+    .more-settings-link:active {
+      transform: translateY(1px);
+    }
     @media (max-width: 640px) {
       body {
         padding: calc(1rem + var(--safe-top)) calc(1rem + var(--safe-right)) calc(1rem + var(--safe-bottom)) calc(1rem + var(--safe-left));
@@ -503,6 +528,9 @@
         </div>
       </div>
     </section>
+    <div class="settings-footer">
+      <a class="more-settings-link" href="/more-settings" aria-label="Weitere Einstellungen öffnen">Weitere Einstellungen</a>
+    </div>
     <audio id="soundPreviewPlayer" preload="none" hidden></audio>
   </div>
   <script>

@@ -1567,6 +1567,7 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
     CONTROL_PAGE_NAME = "control.html"
     SETTINGS_PAGE_NAME = "settings.html"
     BATTERY_PAGE_NAME = "battery.html"
+    MORE_SETTINGS_PAGE_NAME = "more_settings.html"
 
     def _write_response(self, status, body, content_type="text/html; charset=utf-8"):
         encoded = body.encode("utf-8")
@@ -1594,6 +1595,9 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
             return
         if self.path == "/settings":
             self._write_response(200, load_asset(self.SETTINGS_PAGE_NAME))
+            return
+        if self.path == "/more-settings":
+            self._write_response(200, load_asset(self.MORE_SETTINGS_PAGE_NAME))
             return
         if self.path == "/battery":
             self._write_response(200, load_asset(self.BATTERY_PAGE_NAME))
