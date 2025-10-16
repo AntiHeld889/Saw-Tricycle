@@ -17,6 +17,10 @@ SOUNDBOARD_PORT_DEFAULT = None
 SOUNDBOARD_PORT_MIN = 1
 SOUNDBOARD_PORT_MAX = 65535
 
+CAMERA_PORT_DEFAULT = None
+CAMERA_PORT_MIN = 1
+CAMERA_PORT_MAX = 65535
+
 # Vorkonfigurierte Audioausgänge für Web-Dropdown (ID, Label, ALSA-Device, Setup-Kommandos)
 HEADPHONE_ROUTE_COMMANDS = [
     ["amixer", "-q", "cset", "numid=3", "1"],             # 0=auto, 1=analog, 2=HDMI (älteres RPi-OS)
@@ -488,6 +492,24 @@ def sanitize_soundboard_port(value):
     return numeric
 
 
+def sanitize_camera_port(value):
+    if value is None:
+        return None
+    try:
+        if isinstance(value, str):
+            stripped = value.strip()
+            if not stripped:
+                return None
+            numeric = int(stripped, 10)
+        else:
+            numeric = int(value)
+    except (TypeError, ValueError):
+        return None
+    if not (CAMERA_PORT_MIN <= numeric <= CAMERA_PORT_MAX):
+        return None
+    return numeric
+
+
 def sanitize_disconnect_command(value, *, max_length=1024):
     if value is None:
         return None
@@ -608,6 +630,7 @@ def load_persisted_sound_settings():
     start_sound = None
     connected_sound = None
     soundboard_port = None
+    camera_port = None
     if isinstance(stored, dict):
         directory = sanitize_sound_directory(stored.get("directory"))
         start_sound = stored.get("start_sound")
@@ -621,6 +644,7 @@ def load_persisted_sound_settings():
         else:
             connected_sound = None
         soundboard_port = sanitize_soundboard_port(stored.get("soundboard_port"))
+        camera_port = sanitize_camera_port(stored.get("camera_port"))
     if not directory:
         directory = SOUND_DIRECTORY_DEFAULT
     if not start_sound:
@@ -630,10 +654,18 @@ def load_persisted_sound_settings():
         "start_sound": start_sound,
         "connected_sound": connected_sound,
         "soundboard_port": soundboard_port if soundboard_port is not None else SOUNDBOARD_PORT_DEFAULT,
+        "camera_port": camera_port if camera_port is not None else CAMERA_PORT_DEFAULT,
     }
 
 
-def persist_sound_settings(*, directory=_UNSET, start_sound=_UNSET, connected_sound=_UNSET, soundboard_port=_UNSET):
+def persist_sound_settings(
+    *,
+    directory=_UNSET,
+    start_sound=_UNSET,
+    connected_sound=_UNSET,
+    soundboard_port=_UNSET,
+    camera_port=_UNSET,
+):
     payload = _load_persisted_state()
     sound_state = payload.get("sound") if isinstance(payload, dict) else {}
     if not isinstance(sound_state, dict):
@@ -658,6 +690,11 @@ def persist_sound_settings(*, directory=_UNSET, start_sound=_UNSET, connected_so
             sound_state.pop("soundboard_port", None)
         else:
             sound_state["soundboard_port"] = soundboard_port
+    if camera_port is not _UNSET:
+        if camera_port is None:
+            sound_state.pop("camera_port", None)
+        else:
+            sound_state["camera_port"] = camera_port
     payload["sound"] = sound_state
     return _persist_state(payload)
 
@@ -1025,6 +1062,7 @@ class WebControlState:
         initial_connected_sound=None,
         initial_disconnect_command=None,
         initial_soundboard_port=None,
+        initial_camera_port=None,
         initial_button_actions=None,
         battery_monitor=None,
     ):
@@ -1053,6 +1091,7 @@ class WebControlState:
         self._connected_sound = sanitize_start_sound(initial_connected_sound)
         self._disconnect_command = sanitize_disconnect_command(initial_disconnect_command)
         self._soundboard_port = sanitize_soundboard_port(initial_soundboard_port)
+        self._camera_port = sanitize_camera_port(initial_camera_port)
         self._button_actions = normalize_button_actions_map(initial_button_actions)
         self._refresh_sound_files_locked()
         self._motor_limit_forward = MOTOR_LIMIT_FWD
@@ -1126,6 +1165,7 @@ class WebControlState:
             "start_sound": self._start_sound,
             "connected_sound": self._connected_sound,
             "soundboard_port": self._soundboard_port,
+            "camera_port": self._camera_port,
         }
 
     def _build_gamepad_snapshot_locked(self):
@@ -1242,6 +1282,7 @@ class WebControlState:
         connected_sound=None,
         disconnect_command=None,
         soundboard_port=None,
+        camera_port=None,
         button_actions=None,
     ):
         new_audio_id = None
@@ -1259,6 +1300,7 @@ class WebControlState:
             previous_connected_sound = self._connected_sound
             previous_disconnect_command = self._disconnect_command
             previous_soundboard_port = self._soundboard_port
+            previous_camera_port = self._camera_port
             if override is not None:
                 self._override = bool(override)
             if motor is not None:
@@ -1349,6 +1391,10 @@ class WebControlState:
                 sanitized_port = sanitize_soundboard_port(soundboard_port)
                 if sanitized_port != self._soundboard_port:
                     self._soundboard_port = sanitized_port
+            if camera_port is not None:
+                sanitized_camera = sanitize_camera_port(camera_port)
+                if sanitized_camera != self._camera_port:
+                    self._camera_port = sanitized_camera
             self._ensure_sound_selections_locked()
             if button_actions is not None:
                 if self._apply_button_action_updates_locked(button_actions):
@@ -1358,12 +1404,14 @@ class WebControlState:
                 or self._start_sound != previous_start_sound
                 or self._connected_sound != previous_connected_sound
                 or self._soundboard_port != previous_soundboard_port
+                or self._camera_port != previous_camera_port
             ):
                 sound_settings_to_persist = {
                     "directory": self._sound_directory,
                     "start_sound": self._start_sound,
                     "connected_sound": self._connected_sound,
                     "soundboard_port": self._soundboard_port,
+                    "camera_port": self._camera_port,
                 }
             if self._disconnect_command != previous_disconnect_command:
                 gamepad_settings_to_persist = {
@@ -1602,6 +1650,7 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
                 connected_sound=data.get("connected_sound"),
                 disconnect_command=data.get("disconnect_command"),
                 soundboard_port=data.get("soundboard_port"),
+                camera_port=data.get("camera_port"),
                 button_actions=data.get("button_actions"),
             )
 
@@ -1946,6 +1995,7 @@ def main():
         initial_connected_sound=persisted_sound.get("connected_sound"),
         initial_disconnect_command=persisted_gamepad.get("disconnect_command"),
         initial_soundboard_port=persisted_sound.get("soundboard_port"),
+        initial_camera_port=persisted_sound.get("camera_port"),
         initial_button_actions=persisted_button_actions,
         battery_monitor=battery_monitor,
     )

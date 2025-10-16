@@ -411,6 +411,15 @@
         </div>
       </div>
       <div class="field">
+        <label for="cameraPort">Kamera Port</label>
+        <div class="text-input">
+          <input id="cameraPort" type="text" inputmode="numeric" pattern="[0-9]*" autocomplete="off" placeholder="8080" aria-label="Port für die Kamera">
+        </div>
+        <div class="button-row">
+          <button type="button" class="button" id="cameraPortSave">Port speichern</button>
+        </div>
+      </div>
+      <div class="field">
         <label for="startSound">Startsound</label>
         <div class="sound-row">
           <select id="startSound" aria-label="Startsound auswählen"></select>
@@ -510,6 +519,8 @@
     const soundDirectorySave = document.getElementById('soundDirectorySave');
     const soundboardPortInput = document.getElementById('soundboardPort');
     const soundboardPortSave = document.getElementById('soundboardPortSave');
+    const cameraPortInput = document.getElementById('cameraPort');
+    const cameraPortSave = document.getElementById('cameraPortSave');
     const startSoundSelect = document.getElementById('startSound');
     const connectedSoundSelect = document.getElementById('connectedSound');
     const startSoundPreviewButton = document.querySelector('[data-sound-preview="start"]');
@@ -570,6 +581,13 @@
     }
     if (soundboardPortSave) {
       soundboardPortSave.disabled = true;
+    }
+    if (cameraPortInput) {
+      cameraPortInput.disabled = true;
+      cameraPortInput.value = '';
+    }
+    if (cameraPortSave) {
+      cameraPortSave.disabled = true;
     }
     if (startSoundSelect) {
       startSoundSelect.disabled = true;
@@ -1418,13 +1436,20 @@
         soundDirectoryInput.value = '';
         soundDirectoryInput.disabled = true;
         soundDirectorySave.disabled = true;
-        if (soundboardPortInput) {
-          soundboardPortInput.value = '';
-          soundboardPortInput.disabled = true;
-        }
-        if (soundboardPortSave) {
-          soundboardPortSave.disabled = true;
-        }
+      if (soundboardPortInput) {
+        soundboardPortInput.value = '';
+        soundboardPortInput.disabled = true;
+      }
+      if (soundboardPortSave) {
+        soundboardPortSave.disabled = true;
+      }
+      if (cameraPortInput) {
+        cameraPortInput.value = '';
+        cameraPortInput.disabled = true;
+      }
+      if (cameraPortSave) {
+        cameraPortSave.disabled = true;
+      }
         const option = document.createElement('option');
         option.value = '';
         option.textContent = 'Keine MP3-Dateien gefunden';
@@ -1448,6 +1473,7 @@
       const startSound = typeof info.start_sound === 'string' ? info.start_sound : '';
       const connectedSound = typeof info.connected_sound === 'string' ? info.connected_sound : '';
       const soundboardPort = parseSoundboardPort(info.soundboard_port);
+      const cameraPort = parseSoundboardPort(info.camera_port);
       soundDirectoryInput.disabled = false;
       soundDirectoryInput.value = directory;
       soundDirectorySave.disabled = false;
@@ -1457,6 +1483,13 @@
       }
       if (soundboardPortSave) {
         soundboardPortSave.disabled = false;
+      }
+      if (cameraPortInput) {
+        cameraPortInput.disabled = false;
+        cameraPortInput.value = cameraPort !== null ? String(cameraPort) : '';
+      }
+      if (cameraPortSave) {
+        cameraPortSave.disabled = false;
       }
       let selected = '';
       let connectedSelected = '';
@@ -1510,6 +1543,7 @@
         startSound: selected || '',
         connectedSound: connectedSelected || '',
         soundboardPort,
+        cameraPort,
       };
     };
 
@@ -1776,6 +1810,57 @@
       } catch (err) {
         console.error('Speichern des Soundboard-Ports fehlgeschlagen', err);
         setStatus('Soundboard-Port konnte nicht gespeichert werden.', 'error');
+      }
+    }
+
+    async function saveCameraPort(rawPort) {
+      if (!cameraPortInput || !cameraPortSave) {
+        return;
+      }
+      const rawValue = typeof rawPort === 'string' ? rawPort.trim() : String(rawPort ?? '').trim();
+      if (!rawValue) {
+        setStatus('Bitte einen gültigen Port eingeben.', 'error');
+        cameraPortInput.focus();
+        return;
+      }
+      const numeric = Number.parseInt(rawValue, 10);
+      if (!Number.isInteger(numeric) || numeric < 1 || numeric > 65535) {
+        setStatus('Port muss zwischen 1 und 65535 liegen.', 'error');
+        cameraPortInput.focus();
+        return;
+      }
+      try {
+        setStatus('Speichere Kamera-Port …');
+        const payload = { camera_port: numeric };
+        const currentDevice = audioSelect.value;
+        if (currentDevice) {
+          payload.audio_device = currentDevice;
+        }
+        const resp = await fetch('/api/control', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        if (!resp.ok) {
+          throw new Error(`Status ${resp.status}`);
+        }
+        const data = await resp.json();
+        syncAudioSelection(data.audio_outputs, data.audio_device);
+        syncVolume(data.audio_volume);
+        syncMotorLimits(data.motor_limits);
+        syncSteeringAngles(data.steering_angles);
+        const soundInfo = syncSoundSettings(data.sound);
+        syncGamepadSettings(data.gamepad);
+        syncButtonActions(data.button_actions);
+        const savedPort = soundInfo ? soundInfo.cameraPort : null;
+        if (savedPort === numeric) {
+          setStatus('Kamera-Port gespeichert.', 'success');
+        } else {
+          setStatus('Kamera-Port konnte nicht gespeichert werden.', 'error');
+        }
+      } catch (err) {
+        console.error('Speichern des Kamera-Ports fehlgeschlagen', err);
+        setStatus('Kamera-Port konnte nicht gespeichert werden.', 'error');
       }
     }
 
@@ -2087,6 +2172,19 @@
         if (event.key === 'Enter') {
           event.preventDefault();
           saveSoundboardPort(soundboardPortInput.value ?? '');
+        }
+      });
+    }
+    if (cameraPortSave && cameraPortInput) {
+      cameraPortSave.addEventListener('click', () => {
+        saveCameraPort(cameraPortInput.value ?? '');
+      });
+    }
+    if (cameraPortInput) {
+      cameraPortInput.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter') {
+          event.preventDefault();
+          saveCameraPort(cameraPortInput.value ?? '');
         }
       });
     }
