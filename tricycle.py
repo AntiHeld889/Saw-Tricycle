@@ -242,7 +242,7 @@ for code_str, _label in BUTTON_LAYOUT:
         BUTTON_EVENT_TO_CODE[event_code] = code_str
 
 
-SETTINGS_FILE = Path.cwd() / "settings.json"
+SETTINGS_FILE = Path("/opt/python/Saw-Tricycle") / "settings.json"
 
 
 def _load_persisted_state():
