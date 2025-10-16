@@ -641,17 +641,11 @@ def load_persisted_sound_settings():
     data = _load_persisted_state()
     stored = data.get("sound") if isinstance(data, dict) else {}
     directory = None
-    start_sound = None
     connected_sound = None
     soundboard_port = None
     camera_port = None
     if isinstance(stored, dict):
         directory = sanitize_sound_directory(stored.get("directory"))
-        start_sound = stored.get("start_sound")
-        if isinstance(start_sound, str):
-            start_sound = os.path.basename(start_sound.strip()) or None
-        else:
-            start_sound = None
         connected_sound = stored.get("connected_sound")
         if isinstance(connected_sound, str):
             connected_sound = os.path.basename(connected_sound.strip()) or None
@@ -663,7 +657,6 @@ def load_persisted_sound_settings():
         directory = SOUND_DIRECTORY_DEFAULT
     return {
         "directory": directory,
-        "start_sound": start_sound,
         "connected_sound": connected_sound,
         "soundboard_port": soundboard_port if soundboard_port is not None else SOUNDBOARD_PORT_DEFAULT,
         "camera_port": camera_port if camera_port is not None else CAMERA_PORT_DEFAULT,
@@ -673,7 +666,6 @@ def load_persisted_sound_settings():
 def persist_sound_settings(
     *,
     directory=_UNSET,
-    start_sound=_UNSET,
     connected_sound=_UNSET,
     soundboard_port=_UNSET,
     camera_port=_UNSET,
@@ -687,11 +679,6 @@ def persist_sound_settings(
             sound_state.pop("directory", None)
         else:
             sound_state["directory"] = directory
-    if start_sound is not _UNSET:
-        if start_sound is None:
-            sound_state.pop("start_sound", None)
-        else:
-            sound_state["start_sound"] = start_sound
     if connected_sound is not _UNSET:
         if connected_sound is None:
             sound_state.pop("connected_sound", None)
@@ -1070,7 +1057,6 @@ class WebControlState:
         initial_motor_limits=None,
         initial_steering_angles=None,
         initial_sound_directory=None,
-        initial_start_sound=None,
         initial_connected_sound=None,
         initial_disconnect_command=None,
         initial_soundboard_port=None,
@@ -1099,7 +1085,6 @@ class WebControlState:
         initial_directory = sanitize_sound_directory(initial_sound_directory) or SOUND_DIRECTORY_DEFAULT
         self._sound_directory = initial_directory
         self._sound_files = []
-        self._start_sound = sanitize_start_sound(initial_start_sound)
         self._connected_sound = sanitize_start_sound(initial_connected_sound)
         self._disconnect_command = sanitize_disconnect_command(initial_disconnect_command)
         self._soundboard_port = sanitize_soundboard_port(initial_soundboard_port)
@@ -1157,23 +1142,16 @@ class WebControlState:
 
     def _ensure_sound_selections_locked(self):
         if not self._sound_files:
-            self._start_sound = None
             self._connected_sound = None
             return None
-        normalized_start = sanitize_start_sound(self._start_sound, self._sound_files)
-        if normalized_start:
-            self._start_sound = normalized_start
-        else:
-            self._start_sound = None
         normalized_connected = sanitize_start_sound(self._connected_sound, self._sound_files)
         self._connected_sound = normalized_connected
-        return self._start_sound
+        return self._connected_sound
 
     def _build_sound_snapshot_locked(self):
         return {
             "directory": self._sound_directory,
             "files": list(self._sound_files),
-            "start_sound": self._start_sound,
             "connected_sound": self._connected_sound,
             "soundboard_port": self._soundboard_port,
             "camera_port": self._camera_port,
@@ -1289,7 +1267,6 @@ class WebControlState:
         motor_limits=None,
         steering_angles=None,
         sound_directory=None,
-        start_sound=None,
         connected_sound=None,
         disconnect_command=None,
         soundboard_port=None,
@@ -1307,7 +1284,6 @@ class WebControlState:
         button_actions_to_persist = None
         with self._lock:
             previous_directory = self._sound_directory
-            previous_start_sound = self._start_sound
             previous_connected_sound = self._connected_sound
             previous_disconnect_command = self._disconnect_command
             previous_soundboard_port = self._soundboard_port
@@ -1382,14 +1358,6 @@ class WebControlState:
                     refreshed = self._refresh_sound_files_locked()
                 if refreshed:
                     button_actions_to_persist = dict(self._button_actions)
-            if start_sound is not None:
-                sanitized_sound = sanitize_start_sound(start_sound, self._sound_files)
-                if sanitized_sound is not None:
-                    if sanitized_sound != self._start_sound:
-                        self._start_sound = sanitized_sound
-                elif isinstance(start_sound, str) and not start_sound.strip():
-                    if self._start_sound is not None:
-                        self._start_sound = None
             if connected_sound is not None:
                 sanitized_connected = sanitize_start_sound(connected_sound, self._sound_files)
                 if sanitized_connected is not None:
@@ -1416,14 +1384,12 @@ class WebControlState:
                     button_actions_to_persist = dict(self._button_actions)
             if (
                 self._sound_directory != previous_directory
-                or self._start_sound != previous_start_sound
                 or self._connected_sound != previous_connected_sound
                 or self._soundboard_port != previous_soundboard_port
                 or self._camera_port != previous_camera_port
             ):
                 sound_settings_to_persist = {
                     "directory": self._sound_directory,
-                    "start_sound": self._start_sound,
                     "connected_sound": self._connected_sound,
                     "soundboard_port": self._soundboard_port,
                     "camera_port": self._camera_port,
@@ -1529,14 +1495,6 @@ class WebControlState:
         if profile and profile.get("alsa_device"):
             return profile["alsa_device"]
         return ALSA_HP_DEVICE
-
-    def get_start_sound_path(self):
-        with self._lock:
-            directory = self._sound_directory
-            filename = self._start_sound
-        if not directory or not filename:
-            return None
-        return str(Path(directory) / filename)
 
     def get_connected_sound_path(self):
         with self._lock:
@@ -1661,7 +1619,6 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
                 motor_limits=data.get("motor_limits"),
                 steering_angles=data.get("steering_angles"),
                 sound_directory=data.get("sound_directory"),
-                start_sound=data.get("start_sound"),
                 connected_sound=data.get("connected_sound"),
                 disconnect_command=data.get("disconnect_command"),
                 soundboard_port=data.get("soundboard_port"),
@@ -2001,7 +1958,6 @@ def main():
         initial_motor_limits=persisted_motor_limits,
         initial_steering_angles=persisted_steering,
         initial_sound_directory=persisted_sound.get("directory"),
-        initial_start_sound=persisted_sound.get("start_sound"),
         initial_connected_sound=persisted_sound.get("connected_sound"),
         initial_disconnect_command=persisted_gamepad.get("disconnect_command"),
         initial_soundboard_port=persisted_sound.get("soundboard_port"),
@@ -2017,11 +1973,8 @@ def main():
         print(f"Webserver konnte nicht gestartet werden: {exc}", file=sys.stderr)
         web_server = None
 
-    # Audioausgabe und Startsound direkt beim Start anwenden
+    # Audioausgabe direkt beim Start anwenden
     web_state.apply_current_audio_output()
-    start_sound_path = web_state.get_start_sound_path()
-    if start_sound_path and os.path.isfile(start_sound_path):
-        play_sound_switch(start_sound_path, web_state.get_selected_alsa_device())
 
     def execute_disconnect_action():
         command = web_state.get_disconnect_command()
