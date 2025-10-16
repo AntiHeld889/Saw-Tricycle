@@ -323,29 +323,42 @@ def _default_state_dir():
 
 
 STATE_DIR = _default_state_dir()
-AUDIO_SELECTION_FILE = STATE_DIR / "audio-selection.json"
+SETTINGS_FILE = STATE_DIR / "settings.json"
+LEGACY_SETTINGS_FILES = (
+    STATE_DIR / "audio-selection.json",
+)
 
 
 def _load_persisted_state():
-    try:
-        with AUDIO_SELECTION_FILE.open("r", encoding="utf-8") as fh:
-            data = json.load(fh)
-    except FileNotFoundError:
-        return {}
-    except Exception:
-        return {}
-    if isinstance(data, dict):
-        return data
+    def _load_json(path):
+        try:
+            with path.open("r", encoding="utf-8") as fh:
+                return json.load(fh)
+        except FileNotFoundError:
+            return None
+        except Exception:
+            return None
+
+    primary = _load_json(SETTINGS_FILE)
+    if isinstance(primary, dict):
+        return primary
+
+    for legacy_path in LEGACY_SETTINGS_FILES:
+        legacy_data = _load_json(legacy_path)
+        if isinstance(legacy_data, dict):
+            _persist_state(legacy_data)
+            return legacy_data
+
     return {}
 
 
 def _persist_state(payload):
     try:
         STATE_DIR.mkdir(parents=True, exist_ok=True)
-        tmp_path = AUDIO_SELECTION_FILE.with_suffix(".tmp")
+        tmp_path = SETTINGS_FILE.with_suffix(".tmp")
         with tmp_path.open("w", encoding="utf-8") as fh:
             json.dump(payload, fh)
-        os.replace(tmp_path, AUDIO_SELECTION_FILE)
+        os.replace(tmp_path, SETTINGS_FILE)
         return True
     except Exception:
         return False

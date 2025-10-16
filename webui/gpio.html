@@ -76,6 +76,11 @@
       flex-direction: column;
       gap: 1rem;
     }
+    .settings-subheading {
+      margin: 0;
+      font-size: 1rem;
+      font-weight: 600;
+    }
     .settings-section h2 {
       margin: 0;
       font-size: 1.1rem;
@@ -212,6 +217,22 @@
             </div>
           </div>
         </div>
+        <h3 class="settings-subheading">DC-Motor Leistungslimit (%)</h3>
+        <p class="hint">Begrenzt die maximale Leistung der DC-Motoren beim Vorwärts- und Rückwärtsfahren.</p>
+        <div class="gpio-grid">
+          <div class="field">
+            <label for="motorLimitForward">Vorwärts (max. %)</label>
+            <div class="number-input">
+              <input id="motorLimitForward" type="number" inputmode="decimal" min="0" max="100" step="1" autocomplete="off" required aria-label="Prozentuale Limitierung für die Vorwärtsfahrt">
+            </div>
+          </div>
+          <div class="field">
+            <label for="motorLimitReverse">Rückwärts (max. %)</label>
+            <div class="number-input">
+              <input id="motorLimitReverse" type="number" inputmode="decimal" min="0" max="100" step="1" autocomplete="off" required aria-label="Prozentuale Limitierung für die Rückwärtsfahrt">
+            </div>
+          </div>
+        </div>
         <p class="hint">Hinweis: Eine Änderung wird vollständig nach einem Neustart der Anwendung aktiv.</p>
         <div class="button-row">
           <button type="submit" class="button" id="gpioSave">Pins speichern</button>
@@ -225,14 +246,21 @@
       const form = document.getElementById('gpioForm');
       const statusEl = document.getElementById('gpioStatus');
       const saveButton = document.getElementById('gpioSave');
-      const inputs = {
+      const gpioInputs = {
         steering_servo: document.getElementById('gpioSteering'),
         head_servo: document.getElementById('gpioHead'),
         motor_pwm: document.getElementById('gpioMotorPwm'),
         motor_dir: document.getElementById('gpioMotorDir'),
       };
+      const motorLimitInputs = {
+        forward: document.getElementById('motorLimitForward'),
+        reverse: document.getElementById('motorLimitReverse'),
+      };
       let gpioRange = { min: 0, max: 27 };
+      let motorLimitRange = { min: 0, max: 100, step: 1 };
+      let motorLimitPrecision = 0;
       let hasLoaded = false;
+      let loadFailed = false;
 
       const setStatus = (message, tone) => {
         if (!statusEl) {
@@ -246,7 +274,7 @@
       };
 
       const setLoadingState = (isLoading) => {
-        Object.values(inputs).forEach((input) => {
+        [...Object.values(gpioInputs), ...Object.values(motorLimitInputs)].forEach((input) => {
           if (input) {
             input.disabled = isLoading;
           }
@@ -257,13 +285,62 @@
       };
 
       const updateRangeAttributes = () => {
-        Object.values(inputs).forEach((input) => {
+        Object.values(gpioInputs).forEach((input) => {
           if (!input) {
             return;
           }
           input.min = gpioRange.min;
           input.max = gpioRange.max;
         });
+      };
+
+      const updateMotorLimitAttributes = () => {
+        Object.values(motorLimitInputs).forEach((input) => {
+          if (!input) {
+            return;
+          }
+          input.min = motorLimitRange.min;
+          input.max = motorLimitRange.max;
+          if (motorLimitRange.step) {
+            input.step = motorLimitRange.step;
+          }
+        });
+      };
+
+      const formatMotorLimitPercent = (value) => {
+        if (!Number.isFinite(value)) {
+          return '';
+        }
+        const percent = value * 100;
+        const decimals = Math.max(0, motorLimitPrecision);
+        let formatted = percent.toFixed(decimals);
+        if (decimals > 0) {
+          formatted = formatted.replace(/\.0+$/, '').replace(/(\.[0-9]*?)0+$/, '$1');
+        }
+        return formatted;
+      };
+
+      const sanitizeMotorLimit = (input) => {
+        if (!input) {
+          return null;
+        }
+        const raw = input.value.trim().replace(',', '.');
+        if (raw === '') {
+          return null;
+        }
+        const numeric = Number.parseFloat(raw);
+        if (!Number.isFinite(numeric)) {
+          return null;
+        }
+        const limited = Math.max(motorLimitRange.min, Math.min(motorLimitRange.max, numeric));
+        let quantized = limited;
+        if (motorLimitRange.step && motorLimitRange.step > 0) {
+          const steps = Math.round((limited - motorLimitRange.min) / motorLimitRange.step);
+          quantized = motorLimitRange.min + steps * motorLimitRange.step;
+        }
+        const constrained = Math.max(motorLimitRange.min, Math.min(motorLimitRange.max, quantized));
+        const decimals = Math.min(6, Math.max(2, motorLimitPrecision + 2));
+        return Number.parseFloat((constrained / 100).toFixed(decimals));
       };
 
       const applyGpioState = (state) => {
@@ -279,7 +356,7 @@
         }
         updateRangeAttributes();
         const pins = (gpio && gpio.pins) || {};
-        Object.entries(inputs).forEach(([key, input]) => {
+        Object.entries(gpioInputs).forEach(([key, input]) => {
           if (!input) {
             return;
           }
@@ -290,6 +367,36 @@
             input.value = '';
           }
         });
+        const motorLimits = state.motor_limits || {};
+        if (Number.isFinite(motorLimits.min)) {
+          motorLimitRange.min = Number.parseFloat((motorLimits.min * 100).toFixed(3));
+        }
+        if (Number.isFinite(motorLimits.max)) {
+          motorLimitRange.max = Number.parseFloat((motorLimits.max * 100).toFixed(3));
+        }
+        if (Number.isFinite(motorLimits.step)) {
+          const computedStep = Number.parseFloat((motorLimits.step * 100).toFixed(3));
+          if (computedStep > 0) {
+            motorLimitRange.step = computedStep;
+            const stepText = computedStep.toString();
+            const fraction = stepText.includes('.') ? stepText.split('.')[1].replace(/0+$/, '') : '';
+            motorLimitPrecision = Math.min(3, fraction.length);
+          } else {
+            motorLimitPrecision = 0;
+            motorLimitRange.step = 1;
+          }
+        } else {
+          motorLimitPrecision = 0;
+        }
+        updateMotorLimitAttributes();
+        Object.entries(motorLimitInputs).forEach(([key, input]) => {
+          if (!input) {
+            return;
+          }
+          const value = motorLimits[key];
+          input.value = formatMotorLimitPercent(value);
+        });
+        loadFailed = false;
         hasLoaded = true;
         setLoadingState(false);
       };
@@ -314,8 +421,20 @@
 
       const collectPins = () => {
         const result = {};
-        for (const [key, input] of Object.entries(inputs)) {
+        for (const [key, input] of Object.entries(gpioInputs)) {
           const value = sanitizeValue(input);
+          if (value === null) {
+            return null;
+          }
+          result[key] = value;
+        }
+        return result;
+      };
+
+      const collectMotorLimits = () => {
+        const result = {};
+        for (const [key, input] of Object.entries(motorLimitInputs)) {
+          const value = sanitizeMotorLimit(input);
           if (value === null) {
             return null;
           }
@@ -326,7 +445,7 @@
 
       const loadInitialState = async () => {
         setLoadingState(true);
-        setStatus('Lade aktuelle Belegung …');
+        setStatus('Lade aktuelle Einstellungen …');
         try {
           const resp = await fetch('/api/state');
           if (!resp.ok) {
@@ -336,9 +455,11 @@
           applyGpioState(data);
           setStatus('');
         } catch (error) {
-          console.error('GPIO-Status konnte nicht geladen werden:', error);
-          setStatus('GPIO-Belegung konnte nicht geladen werden.', 'error');
-          setLoadingState(true);
+          console.error('Einstellungen konnten nicht geladen werden:', error);
+          setStatus('Einstellungen konnten nicht geladen werden. Bitte Werte manuell eingeben und erneut speichern.', 'error');
+          loadFailed = true;
+          hasLoaded = true;
+          setLoadingState(false);
         }
       };
 
@@ -352,28 +473,33 @@
           setStatus(`Bitte gültige Pins zwischen ${gpioRange.min} und ${gpioRange.max} eintragen.`, 'error');
           return;
         }
+        const motorLimits = collectMotorLimits();
+        if (!motorLimits) {
+          setStatus(`Bitte gültige Motorlimits zwischen ${motorLimitRange.min} und ${motorLimitRange.max} % eintragen.`, 'error');
+          return;
+        }
         setLoadingState(true);
         setStatus('Speichere …');
         try {
           const resp = await fetch('/api/control', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ gpio_pins: pins }),
+            body: JSON.stringify({ gpio_pins: pins, motor_limits: motorLimits }),
           });
           if (!resp.ok) {
             throw new Error('HTTP ' + resp.status);
           }
           const data = await resp.json();
           applyGpioState(data);
-          setStatus('GPIO-Pins gespeichert.', 'success');
+          setStatus('Einstellungen gespeichert.', 'success');
         } catch (error) {
-          console.error('GPIO-Pins konnten nicht gespeichert werden:', error);
+          console.error('Einstellungen konnten nicht gespeichert werden:', error);
           setStatus('Speichern fehlgeschlagen. Bitte erneut versuchen.', 'error');
           setLoadingState(false);
         }
       });
 
-      Object.values(inputs).forEach((input) => {
+      [...Object.values(gpioInputs), ...Object.values(motorLimitInputs)].forEach((input) => {
         if (!input) {
           return;
         }
