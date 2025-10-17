@@ -273,6 +273,33 @@
         </div>
       </div>
     </section>
+    <section class="settings-section" id="headAngles">
+      <h2>Kopfwinkel</h2>
+      <p class="hint">Einstellbare Positionen für das Kopf-Servo (links, Mitte, rechts).</p>
+      <div class="steering-grid">
+        <div class="field">
+          <label for="headLeft">Links (max.)</label>
+          <div class="number-input">
+            <input id="headLeft" type="number" inputmode="decimal" min="0" max="270" step="0.5" aria-label="Maximaler Kopfwinkel nach links" autocomplete="off">
+            <span>°</span>
+          </div>
+        </div>
+        <div class="field">
+          <label for="headMid">Mitte</label>
+          <div class="number-input">
+            <input id="headMid" type="number" inputmode="decimal" min="0" max="270" step="0.5" aria-label="Neutralstellung des Kopfservos" autocomplete="off">
+            <span>°</span>
+          </div>
+        </div>
+        <div class="field">
+          <label for="headRight">Rechts (max.)</label>
+          <div class="number-input">
+            <input id="headRight" type="number" inputmode="decimal" min="0" max="270" step="0.5" aria-label="Maximaler Kopfwinkel nach rechts" autocomplete="off">
+            <span>°</span>
+          </div>
+        </div>
+      </div>
+    </section>
     <section class="settings-section">
       <h2>Motorgrenzen</h2>
       <p class="hint">Begrenzt den maximalen PWM-Anteil für den DC-Motor (0–100&nbsp;%).</p>
@@ -318,9 +345,14 @@
     const steeringMid = document.getElementById('steeringMid');
     const steeringRight = document.getElementById('steeringRight');
     const steeringInputs = [steeringLeft, steeringMid, steeringRight].filter((input) => input);
+    const headLeft = document.getElementById('headLeft');
+    const headMid = document.getElementById('headMid');
+    const headRight = document.getElementById('headRight');
+    const headInputs = [headLeft, headMid, headRight].filter((input) => input);
 
     let motorConfig = null;
     let steeringConfig = null;
+    let headConfig = null;
 
     const setStatus = (message, tone = '') => {
       if (!statusEl) {
@@ -333,6 +365,25 @@
       } else if (tone === 'error') {
         statusEl.classList.add('error');
       }
+    };
+
+    const formatLoadedStatus = (items) => {
+      if (!Array.isArray(items)) {
+        return '';
+      }
+      const parts = items.filter((item) => typeof item === 'string' && item.trim() !== '');
+      if (parts.length === 0) {
+        return '';
+      }
+      if (parts.length === 1) {
+        return `${parts[0]} geladen.`;
+      }
+      if (parts.length === 2) {
+        return `${parts[0]} und ${parts[1]} geladen.`;
+      }
+      const prefix = parts.slice(0, -1).join(', ');
+      const last = parts[parts.length - 1];
+      return `${prefix} und ${last} geladen.`;
     };
 
     const formatMotorPercent = (value) => `${Math.round((Number.parseFloat(value) || 0) * 100)}%`;
@@ -568,6 +619,116 @@
       return { left, mid, right };
     };
 
+    const clampHeadValue = (rawValue) => {
+      if (!headConfig) {
+        return null;
+      }
+      if (rawValue === undefined || rawValue === null) {
+        return null;
+      }
+      let candidate = rawValue;
+      if (typeof candidate === 'string') {
+        candidate = candidate.trim();
+        if (candidate === '') {
+          return null;
+        }
+        candidate = candidate.replace(',', '.');
+      }
+      const { min, max, step } = headConfig;
+      return quantizeAngle(candidate, min, max, step);
+    };
+
+    const applyHeadInputs = (values) => {
+      if (!headConfig) {
+        return;
+      }
+      const precision = headConfig.precision ?? 1;
+      if (headLeft) {
+        headLeft.value = formatAngleInput(values.left, precision);
+      }
+      if (headMid) {
+        headMid.value = formatAngleInput(values.mid, precision);
+      }
+      if (headRight) {
+        headRight.value = formatAngleInput(values.right, precision);
+      }
+    };
+
+    const revertHeadInputs = () => {
+      if (!headConfig || !headConfig.values) {
+        headInputs.forEach((input) => {
+          input.value = '';
+        });
+        return;
+      }
+      applyHeadInputs(headConfig.values);
+    };
+
+    const syncHeadAngles = (info) => {
+      if (headInputs.length === 0) {
+        return null;
+      }
+      if (
+        !info ||
+        !Number.isFinite(info.left) ||
+        !Number.isFinite(info.mid) ||
+        !Number.isFinite(info.right)
+      ) {
+        headConfig = null;
+        headInputs.forEach((input) => {
+          input.disabled = true;
+          input.value = '';
+        });
+        return null;
+      }
+      const min = Number.isFinite(info.min) ? info.min : 0;
+      const max = Number.isFinite(info.max) ? info.max : 270;
+      const step = Number.isFinite(info.step) && info.step > 0 ? info.step : 0.5;
+      const precision = determineAnglePrecision(step);
+      const left = quantizeAngle(info.left, min, max, step);
+      const mid = quantizeAngle(info.mid, min, max, step);
+      const right = quantizeAngle(info.right, min, max, step);
+      if (left === null || mid === null || right === null || !(left <= mid && mid <= right)) {
+        headConfig = null;
+        headInputs.forEach((input) => {
+          input.disabled = true;
+          input.value = '';
+        });
+        return null;
+      }
+      headConfig = {
+        min,
+        max,
+        step,
+        precision,
+        values: { left, mid, right },
+      };
+      headInputs.forEach((input) => {
+        input.disabled = false;
+        input.min = String(min);
+        input.max = String(max);
+        input.step = String(step);
+      });
+      applyHeadInputs(headConfig.values);
+      return headConfig.values;
+    };
+
+    const getCurrentHeadValues = () => {
+      if (!headConfig) {
+        return null;
+      }
+      const left = clampHeadValue(headLeft?.value);
+      const mid = clampHeadValue(headMid?.value);
+      const right = clampHeadValue(headRight?.value);
+      if (left === null || mid === null || right === null) {
+        return null;
+      }
+      if (!(left <= mid && mid <= right)) {
+        return null;
+      }
+      return { left, mid, right };
+    };
+
     async function loadAdvancedSettings() {
       try {
         setStatus('Lade Einstellungen …');
@@ -578,12 +739,20 @@
         const data = await resp.json();
         const motorValues = syncMotorLimits(data.motor_limits);
         const steeringValues = syncSteeringAngles(data.steering_angles);
-        if (motorValues && steeringValues) {
-          setStatus('Motor-Grenzen und Lenkwinkel geladen.', 'success');
-        } else if (motorValues) {
-          setStatus('Motor-Grenzen geladen. Lenkwinkel nicht verfügbar.', 'success');
-        } else if (steeringValues) {
-          setStatus('Lenkwinkel geladen. Motor-Grenzen nicht verfügbar.', 'success');
+        const headValues = syncHeadAngles(data.head_angles);
+        const loadedSections = [];
+        if (motorValues) {
+          loadedSections.push('Motor-Grenzen');
+        }
+        if (steeringValues) {
+          loadedSections.push('Lenkwinkel');
+        }
+        if (headValues) {
+          loadedSections.push('Kopfwinkel');
+        }
+        const statusMessage = formatLoadedStatus(loadedSections);
+        if (statusMessage) {
+          setStatus(statusMessage, 'success');
         } else {
           setStatus('Keine erweiterten Einstellungen verfügbar.', 'error');
         }
@@ -592,6 +761,7 @@
         setStatus('Erweiterte Einstellungen konnten nicht geladen werden.', 'error');
         syncMotorLimits(null);
         syncSteeringAngles(null);
+        syncHeadAngles(null);
       }
     }
 
@@ -611,6 +781,7 @@
         }
         const data = await resp.json();
         syncSteeringAngles(data.steering_angles);
+        syncHeadAngles(data.head_angles);
         const updated = syncMotorLimits(data.motor_limits);
         if (updated) {
           setStatus('Motor-Grenzen gespeichert.', 'success');
@@ -640,6 +811,7 @@
         const data = await resp.json();
         const updated = syncSteeringAngles(data.steering_angles);
         syncMotorLimits(data.motor_limits);
+        syncHeadAngles(data.head_angles);
         if (updated) {
           setStatus('Lenkwinkel gespeichert.', 'success');
         } else {
@@ -652,8 +824,45 @@
       }
     }
 
+    async function saveHeadAngles(values) {
+      if (!values) {
+        return;
+      }
+      try {
+        setStatus('Speichere Kopfwinkel …');
+        const resp = await fetch('/api/control', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ head_angles: values })
+        });
+        if (!resp.ok) {
+          throw new Error(`Status ${resp.status}`);
+        }
+        const data = await resp.json();
+        const updated = syncHeadAngles(data.head_angles);
+        syncMotorLimits(data.motor_limits);
+        syncSteeringAngles(data.steering_angles);
+        if (updated) {
+          setStatus('Kopfwinkel gespeichert.', 'success');
+        } else {
+          setStatus('Kopfwinkel konnten nicht gespeichert werden.', 'error');
+        }
+      } catch (err) {
+        console.error('Speichern der Kopfwinkel fehlgeschlagen', err);
+        revertHeadInputs();
+        setStatus('Kopfwinkel konnten nicht gespeichert werden.', 'error');
+      }
+    }
+
     if (steeringInputs.length > 0) {
       steeringInputs.forEach((input) => {
+        input.disabled = true;
+        input.value = '';
+      });
+    }
+
+    if (headInputs.length > 0) {
+      headInputs.forEach((input) => {
         input.disabled = true;
         input.value = '';
       });
@@ -760,6 +969,59 @@
           }
         });
         input.addEventListener('change', handleSteeringChange);
+      });
+    }
+
+    if (headInputs.length > 0) {
+      const handleHeadChange = () => {
+        const values = getCurrentHeadValues();
+        if (!values) {
+          setStatus('Ungültige Kopfwinkel. Bitte Werte prüfen.', 'error');
+          revertHeadInputs();
+          return;
+        }
+        if (
+          headConfig &&
+          headConfig.values &&
+          values.left === headConfig.values.left &&
+          values.mid === headConfig.values.mid &&
+          values.right === headConfig.values.right
+        ) {
+          applyHeadInputs(headConfig.values);
+          return;
+        }
+        applyHeadInputs(values);
+        saveHeadAngles(values);
+      };
+      headInputs.forEach((input) => {
+        input.addEventListener('input', () => {
+          if (!headConfig) {
+            return;
+          }
+          const raw = input.value;
+          if (raw === undefined || raw === null) {
+            return;
+          }
+          const normalized = String(raw).trim();
+          if (
+            normalized === '' ||
+            normalized.endsWith('.') ||
+            normalized.endsWith(',') ||
+            normalized === '-' ||
+            normalized === '+'
+          ) {
+            return;
+          }
+          const value = clampHeadValue(normalized);
+          if (value === null) {
+            return;
+          }
+          const formatted = formatAngleInput(value, headConfig.precision);
+          if (formatted !== raw) {
+            input.value = formatted;
+          }
+        });
+        input.addEventListener('change', handleHeadChange);
       });
     }
 

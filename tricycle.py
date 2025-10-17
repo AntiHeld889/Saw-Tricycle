@@ -121,10 +121,18 @@ GPIO_PIN_HEAD        = 24
 HEAD_LEFT_DEG        = 30.0
 HEAD_CENTER_DEG      = 90.0
 HEAD_RIGHT_DEG       = 150.0
+HEAD_STEP_DEG        = 0.5
 HEAD_SMOOTH_A        = 0.8
 HEAD_RATE_DEG_S      = 100.0
 HEAD_SAFE_START_S    = 0.8
 HEAD_UPDATE_HYSTERESIS_DEG = 0.2
+
+# Standard-Kopfwinkel als Dictionary für Persistenz/Defaults
+DEFAULT_HEAD_ANGLES = {
+    "left": HEAD_LEFT_DEG,
+    "mid": HEAD_CENTER_DEG,
+    "right": HEAD_RIGHT_DEG,
+}
 
 # ---- Debug/Output ----
 PRINT_EVERY_S        = 0.3
@@ -1013,6 +1021,66 @@ def persist_motor_limits(*, forward=None, reverse=None):
     return _persist_state(payload)
 
 
+# ---- Kopfsteuerungs-Persistenz ----
+def _sanitize_head_value(value):
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(numeric):
+        return None
+    limited = clamp(numeric, 0.0, SERVO_RANGE_DEG)
+    if HEAD_STEP_DEG > 0:
+        steps = round((limited - 0.0) / HEAD_STEP_DEG)
+        limited = 0.0 + steps * HEAD_STEP_DEG
+    return round(limited, 3)
+
+
+def sanitize_head_angles(payload):
+    if not isinstance(payload, dict):
+        return None
+    left = _sanitize_head_value(payload.get("left"))
+    mid = _sanitize_head_value(payload.get("mid"))
+    right = _sanitize_head_value(payload.get("right"))
+    if left is None or mid is None or right is None:
+        return None
+    if not (0.0 <= left <= mid <= right <= SERVO_RANGE_DEG):
+        return None
+    return {"left": left, "mid": mid, "right": right}
+
+
+def load_persisted_head_angles(defaults=None):
+    if defaults is None:
+        defaults = DEFAULT_HEAD_ANGLES
+    data = _load_persisted_state()
+    if isinstance(data, dict):
+        raw = data.get("head_angles")
+        sanitized = sanitize_head_angles(raw)
+        if sanitized:
+            return sanitized
+    return dict(defaults)
+
+
+def persist_head_angles(angles):
+    sanitized = sanitize_head_angles(angles)
+    if sanitized is None:
+        return False
+    payload = _load_persisted_state()
+    payload["head_angles"] = sanitized
+    return _persist_state(payload)
+
+
+def apply_head_angles(angles):
+    sanitized = sanitize_head_angles(angles)
+    if sanitized is None:
+        return False
+    global HEAD_LEFT_DEG, HEAD_CENTER_DEG, HEAD_RIGHT_DEG
+    HEAD_LEFT_DEG = sanitized["left"]
+    HEAD_CENTER_DEG = sanitized["mid"]
+    HEAD_RIGHT_DEG = sanitized["right"]
+    return True
+
+
 # ---- Lenkungs-Persistenz ----
 def _sanitize_steering_value(value):
     try:
@@ -1249,6 +1317,7 @@ class WebControlState:
         initial_volume_map=None,
         initial_motor_limits=None,
         initial_steering_angles=None,
+        initial_head_angles=None,
         initial_sound_directory=None,
         initial_connected_sound=None,
         initial_startup_sound=None,
@@ -1301,6 +1370,16 @@ class WebControlState:
             if sanitized is not None:
                 self._steering_angles = sanitized
                 apply_steering_angles(sanitized)
+        self._head_angles = {
+            "left": HEAD_LEFT_DEG,
+            "mid": HEAD_CENTER_DEG,
+            "right": HEAD_RIGHT_DEG,
+        }
+        if isinstance(initial_head_angles, dict):
+            sanitized_head = sanitize_head_angles(initial_head_angles)
+            if sanitized_head is not None:
+                self._head_angles = sanitized_head
+                apply_head_angles(sanitized_head)
 
     def _ensure_volume_defaults_locked(self, audio_id):
         profile = get_audio_volume_profile(audio_id)
@@ -1457,6 +1536,7 @@ class WebControlState:
         audio_volume=None,
         motor_limits=None,
         steering_angles=None,
+        head_angles=None,
         sound_directory=None,
         connected_sound=None,
         startup_sound=None,
@@ -1471,6 +1551,7 @@ class WebControlState:
         apply_volume_change = None
         motor_limits_to_persist = None
         steering_angles_to_persist = None
+        head_angles_to_persist = None
         sound_settings_to_persist = None
         gamepad_settings_to_persist = None
         button_actions_to_persist = None
@@ -1524,6 +1605,11 @@ class WebControlState:
                 if sanitized is not None and sanitized != self._steering_angles:
                     self._steering_angles = sanitized
                     steering_angles_to_persist = sanitized
+            if head_angles is not None and isinstance(head_angles, dict):
+                sanitized_head = sanitize_head_angles(head_angles)
+                if sanitized_head is not None and sanitized_head != self._head_angles:
+                    self._head_angles = sanitized_head
+                    head_angles_to_persist = sanitized_head
             if sound_directory is not None:
                 sanitized_dir = sanitize_sound_directory(sound_directory)
                 refreshed = False
@@ -1604,6 +1690,9 @@ class WebControlState:
         if steering_angles_to_persist is not None:
             apply_steering_angles(steering_angles_to_persist)
             persist_steering_angles(steering_angles_to_persist)
+        if head_angles_to_persist is not None:
+            apply_head_angles(head_angles_to_persist)
+            persist_head_angles(head_angles_to_persist)
         if sound_settings_to_persist is not None:
             persist_sound_settings(**sound_settings_to_persist)
         if link_settings_to_persist is not None:
@@ -1639,6 +1728,14 @@ class WebControlState:
                 "min": 0.0,
                 "max": SERVO_RANGE_DEG,
                 "step": STEERING_STEP_DEG,
+            },
+            "head_angles": {
+                "left": self._head_angles["left"],
+                "mid": self._head_angles["mid"],
+                "right": self._head_angles["right"],
+                "min": 0.0,
+                "max": SERVO_RANGE_DEG,
+                "step": HEAD_STEP_DEG,
             },
             "audio_device": self._audio_device,
             "audio_outputs": [
@@ -1836,6 +1933,7 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
                 audio_volume=data.get("audio_volume"),
                 motor_limits=data.get("motor_limits"),
                 steering_angles=data.get("steering_angles"),
+                head_angles=data.get("head_angles"),
                 sound_directory=data.get("sound_directory"),
                 connected_sound=data.get("connected_sound"),
                 startup_sound=data.get("startup_sound"),
@@ -2137,6 +2235,9 @@ def main():
     persisted_steering = load_persisted_steering_angles()
     if not apply_steering_angles(persisted_steering):
         apply_steering_angles(DEFAULT_STEERING_ANGLES)
+    persisted_head = load_persisted_head_angles()
+    if not apply_head_angles(persisted_head):
+        apply_head_angles(DEFAULT_HEAD_ANGLES)
     validate_configuration()
 
     MOTOR_AXIS_CENTERED = getattr(ecodes, MOTOR_AXIS_CENTERED_NAME)
@@ -2169,6 +2270,7 @@ def main():
         initial_volume_map=persisted_audio.get("volumes"),
         initial_motor_limits=persisted_motor_limits,
         initial_steering_angles=persisted_steering,
+        initial_head_angles=persisted_head,
         initial_sound_directory=persisted_sound.get("directory"),
         initial_connected_sound=persisted_sound.get("connected_sound"),
         initial_startup_sound=persisted_sound.get("startup_sound"),
