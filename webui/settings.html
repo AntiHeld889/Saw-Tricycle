@@ -889,11 +889,9 @@
           return definition.code !== previous.code || definition.label !== previous.label;
         });
       if (definitionsChanged) {
-        buttonDefinitions = normalizedDefinitions;
-        buildButtonActionsUI(buttonDefinitions);
-      } else {
-        buttonDefinitions = normalizedDefinitions;
+        buildButtonActionsUI(normalizedDefinitions);
       }
+      buttonDefinitions = normalizedDefinitions;
       const assignmentsRaw = info.assignments && typeof info.assignments === 'object' ? info.assignments : {};
       const nextAssignments = {};
       buttonDefinitions.forEach((definition) => {
