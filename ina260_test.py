@@ -137,12 +137,9 @@ def main(argv: Optional[list[str]] = None) -> int:
                 return 4
 
             print(
-                "#{idx}: Spannung = {voltage:.3f} V, Strom = {current_ma/1000:.3f} A, Leistung = {power_mw/1000:.3f} W".format(
-                    idx=idx,
-                    voltage=voltage,
-                    current_ma=current_ma,
-                    power_mw=power_mw,
-                )
+                f"#{idx}: Spannung = {voltage:.3f} V, "
+                f"Strom = {current_ma / 1000:.3f} A, "
+                f"Leistung = {power_mw / 1000:.3f} W"
             )
             time.sleep(max(0.0, args.delay))
     except KeyboardInterrupt:
