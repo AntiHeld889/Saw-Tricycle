@@ -105,7 +105,10 @@ DEADZONE_MOTOR       = 0.12
 EXPO_MOTOR           = 0.25
 SMOOTH_A_MOTOR       = 0.25
 RATE_ACCEL_UNITS_S   = 3.0
-RATE_DECEL_UNITS_S   = 5.0
+RATE_DECEL_UNITS_S   = 3.5
+
+BRAKE_LATCH_THRESHOLD      = 0.05
+BRAKE_REARM_FORWARD_THRESH = 0.10
 
 MOTOR_LIMIT_FWD      = 0.60
 MOTOR_LIMIT_REV      = 0.50
@@ -2529,6 +2532,7 @@ def main():
 
             motor_speed  = 0.0
             motor_target = 0.0
+            brake_latched = False
 
             motor_armed        = False
             neutral_ok_since_m = None
@@ -2722,6 +2726,7 @@ def main():
                     y_centered = 0.0
                     gas        = 0.0
                     brake      = 0.0
+                    forward_intent = 0.0
 
                     if have_center:
                         raw_c = read_abs(dev, MOTOR_AXIS_CENTERED)
@@ -2729,11 +2734,13 @@ def main():
                             y_centered = norm_axis_centered(raw_c, lo_c, hi_c)
                             if INVERT_MOTOR:
                                 y_centered = -y_centered
+                            forward_intent = max(0.0, y_centered)
 
                     if have_gas:
                         raw_g = read_abs(dev, MOTOR_AXIS_GAS)
                         if raw_g is not None:
                             gas = norm_axis_trigger(raw_g, lo_g, hi_g)  # 0..1
+                            forward_intent = max(forward_intent, gas)
 
                     if have_brake:
                         raw_b = read_abs(dev, MOTOR_AXIS_BRAKE)
@@ -2743,6 +2750,15 @@ def main():
                     y_total = clamp(y_centered + gas - brake, -1.0, +1.0)
                     if override_enabled:
                         y_total = override_motor
+                        brake_latched = False
+                    else:
+                        if brake >= BRAKE_LATCH_THRESHOLD:
+                            brake_latched = True
+                        elif brake_latched and forward_intent >= BRAKE_REARM_FORWARD_THRESH:
+                            brake_latched = False
+
+                        if brake_latched and y_total > 0.0:
+                            y_total = min(y_total, 0.0)
 
                     # Arming & Deadzone
                     if abs(y_total) <= MOTOR_NEUTRAL_THRESH:
