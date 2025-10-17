@@ -480,7 +480,6 @@
       return `${protocol}//${host}:${port}/`;
     };
 
-    const buildSoundboardUrl = (port) => buildServiceUrl(port);
     const buildCameraUrl = (target) => {
       if (!target || !target.port) {
         return '#';
@@ -505,7 +504,7 @@
         soundboardButton.href = '#';
         return;
       }
-      const url = buildSoundboardUrl(numeric);
+      const url = buildServiceUrl(numeric);
       soundboardButton.hidden = false;
       soundboardButton.dataset.url = url;
       soundboardButton.dataset.port = String(numeric);
