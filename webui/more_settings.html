@@ -99,6 +99,46 @@
     .settings-section li {
       line-height: 1.45;
     }
+    .settings-section p.hint {
+      color: #bbb;
+      font-size: 0.9rem;
+    }
+    .status-container {
+      border-radius: 12px;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.08);
+      padding: 0.75rem 1rem;
+      font-size: 0.95rem;
+      color: #bbb;
+    }
+    .status-container + .settings-section {
+      margin-top: -0.2rem;
+    }
+    .status {
+      margin: 0;
+      min-height: 1.2em;
+    }
+    .status.success { color: #63f58c; }
+    .status.error { color: #ff7a7a; }
+    .motor-limits {
+      display: flex;
+      flex-direction: column;
+      gap: 0.55rem;
+    }
+    .slider-row {
+      display: flex;
+      align-items: center;
+      gap: 0.9rem;
+    }
+    input[type="range"] {
+      width: 100%;
+      accent-color: #e50914;
+    }
+    output {
+      min-width: 3ch;
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+    }
     .settings-footer {
       display: flex;
       justify-content: flex-end;
@@ -157,6 +197,27 @@
       <a class="back-button" href="/settings" aria-label="Zurück zu den Einstellungen" title="Zurück">⟵</a>
       <h1>Weitere Einstellungen</h1>
     </div>
+    <div class="status-container" role="status" aria-live="polite">
+      <p id="status" class="status"></p>
+    </div>
+    <section class="settings-section">
+      <h2>Motorgrenzen</h2>
+      <p class="hint">Begrenzt den maximalen PWM-Anteil für den DC-Motor (0–100&nbsp;%).</p>
+      <div class="motor-limits">
+        <label for="motorForward">Vorwärts</label>
+        <div class="slider-row">
+          <input id="motorForward" type="range" min="0" max="100" step="1" aria-label="Vorwärtslimit einstellen">
+          <output id="motorForwardValue" for="motorForward">–</output>
+        </div>
+      </div>
+      <div class="motor-limits">
+        <label for="motorReverse">Rückwärts</label>
+        <div class="slider-row">
+          <input id="motorReverse" type="range" min="0" max="100" step="1" aria-label="Rückwärtslimit einstellen">
+          <output id="motorReverseValue" for="motorReverse">–</output>
+        </div>
+      </div>
+    </section>
     <section class="settings-section">
       <h2>Erweiterte Optionen</h2>
       <p>Hier können künftig zusätzliche Einstellungen und Verwaltungsfunktionen für das Saw Tricycle bereitgestellt werden.</p>
@@ -174,5 +235,216 @@
       <a class="primary-link" href="/settings" aria-label="Zurück zu den Einstellungen">Zurück</a>
     </div>
   </div>
+  <script>
+    const statusEl = document.getElementById('status');
+    const motorForward = document.getElementById('motorForward');
+    const motorReverse = document.getElementById('motorReverse');
+    const motorForwardValue = document.getElementById('motorForwardValue');
+    const motorReverseValue = document.getElementById('motorReverseValue');
+
+    let motorConfig = null;
+
+    const setStatus = (message, tone = '') => {
+      if (!statusEl) {
+        return;
+      }
+      statusEl.textContent = message ?? '';
+      statusEl.classList.remove('success', 'error');
+      if (tone === 'success') {
+        statusEl.classList.add('success');
+      } else if (tone === 'error') {
+        statusEl.classList.add('error');
+      }
+    };
+
+    const formatMotorPercent = (value) => `${Math.round((Number.parseFloat(value) || 0) * 100)}%`;
+
+    const clampMotorLimit = (value) => {
+      if (!motorConfig) {
+        return null;
+      }
+      const { min, max, step } = motorConfig;
+      const numeric = Number.parseFloat(value);
+      if (!Number.isFinite(numeric)) {
+        return null;
+      }
+      const limited = Math.max(min, Math.min(max, numeric));
+      const steps = Math.round((limited - min) / step);
+      const quantized = min + steps * step;
+      const clamped = Math.max(min, Math.min(max, quantized));
+      return Number.parseFloat(clamped.toFixed(4));
+    };
+
+    const clampMotorFromSlider = (value) => {
+      if (!motorConfig) {
+        return null;
+      }
+      const numeric = Number.parseFloat(value);
+      if (!Number.isFinite(numeric)) {
+        return null;
+      }
+      return clampMotorLimit(numeric / 100);
+    };
+
+    const syncMotorLimits = (info) => {
+      if (!motorForward || !motorReverse || !motorForwardValue || !motorReverseValue) {
+        return null;
+      }
+      if (!info || !Number.isFinite(info.forward) || !Number.isFinite(info.reverse)) {
+        motorConfig = null;
+        motorForward.disabled = true;
+        motorReverse.disabled = true;
+        motorForwardValue.textContent = '–';
+        motorReverseValue.textContent = '–';
+        return null;
+      }
+      const min = Number.isFinite(info.min) ? info.min : 0;
+      const max = Number.isFinite(info.max) ? info.max : 1;
+      const step = Number.isFinite(info.step) && info.step > 0 ? info.step : 0.01;
+      motorConfig = { min, max, step };
+      const sliderMin = Math.round(min * 100);
+      const sliderMax = Math.round(max * 100);
+      const sliderStep = Math.max(1, Math.round(step * 100));
+      motorForward.min = String(sliderMin);
+      motorForward.max = String(sliderMax);
+      motorForward.step = String(sliderStep);
+      motorReverse.min = String(sliderMin);
+      motorReverse.max = String(sliderMax);
+      motorReverse.step = String(sliderStep);
+      const forwardValue = clampMotorLimit(info.forward);
+      const reverseValue = clampMotorLimit(info.reverse);
+      if (forwardValue === null || reverseValue === null) {
+        motorConfig = null;
+        motorForward.disabled = true;
+        motorReverse.disabled = true;
+        motorForwardValue.textContent = '–';
+        motorReverseValue.textContent = '–';
+        return null;
+      }
+      motorForward.disabled = false;
+      motorReverse.disabled = false;
+      motorForward.value = String(Math.round(forwardValue * 100));
+      motorReverse.value = String(Math.round(reverseValue * 100));
+      motorForwardValue.textContent = formatMotorPercent(forwardValue);
+      motorReverseValue.textContent = formatMotorPercent(reverseValue);
+      return { forward: forwardValue, reverse: reverseValue };
+    };
+
+    const getCurrentMotorValues = () => {
+      if (!motorConfig || !motorForward || !motorReverse) {
+        return null;
+      }
+      const forward = clampMotorFromSlider(motorForward.value);
+      const reverse = clampMotorFromSlider(motorReverse.value);
+      if (forward === null || reverse === null) {
+        return null;
+      }
+      return { forward, reverse };
+    };
+
+    async function loadMotorLimits() {
+      if (!motorForward || !motorReverse) {
+        return;
+      }
+      try {
+        setStatus('Lade Motor-Grenzen …');
+        const resp = await fetch('/api/state');
+        if (!resp.ok) {
+          throw new Error(`Status ${resp.status}`);
+        }
+        const data = await resp.json();
+        const motorValues = syncMotorLimits(data.motor_limits);
+        if (motorValues) {
+          setStatus('Motor-Grenzen geladen.', 'success');
+        } else {
+          setStatus('Motor-Grenzen nicht verfügbar.', 'error');
+        }
+      } catch (err) {
+        console.error('Laden der Motor-Grenzen fehlgeschlagen', err);
+        setStatus('Motor-Grenzen konnten nicht geladen werden.', 'error');
+        syncMotorLimits(null);
+      }
+    }
+
+    async function saveMotorLimits(forward, reverse) {
+      if (!motorForward || !motorReverse) {
+        return;
+      }
+      try {
+        setStatus('Speichere Motor-Grenzen …');
+        const resp = await fetch('/api/control', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ motor_limits: { forward, reverse } })
+        });
+        if (!resp.ok) {
+          throw new Error(`Status ${resp.status}`);
+        }
+        const data = await resp.json();
+        const updated = syncMotorLimits(data.motor_limits);
+        if (updated) {
+          setStatus('Motor-Grenzen gespeichert.', 'success');
+        } else {
+          setStatus('Motor-Grenzen konnten nicht gespeichert werden.', 'error');
+        }
+      } catch (err) {
+        console.error('Speichern der Motor-Grenzen fehlgeschlagen', err);
+        setStatus('Motor-Grenzen konnten nicht gespeichert werden.', 'error');
+      }
+    }
+
+    if (motorForward) {
+      motorForward.disabled = true;
+      motorForward.value = '0';
+    }
+    if (motorReverse) {
+      motorReverse.disabled = true;
+      motorReverse.value = '0';
+    }
+    if (motorForwardValue) {
+      motorForwardValue.textContent = '–';
+    }
+    if (motorReverseValue) {
+      motorReverseValue.textContent = '–';
+    }
+
+    if (motorForward && motorForwardValue) {
+      motorForward.addEventListener('input', () => {
+        const value = clampMotorFromSlider(motorForward.value);
+        motorForwardValue.textContent = value === null ? '–' : formatMotorPercent(value);
+      });
+      motorForward.addEventListener('change', () => {
+        const values = getCurrentMotorValues();
+        if (!values) {
+          return;
+        }
+        motorForward.value = String(Math.round(values.forward * 100));
+        motorForwardValue.textContent = formatMotorPercent(values.forward);
+        motorReverse.value = String(Math.round(values.reverse * 100));
+        motorReverseValue.textContent = formatMotorPercent(values.reverse);
+        saveMotorLimits(values.forward, values.reverse);
+      });
+    }
+
+    if (motorReverse && motorReverseValue) {
+      motorReverse.addEventListener('input', () => {
+        const value = clampMotorFromSlider(motorReverse.value);
+        motorReverseValue.textContent = value === null ? '–' : formatMotorPercent(value);
+      });
+      motorReverse.addEventListener('change', () => {
+        const values = getCurrentMotorValues();
+        if (!values) {
+          return;
+        }
+        motorForward.value = String(Math.round(values.forward * 100));
+        motorForwardValue.textContent = formatMotorPercent(values.forward);
+        motorReverse.value = String(Math.round(values.reverse * 100));
+        motorReverseValue.textContent = formatMotorPercent(values.reverse);
+        saveMotorLimits(values.forward, values.reverse);
+      });
+    }
+
+    loadMotorLimits();
+  </script>
 </body>
 </html>

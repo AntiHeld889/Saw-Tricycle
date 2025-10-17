@@ -106,11 +106,6 @@
       flex-direction: column;
       gap: 0.55rem;
     }
-    .motor-limits {
-      display: flex;
-      flex-direction: column;
-      gap: 0.55rem;
-    }
     .steering-grid {
       display: grid;
       gap: 0.75rem;
@@ -519,24 +514,6 @@
             <input id="steeringRight" type="number" inputmode="decimal" min="0" max="270" step="0.5" aria-label="Maximaler Lenkwinkel nach rechts" autocomplete="off">
             <span>°</span>
           </div>
-        </div>
-      </div>
-    </section>
-    <section class="settings-section">
-      <h2>Motorgrenzen</h2>
-      <p class="hint">Begrenzt den maximalen PWM-Anteil für den DC-Motor (0–100&nbsp;%).</p>
-      <div class="motor-limits">
-        <label for="motorForward">Vorwärts</label>
-        <div class="slider-row">
-          <input id="motorForward" type="range" min="0" max="100" step="1" aria-label="Vorwärtslimit einstellen">
-          <output id="motorForwardValue" for="motorForward">–</output>
-        </div>
-      </div>
-      <div class="motor-limits">
-        <label for="motorReverse">Rückwärts</label>
-        <div class="slider-row">
-          <input id="motorReverse" type="range" min="0" max="100" step="1" aria-label="Rückwärtslimit einstellen">
-          <output id="motorReverseValue" for="motorReverse">–</output>
         </div>
       </div>
     </section>

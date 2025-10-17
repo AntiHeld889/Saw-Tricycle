@@ -1589,6 +1589,13 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(encoded)
 
+    def _write_redirect(self, location, status=302):
+        self.send_response(status)
+        self.send_header("Location", location)
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+
     def _write_binary_response(self, status, body, content_type="application/octet-stream"):
         data = body if isinstance(body, (bytes, bytearray)) else b""
         self.send_response(status)
@@ -1601,6 +1608,14 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
             self.wfile.write(data)
 
     def do_GET(self):
+        parsed = urlparse(self.path)
+        path_only = parsed.path
+        if path_only == "/settings/motor-limits":
+            target = "/more-settings"
+            if parsed.query:
+                target = f"{target}?{parsed.query}"
+            self._write_redirect(target)
+            return
         if self.path == "/":
             self._write_response(200, load_asset(self.CONTROL_PAGE_NAME))
             return
