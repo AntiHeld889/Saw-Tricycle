@@ -644,8 +644,6 @@ def load_persisted_sound_settings():
     directory = None
     connected_sound = None
     startup_sound = None
-    soundboard_port = None
-    camera_port = None
     if isinstance(stored, dict):
         directory = sanitize_sound_directory(stored.get("directory"))
         connected_sound = stored.get("connected_sound")
@@ -658,14 +656,10 @@ def load_persisted_sound_settings():
             startup_sound = os.path.basename(startup_sound.strip()) or None
         else:
             startup_sound = None
-        soundboard_port = sanitize_soundboard_port(stored.get("soundboard_port"))
-        camera_port = sanitize_camera_port(stored.get("camera_port"))
     return {
         "directory": directory,
         "connected_sound": connected_sound,
         "startup_sound": startup_sound,
-        "soundboard_port": soundboard_port if soundboard_port is not None else SOUNDBOARD_PORT_DEFAULT,
-        "camera_port": camera_port if camera_port is not None else CAMERA_PORT_DEFAULT,
     }
 
 
@@ -674,8 +668,6 @@ def persist_sound_settings(
     directory=_UNSET,
     connected_sound=_UNSET,
     startup_sound=_UNSET,
-    soundboard_port=_UNSET,
-    camera_port=_UNSET,
 ):
     payload = _load_persisted_state()
     sound_state = payload.get("sound") if isinstance(payload, dict) else {}
@@ -696,17 +688,59 @@ def persist_sound_settings(
             sound_state.pop("startup_sound", None)
         else:
             sound_state["startup_sound"] = startup_sound
+    if sound_state:
+        payload["sound"] = sound_state
+    else:
+        payload.pop("sound", None)
+    return _persist_state(payload)
+
+
+def load_persisted_link_settings():
+    data = _load_persisted_state()
+    stored = data.get("links") if isinstance(data, dict) else {}
+    soundboard_port = None
+    camera_port = None
+    if isinstance(stored, dict):
+        soundboard_port = sanitize_soundboard_port(stored.get("soundboard_port"))
+        camera_port = sanitize_camera_port(stored.get("camera_port"))
+    if (soundboard_port is None or camera_port is None) and isinstance(data, dict):
+        legacy_sound = data.get("sound")
+        if isinstance(legacy_sound, dict):
+            if soundboard_port is None:
+                soundboard_port = sanitize_soundboard_port(
+                    legacy_sound.get("soundboard_port")
+                )
+            if camera_port is None:
+                camera_port = sanitize_camera_port(legacy_sound.get("camera_port"))
+    return {
+        "soundboard_port": soundboard_port
+        if soundboard_port is not None
+        else SOUNDBOARD_PORT_DEFAULT,
+        "camera_port": camera_port if camera_port is not None else CAMERA_PORT_DEFAULT,
+    }
+
+
+def persist_link_settings(*, soundboard_port=_UNSET, camera_port=_UNSET):
+    payload = _load_persisted_state()
+    link_state = payload.get("links") if isinstance(payload, dict) else {}
+    if not isinstance(link_state, dict):
+        link_state = {}
     if soundboard_port is not _UNSET:
-        if soundboard_port is None:
-            sound_state.pop("soundboard_port", None)
+        sanitized_port = sanitize_soundboard_port(soundboard_port)
+        if sanitized_port is None:
+            link_state.pop("soundboard_port", None)
         else:
-            sound_state["soundboard_port"] = soundboard_port
+            link_state["soundboard_port"] = sanitized_port
     if camera_port is not _UNSET:
-        if camera_port is None:
-            sound_state.pop("camera_port", None)
+        sanitized_camera = sanitize_camera_port(camera_port)
+        if sanitized_camera is None:
+            link_state.pop("camera_port", None)
         else:
-            sound_state["camera_port"] = camera_port
-    payload["sound"] = sound_state
+            link_state["camera_port"] = sanitized_camera
+    if link_state:
+        payload["links"] = link_state
+    else:
+        payload.pop("links", None)
     return _persist_state(payload)
 
 
@@ -1301,6 +1335,7 @@ class WebControlState:
         sound_settings_to_persist = None
         gamepad_settings_to_persist = None
         button_actions_to_persist = None
+        link_settings_to_persist = None
         with self._lock:
             previous_directory = self._sound_directory
             previous_connected_sound = self._connected_sound
@@ -1418,13 +1453,17 @@ class WebControlState:
                 self._sound_directory != previous_directory
                 or self._connected_sound != previous_connected_sound
                 or self._startup_sound != previous_startup_sound
-                or self._soundboard_port != previous_soundboard_port
-                or self._camera_port != previous_camera_port
             ):
                 sound_settings_to_persist = {
                     "directory": self._sound_directory,
                     "connected_sound": self._connected_sound,
                     "startup_sound": self._startup_sound,
+                }
+            if (
+                self._soundboard_port != previous_soundboard_port
+                or self._camera_port != previous_camera_port
+            ):
+                link_settings_to_persist = {
                     "soundboard_port": self._soundboard_port,
                     "camera_port": self._camera_port,
                 }
@@ -1445,6 +1484,8 @@ class WebControlState:
             persist_steering_angles(steering_angles_to_persist)
         if sound_settings_to_persist is not None:
             persist_sound_settings(**sound_settings_to_persist)
+        if link_settings_to_persist is not None:
+            persist_link_settings(**link_settings_to_persist)
         if gamepad_settings_to_persist is not None:
             persist_gamepad_settings(**gamepad_settings_to_persist)
         if button_actions_to_persist is not None:
@@ -1993,6 +2034,7 @@ def main():
     persisted_audio = load_persisted_audio_state()
     persisted_motor_limits = load_persisted_motor_limits()
     persisted_sound = load_persisted_sound_settings()
+    persisted_links = load_persisted_link_settings()
     persisted_gamepad = load_persisted_gamepad_settings()
     persisted_button_actions = load_persisted_button_actions()
     battery_monitor = BatteryMonitor()
@@ -2006,8 +2048,8 @@ def main():
         initial_connected_sound=persisted_sound.get("connected_sound"),
         initial_startup_sound=persisted_sound.get("startup_sound"),
         initial_disconnect_command=persisted_gamepad.get("disconnect_command"),
-        initial_soundboard_port=persisted_sound.get("soundboard_port"),
-        initial_camera_port=persisted_sound.get("camera_port"),
+        initial_soundboard_port=persisted_links.get("soundboard_port"),
+        initial_camera_port=persisted_links.get("camera_port"),
         initial_button_actions=persisted_button_actions,
         battery_monitor=battery_monitor,
     )
