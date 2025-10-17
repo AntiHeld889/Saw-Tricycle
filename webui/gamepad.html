@@ -396,15 +396,13 @@
       <div class="override-toggle">
         <label class="toggle-label" for="overrideToggle">
           <strong>Web-Override aktivieren</strong>
-          <span id="overrideMessage">Steuerung nur verfügbar, wenn aktiviert.</span>
+          <span id="overrideMessage"></span>
         </label>
         <label class="switch">
           <input id="overrideToggle" type="checkbox" role="switch" aria-checked="false">
         </label>
       </div>
-      <p class="hint">
-        Ist der Web-Override aktiv, werden Motor- und Lenkbefehle vom physischen Gamepad ignoriert. Verwenden Sie die beiden Joysticks für Motor (links) und Lenkung (rechts). Die Kopfsteuerung erfolgt über die Tasten R, Z und L.
-      </p>
+      <p class="hint"></p>
     </section>
 
     <div class="control-grid">
@@ -540,7 +538,7 @@
       elements.overrideStatus.append(state.overrideEnabled ? ' Aktiv' : ' Inaktiv');
       elements.overrideMessage.textContent = state.overrideEnabled
         ? 'Virtuelle Joysticks sind aktiv. Physisches Gamepad wird für Motor/Lenkung ignoriert.'
-        : 'Steuerung nur verfügbar, wenn aktiviert.';
+        : '';
       Object.values(axisConfig).forEach((cfg) => {
         cfg.area.classList.toggle('disabled', !state.overrideEnabled);
         cfg.area.setAttribute('aria-disabled', state.overrideEnabled ? 'false' : 'true');
