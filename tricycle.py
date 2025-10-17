@@ -1109,6 +1109,65 @@ def sanitize_steering_angles(payload):
     return {"left": left, "mid": mid, "right": right}
 
 
+def sanitize_web_axis(value):
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(numeric):
+        return None
+    return clamp(numeric, -1.0, +1.0)
+
+
+def sanitize_head_override_command(value, *, head_angles=None):
+    if head_angles is None or not isinstance(head_angles, dict):
+        head_angles = DEFAULT_HEAD_ANGLES
+
+    def _angle_for(key):
+        angle = head_angles.get(key)
+        if angle is None:
+            return None
+        return clamp(angle, HEAD_LEFT_DEG, HEAD_RIGHT_DEG)
+
+    if value is None:
+        return None
+
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        mapping = {
+            "l": "left",
+            "links": "left",
+            "left": "left",
+            "r": "right",
+            "rechts": "right",
+            "right": "right",
+            "z": "mid",
+            "zentriert": "mid",
+            "center": "mid",
+            "mitte": "mid",
+            "mittel": "mid",
+            "mid": "mid",
+            "middle": "mid",
+        }
+        key = mapping.get(normalized)
+        if key is None:
+            return None
+        angle = _angle_for(key)
+        if angle is None:
+            return None
+        label = "center" if key == "mid" else key
+        return {"angle": angle, "position": label}
+
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(numeric):
+        return None
+    angle = clamp(numeric, HEAD_LEFT_DEG, HEAD_RIGHT_DEG)
+    return {"angle": angle, "position": "custom"}
+
+
 def load_persisted_steering_angles(defaults=None):
     if defaults is None:
         defaults = DEFAULT_STEERING_ANGLES
@@ -1380,6 +1439,11 @@ class WebControlState:
             if sanitized_head is not None:
                 self._head_angles = sanitized_head
                 apply_head_angles(sanitized_head)
+        self._web_override_enabled = False
+        self._web_override_motor = 0.0
+        self._web_override_steering = 0.0
+        self._web_head_override = self._head_angles["mid"]
+        self._web_head_position = "center"
 
     def _ensure_volume_defaults_locked(self, audio_id):
         profile = get_audio_volume_profile(audio_id)
@@ -1434,6 +1498,55 @@ class WebControlState:
     def _build_gamepad_snapshot_locked(self):
         return {
             "disconnect_command": self._disconnect_command,
+        }
+
+    def _apply_web_override_locked(self, payload):
+        if not isinstance(payload, dict):
+            self._web_override_enabled = False
+            self._web_override_motor = 0.0
+            self._web_override_steering = 0.0
+            self._web_head_override = self._head_angles["mid"]
+            self._web_head_position = "center"
+            return
+
+        enabled = bool(payload.get("enabled"))
+        if not enabled:
+            self._web_override_enabled = False
+            self._web_override_motor = 0.0
+            self._web_override_steering = 0.0
+            self._web_head_override = self._head_angles["mid"]
+            self._web_head_position = "center"
+            return
+
+        motor_value = sanitize_web_axis(payload.get("motor"))
+        steering_value = sanitize_web_axis(payload.get("steering"))
+        head_command = sanitize_head_override_command(payload.get("head"), head_angles=self._head_angles)
+
+        self._web_override_enabled = True
+        self._web_override_motor = motor_value if motor_value is not None else 0.0
+        self._web_override_steering = steering_value if steering_value is not None else 0.0
+        self._web_override_motor = round(clamp(self._web_override_motor, -1.0, +1.0), 4)
+        self._web_override_steering = round(clamp(self._web_override_steering, -1.0, +1.0), 4)
+
+        if head_command is not None:
+            self._web_head_override = head_command["angle"]
+            self._web_head_position = head_command["position"]
+        else:
+            self._web_head_override = clamp(
+                self._web_head_override,
+                self._head_angles["left"],
+                self._head_angles["right"],
+            )
+            if self._web_head_position not in {"left", "right", "center", "custom"}:
+                self._web_head_position = "center"
+
+    def _build_web_override_snapshot_locked(self):
+        return {
+            "enabled": self._web_override_enabled,
+            "motor": round(self._web_override_motor, 4),
+            "steering": round(self._web_override_steering, 4),
+            "head_angle": round(self._web_head_override, 3),
+            "head_position": self._web_head_position,
         }
 
     def _build_button_actions_snapshot_locked(self):
@@ -1543,6 +1656,7 @@ class WebControlState:
         disconnect_command=None,
         soundboard_port=None,
         camera_port=None,
+        web_override=None,
         button_actions=None,
     ):
         new_audio_id = None
@@ -1610,6 +1724,18 @@ class WebControlState:
                 if sanitized_head is not None and sanitized_head != self._head_angles:
                     self._head_angles = sanitized_head
                     head_angles_to_persist = sanitized_head
+                    if self._web_head_position == "left":
+                        self._web_head_override = sanitized_head["left"]
+                    elif self._web_head_position == "right":
+                        self._web_head_override = sanitized_head["right"]
+                    elif self._web_head_position == "center":
+                        self._web_head_override = sanitized_head["mid"]
+                    else:
+                        self._web_head_override = clamp(
+                            self._web_head_override,
+                            sanitized_head["left"],
+                            sanitized_head["right"],
+                        )
             if sound_directory is not None:
                 sanitized_dir = sanitize_sound_directory(sound_directory)
                 refreshed = False
@@ -1653,6 +1779,8 @@ class WebControlState:
                 sanitized_camera = sanitize_camera_port(camera_port)
                 if sanitized_camera != self._camera_port:
                     self._camera_port = sanitized_camera
+            if web_override is not None:
+                self._apply_web_override_locked(web_override)
             self._ensure_sound_selections_locked()
             if button_actions is not None:
                 if self._apply_button_action_updates_locked(button_actions):
@@ -1745,6 +1873,7 @@ class WebControlState:
             "button_actions": self._build_button_actions_snapshot_locked(),
             "sound": self._build_sound_snapshot_locked(),
             "gamepad": self._build_gamepad_snapshot_locked(),
+            "web_override": self._build_web_override_snapshot_locked(),
             "audio_volume": self._build_volume_snapshot_locked(),
             "last_update": self._last_update,
         }
@@ -1824,6 +1953,7 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
     SETTINGS_PAGE_NAME = "settings.html"
     BATTERY_PAGE_NAME = "battery.html"
     MORE_SETTINGS_PAGE_NAME = "more_settings.html"
+    GAMEPAD_PAGE_NAME = "gamepad.html"
 
     def _write_response(self, status, body, content_type="text/html; charset=utf-8"):
         encoded = body.encode("utf-8")
@@ -1874,6 +2004,9 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
             return
         if self.path == "/battery":
             self._write_response(200, load_asset(self.BATTERY_PAGE_NAME))
+            return
+        if self.path == "/gamepad":
+            self._write_response(200, load_asset(self.GAMEPAD_PAGE_NAME))
             return
         if self.path.startswith("/api/state"):
             state = self.control_state.snapshot() if self.control_state else {}
@@ -1940,6 +2073,7 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
                 disconnect_command=data.get("disconnect_command"),
                 soundboard_port=data.get("soundboard_port"),
                 camera_port=data.get("camera_port"),
+                web_override=data.get("web_override"),
                 button_actions=data.get("button_actions"),
             )
 
@@ -2387,12 +2521,52 @@ def main():
                         raise GamepadDisconnected
 
                     control_snapshot = web_state.snapshot()
+                    head_snapshot = control_snapshot.get("head_angles")
+                    head_left = HEAD_LEFT_DEG
+                    head_mid = HEAD_CENTER_DEG
+                    head_right = HEAD_RIGHT_DEG
+                    if isinstance(head_snapshot, dict):
+                        left_val = head_snapshot.get("left")
+                        mid_val = head_snapshot.get("mid")
+                        right_val = head_snapshot.get("right")
+                        if isinstance(left_val, (int, float)) and math.isfinite(left_val):
+                            head_left = clamp(float(left_val), HEAD_LEFT_DEG, HEAD_RIGHT_DEG)
+                        if isinstance(mid_val, (int, float)) and math.isfinite(mid_val):
+                            head_mid = clamp(float(mid_val), HEAD_LEFT_DEG, HEAD_RIGHT_DEG)
+                        if isinstance(right_val, (int, float)) and math.isfinite(right_val):
+                            head_right = clamp(float(right_val), HEAD_LEFT_DEG, HEAD_RIGHT_DEG)
+
+                    override_snapshot = control_snapshot.get("web_override")
+                    override_enabled = False
+                    override_motor = 0.0
+                    override_steering = 0.0
+                    override_head_angle = None
+                    if isinstance(override_snapshot, dict):
+                        override_enabled = bool(override_snapshot.get("enabled"))
+                        if override_enabled:
+                            motor_val = override_snapshot.get("motor")
+                            if isinstance(motor_val, (int, float)) and math.isfinite(motor_val):
+                                override_motor = clamp(float(motor_val), -1.0, +1.0)
+                            steering_val = override_snapshot.get("steering")
+                            if isinstance(steering_val, (int, float)) and math.isfinite(steering_val):
+                                override_steering = clamp(float(steering_val), -1.0, +1.0)
+                            head_angle_val = override_snapshot.get("head_angle")
+                            if isinstance(head_angle_val, (int, float)) and math.isfinite(head_angle_val):
+                                override_head_angle = clamp(float(head_angle_val), head_left, head_right)
+                            else:
+                                head_pos = override_snapshot.get("head_position")
+                                if head_pos == "left":
+                                    override_head_angle = head_left
+                                elif head_pos == "right":
+                                    override_head_angle = head_right
+                                elif head_pos == "center":
+                                    override_head_angle = head_mid
 
                     # Events (Buttons & Kopfsteuerung)
                     try:
                         e = dev.read_one()
                         while e:
-                            if e.type == ecodes.EV_ABS and now >= safe_start_head_until:
+                            if (not override_enabled) and e.type == ecodes.EV_ABS and now >= safe_start_head_until:
                                 # Kopfservo LATCHEND via D-Pad:
                                 if e.code == ecodes.ABS_HAT0X:
                                     if   e.value == -1: head_target = HEAD_LEFT_DEG
@@ -2429,6 +2603,7 @@ def main():
 
                     # ===== Lenkservo (ABS_Z) =====
                     raw_s = read_abs(dev, ecodes.ABS_Z)
+                    x = 0.0
                     if raw_s is None:
                         missing_servo_reads += 1
                         if missing_servo_reads >= GAMEPAD_MAX_MISSING_SERVO_READS:
@@ -2438,6 +2613,8 @@ def main():
                         x = norm_axis_centered(raw_s, lo_s, hi_s)
                         if INVERT_SERVO:
                             x = -x
+                    if override_enabled:
+                        x = override_steering
 
                         # Arming
                         if abs(x) <= SERVO_NEUTRAL_THRESH:
@@ -2523,6 +2700,8 @@ def main():
                             brake = norm_axis_trigger(raw_b, lo_b, hi_b)  # 0..1
 
                     y_total = clamp(y_centered + gas - brake, -1.0, +1.0)
+                    if override_enabled:
+                        y_total = override_motor
 
                     # Arming & Deadzone
                     if abs(y_total) <= MOTOR_NEUTRAL_THRESH:
@@ -2576,6 +2755,8 @@ def main():
                     set_motor(pi, motor_speed)
 
                     # ===== Kopf-Servo (latchend) =====
+                    if override_enabled and override_head_angle is not None and now >= safe_start_head_until:
+                        head_target = clamp(override_head_angle, head_left, head_right)
                     head_target = clamp(head_target, HEAD_LEFT_DEG, HEAD_RIGHT_DEG)
                     head_filtered += (head_target - head_filtered) * HEAD_SMOOTH_A
 
