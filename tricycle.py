@@ -1111,10 +1111,6 @@ class WebControlState:
         battery_monitor=None,
     ):
         self._lock = threading.Lock()
-        self._override = False
-        self._motor = 0.0
-        self._steering = 0.0
-        self._head = 0.0
         self._last_update = 0.0
         self._battery_monitor = battery_monitor
         normalized_device = _normalize_audio_output_id(initial_audio_device)
@@ -1309,10 +1305,6 @@ class WebControlState:
     def update(
         self,
         *,
-        override=None,
-        motor=None,
-        steering=None,
-        head=None,
         audio_device=None,
         audio_volume=None,
         motor_limits=None,
@@ -1342,23 +1334,6 @@ class WebControlState:
             previous_disconnect_command = self._disconnect_command
             previous_soundboard_port = self._soundboard_port
             previous_camera_port = self._camera_port
-            if override is not None:
-                self._override = bool(override)
-            if motor is not None:
-                try:
-                    self._motor = clamp(float(motor), -1.0, 1.0)
-                except (TypeError, ValueError):
-                    pass
-            if steering is not None:
-                try:
-                    self._steering = clamp(float(steering), -1.0, 1.0)
-                except (TypeError, ValueError):
-                    pass
-            if head is not None:
-                try:
-                    self._head = clamp(float(head), -1.0, 1.0)
-                except (TypeError, ValueError):
-                    pass
             if audio_device is not None:
                 audio_id = str(audio_device)
                 if audio_id in _AUDIO_OUTPUT_MAP and audio_id != self._audio_device:
@@ -1502,10 +1477,6 @@ class WebControlState:
 
     def snapshot_locked(self):
         return {
-            "override": self._override,
-            "motor": self._motor,
-            "steering": self._steering,
-            "head": self._head,
             "motor_limits": {
                 "forward": self._motor_limit_forward,
                 "reverse": self._motor_limit_reverse,
@@ -1696,10 +1667,6 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
         state = {}
         if self.control_state:
             state = self.control_state.update(
-                override=data.get("override"),
-                motor=data.get("motor"),
-                steering=data.get("steering"),
-                head=data.get("head"),
                 audio_device=data.get("audio_device"),
                 audio_volume=data.get("audio_volume"),
                 motor_limits=data.get("motor_limits"),
@@ -1793,15 +1760,6 @@ def axis_to_deg_lenkung(ax):
     else:
         span = MID_DEG - LEFT_MAX_DEG
         return clamp(MID_DEG + ax * span, LEFT_MAX_DEG, RIGHT_MAX_DEG)
-
-
-def axis_to_deg_head(ax):
-    ax = clamp(ax, -1.0, +1.0)
-    if ax >= 0:
-        span = HEAD_RIGHT_DEG - HEAD_CENTER_DEG
-        return clamp(HEAD_CENTER_DEG + ax * span, HEAD_MIN_DEG, HEAD_MAX_DEG)
-    span = HEAD_CENTER_DEG - HEAD_LEFT_DEG
-    return clamp(HEAD_CENTER_DEG + ax * span, HEAD_MIN_DEG, HEAD_MAX_DEG)
 
 
 # --------- Audio-Helper ---------
@@ -2246,17 +2204,6 @@ def main():
                             if abs(ax_val_servo) > 0.01:
                                 last_active_ts = now
 
-                    if control_snapshot.get("override"):
-                        if now >= safe_start_servo_until:
-                            steer_armed = True
-                        ax_val_servo = clamp(control_snapshot.get("steering", 0.0), -1.0, +1.0)
-                        if INVERT_SERVO:
-                            ax_val_servo = -ax_val_servo
-                        target_deg = axis_to_deg_lenkung(ax_val_servo)
-                        last_active_ts = now
-                        last_zero_ts = None
-                        in_deadzone_hold = False
-
                     # Auto-Zentrierung nach Inaktivität
                     if (now - last_active_ts) > NEUTRAL_HOLD_S:
                         target_deg = MID_DEG
@@ -2306,11 +2253,6 @@ def main():
                             brake = norm_axis_trigger(raw_b, lo_b, hi_b)  # 0..1
 
                     y_total = clamp(y_centered + gas - brake, -1.0, +1.0)
-
-                    if control_snapshot.get("override"):
-                        if now >= safe_start_motor_until:
-                            motor_armed = True
-                        y_total = clamp(control_snapshot.get("motor", 0.0), -1.0, +1.0)
 
                     # Arming & Deadzone
                     if abs(y_total) <= MOTOR_NEUTRAL_THRESH:
@@ -2362,13 +2304,6 @@ def main():
                         motor_speed = max(motor_speed, -limit_reverse)
 
                     set_motor(pi, motor_speed)
-
-                    if control_snapshot.get("override"):
-                        if now >= safe_start_head_until:
-                            head_override = clamp(control_snapshot.get("head", 0.0), -1.0, +1.0)
-                            head_target = axis_to_deg_head(head_override)
-                        else:
-                            head_target = HEAD_CENTER_DEG
 
                     # ===== Kopf-Servo (latchend) =====
                     head_target = clamp(head_target, HEAD_MIN_DEG, HEAD_MAX_DEG)
