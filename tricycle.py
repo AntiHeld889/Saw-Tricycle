@@ -169,6 +169,16 @@ LEGACY_AUDIO_ID_MAP = {}
 _APLAY_CARD_LINE_RE = re.compile(
     r"card\s+(\d+):\s*([^\[]*)\[([^\]]*)\],\s*device\s+(\d+):\s*([^\[]*)\[([^\]]*)\]"
 )
+_AMIXER_SCONTROL_RE = re.compile(r"^Simple mixer control '([^']+)'")
+
+_USB_MIXER_CANDIDATES = (
+    "Speaker",
+    "PCM",
+    "Master",
+    "Digital",
+    "Output",
+    "Headphone",
+)
 
 
 def _strip_text(value):
@@ -212,6 +222,30 @@ def _list_aplay_playback_devices(timeout=2.0):
     return devices
 
 
+@lru_cache(maxsize=None)
+def _list_amixer_simple_controls(card_index, timeout=2.0):
+    try:
+        completed = subprocess.run(
+            ["amixer", "-c", str(int(card_index)), "scontrols"],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+    except (FileNotFoundError, ValueError):
+        return ()
+    except Exception:
+        return ()
+    output = completed.stdout or ""
+    controls = []
+    for line in output.splitlines():
+        match = _AMIXER_SCONTROL_RE.match(line.strip())
+        if not match:
+            continue
+        controls.append(match.group(1))
+    return tuple(controls)
+
+
 def _build_detected_audio_outputs():
     outputs = []
     legacy_map = {}
@@ -235,6 +269,7 @@ def _build_detected_audio_outputs():
         label = label_source.strip() if isinstance(label_source, str) and label_source.strip() else f"Gerät {entry['card_index']}:{entry['device_index']}"
         alsa_device = f"plughw:{entry['card_index']},{entry['device_index']}"
         output_id = f"card{entry['card_index']}-device{entry['device_index']}"
+        volume_cfg = None
         if kind == "headphones":
             volume_default = HEADPHONE_VOLUME_DEFAULT
             volume_command = [
@@ -247,35 +282,52 @@ def _build_detected_audio_outputs():
                 "{volume}%",
             ]
             setup_commands = [list(cmd) for cmd in HEADPHONE_ROUTE_COMMANDS]
+            volume_cfg = {
+                "min": 0,
+                "max": 100,
+                "step": 1,
+                "default": volume_default,
+                "command": volume_command,
+            }
         else:
             volume_default = 100
-            volume_command = [
-                "amixer",
-                "-q",
-                "-c",
-                str(entry["card_index"]),
-                "sset",
-                "PCM",
-                "{volume}%",
-            ]
             setup_commands = []
-        outputs.append(
-            {
-                "id": output_id,
-                "label": label,
-                "alsa_device": alsa_device,
-                "setup_commands": setup_commands,
-                "volume": {
+            available_controls = _list_amixer_simple_controls(entry["card_index"])
+            control_name = None
+            for candidate in _USB_MIXER_CANDIDATES:
+                if candidate in available_controls:
+                    control_name = candidate
+                    break
+            if control_name is None and available_controls:
+                control_name = available_controls[0]
+            if control_name:
+                volume_command = [
+                    "amixer",
+                    "-q",
+                    "-c",
+                    str(entry["card_index"]),
+                    "sset",
+                    control_name,
+                    "{volume}%",
+                ]
+                volume_cfg = {
                     "min": 0,
                     "max": 100,
                     "step": 1,
                     "default": volume_default,
                     "command": volume_command,
-                },
-                "_priority": 0 if kind == "headphones" else 1,
-                "_kind": kind,
-            }
-        )
+                }
+        config = {
+            "id": output_id,
+            "label": label,
+            "alsa_device": alsa_device,
+            "setup_commands": setup_commands,
+            "_priority": 0 if kind == "headphones" else 1,
+            "_kind": kind,
+        }
+        if volume_cfg:
+            config["volume"] = volume_cfg
+        outputs.append(config)
         legacy_map.setdefault(kind, output_id)
         legacy_map.setdefault(alsa_device, output_id)
         legacy_map.setdefault(f"hw:{entry['card_index']},{entry['device_index']}", output_id)
