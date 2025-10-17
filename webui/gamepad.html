@@ -15,7 +15,7 @@
       --accent-soft: rgba(255, 76, 43, 0.2);
       --surface: rgba(255, 255, 255, 0.04);
       --surface-strong: rgba(255, 255, 255, 0.08);
-      --border: rgba(255, 255, 255, 0.1);
+      --border: rgba(255, 255, 255, 0.12);
     }
 
     *, *::before, *::after {
@@ -28,9 +28,9 @@
 
     body {
       margin: 0;
-      font-family: "Segoe UI", "SF Pro Text", system-ui, -apple-system, sans-serif;
-      background: radial-gradient(circle at top, #151515, #060606 60%);
-      color: #f7f7f7;
+      font-family: "SF Pro Text", "Segoe UI", system-ui, -apple-system, sans-serif;
+      background: radial-gradient(circle at top, #171717, #050505 65%);
+      color: #f5f5f5;
       padding: calc(1.1rem + var(--safe-top)) calc(1.2rem + var(--safe-right)) calc(1.1rem + var(--safe-bottom)) calc(1.2rem + var(--safe-left));
       display: flex;
       justify-content: center;
@@ -56,7 +56,7 @@
 
     .page-header h1 {
       margin: 0;
-      font-size: clamp(1.4rem, 3vw, 1.8rem);
+      font-size: clamp(1.45rem, 3vw, 1.9rem);
       font-weight: 600;
     }
 
@@ -169,16 +169,16 @@
       background: rgba(255, 255, 255, 0.05);
     }
 
-    .status-badge.active {
-      border-color: rgba(255, 76, 43, 0.7);
-      background: rgba(255, 76, 43, 0.18);
-      color: #ffccb5;
-    }
-
     .status-badge svg {
       width: 16px;
       height: 16px;
       fill: currentColor;
+    }
+
+    .status-badge.active {
+      border-color: rgba(255, 76, 43, 0.7);
+      background: rgba(255, 76, 43, 0.18);
+      color: #ffccb5;
     }
 
     .control-grid {
@@ -186,45 +186,70 @@
       gap: clamp(1rem, 3vw, 1.6rem);
     }
 
-    .joystick-card {
-      align-items: center;
-      text-align: center;
+    .axis-card h2 {
+      margin: 0;
+      font-size: clamp(1.05rem, 2.5vw, 1.25rem);
+      font-weight: 600;
     }
 
-    .joystick-wrapper {
-      width: 100%;
+    .axis-wrapper {
       display: flex;
       justify-content: center;
+      align-items: center;
     }
 
-    .joystick-area {
-      width: min(86vw, 360px);
-      aspect-ratio: 1 / 1;
-      border-radius: 28px;
-      background: radial-gradient(circle at center, rgba(255, 255, 255, 0.09), rgba(20, 20, 20, 0.95));
-      border: 1px solid rgba(255, 255, 255, 0.15);
+    .axis-wrapper.vertical {
+      min-height: 280px;
+    }
+
+    .axis-wrapper.horizontal {
+      min-height: 180px;
+    }
+
+    .axis-area {
       position: relative;
+      border-radius: 28px;
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      background: radial-gradient(circle at center, rgba(255, 255, 255, 0.09), rgba(20, 20, 20, 0.96));
       overflow: hidden;
       touch-action: none;
       user-select: none;
       transition: opacity 0.25s ease, filter 0.25s ease;
     }
 
-    .joystick-area.disabled {
+    .axis-area::before {
+      content: "";
+      position: absolute;
+      inset: 18%;
+      border-radius: 22px;
+      border: 1px dashed rgba(255, 255, 255, 0.18);
+      pointer-events: none;
+    }
+
+    .axis-area.vertical {
+      width: min(32vw, 220px);
+      height: min(60vw, 420px);
+    }
+
+    .axis-area.horizontal {
+      width: min(80vw, 420px);
+      height: min(28vw, 160px);
+    }
+
+    .axis-area.disabled {
       opacity: 0.45;
       filter: saturate(0.5);
     }
 
-    .joystick-area::before {
-      content: "";
+    .axis-track {
       position: absolute;
-      inset: 15%;
-      border-radius: 22px;
-      border: 1px dashed rgba(255, 255, 255, 0.2);
+      inset: 22%;
+      border-radius: 20px;
+      background: rgba(255, 255, 255, 0.06);
       pointer-events: none;
     }
 
-    .joystick-thumb {
+    .axis-thumb {
       position: absolute;
       top: 50%;
       left: 50%;
@@ -238,36 +263,30 @@
       transition: transform 0.12s ease-out;
     }
 
-    .joystick-area.active .joystick-thumb {
+    .axis-area.active .axis-thumb {
       transition: none;
     }
 
-    .readouts {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-      gap: 0.6rem;
-      width: 100%;
-    }
-
-    .readout {
-      padding: 0.65rem 0.75rem;
+    .axis-readout {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.25rem;
+      padding: 0.75rem;
       border-radius: 14px;
       background: rgba(255, 255, 255, 0.07);
       border: 1px solid rgba(255, 255, 255, 0.1);
-      display: flex;
-      flex-direction: column;
-      gap: 0.25rem;
     }
 
-    .readout span {
+    .axis-readout span {
       font-size: 0.8rem;
       color: rgba(255, 255, 255, 0.65);
       text-transform: uppercase;
       letter-spacing: 0.05em;
     }
 
-    .readout strong {
-      font-size: 1.1rem;
+    .axis-readout strong {
+      font-size: 1.15rem;
       letter-spacing: 0.03em;
     }
 
@@ -321,6 +340,7 @@
       font-size: 0.85rem;
       line-height: 1.4;
       color: rgba(255, 255, 255, 0.62);
+      margin: 0;
     }
 
     footer {
@@ -334,35 +354,26 @@
         align-items: center;
       }
       .control-grid {
-        grid-template-columns: minmax(260px, 1.25fr) minmax(210px, 0.85fr);
+        grid-template-columns: minmax(260px, 1fr) minmax(260px, 1fr) minmax(220px, 0.85fr);
         align-items: stretch;
       }
-      .joystick-card {
-        text-align: left;
-      }
-      .joystick-wrapper {
-        justify-content: flex-start;
+      .axis-wrapper.vertical {
+        min-height: 320px;
       }
     }
 
-    @media (max-width: 720px) and (orientation: landscape) {
-      body {
-        padding: calc(0.8rem + var(--safe-top)) calc(0.9rem + var(--safe-right)) calc(0.75rem + var(--safe-bottom)) calc(0.9rem + var(--safe-left));
-      }
-      .page-header h1 {
-        font-size: 1.4rem;
-      }
+    @media (max-width: 840px) and (orientation: landscape) {
       .control-grid {
-        grid-template-columns: minmax(220px, 1.1fr) minmax(190px, 0.9fr);
+        grid-template-columns: minmax(240px, 1fr) minmax(240px, 1fr);
+      }
+      .control-grid .head-card {
+        grid-column: span 2;
       }
     }
 
-    @media (max-width: 680px) and (orientation: portrait) {
+    @media (max-width: 680px), (orientation: portrait) {
       .control-grid {
         grid-template-columns: 1fr;
-      }
-      .joystick-wrapper {
-        justify-content: center;
       }
     }
   </style>
@@ -392,33 +403,43 @@
         </label>
       </div>
       <p class="hint">
-        Ist der Web-Override aktiv, werden Motor- und Lenkbefehle vom physischen Gamepad ignoriert. Nutzen Sie den virtuellen Joystick für Gas/Bremse und Lenkung. Die Kopfsteuerung erfolgt über die Tasten R, Z und L.
+        Ist der Web-Override aktiv, werden Motor- und Lenkbefehle vom physischen Gamepad ignoriert. Verwenden Sie die beiden Joysticks für Motor (links) und Lenkung (rechts). Die Kopfsteuerung erfolgt über die Tasten R, Z und L.
       </p>
     </section>
 
     <div class="control-grid">
-      <section class="card joystick-card">
-        <div class="joystick-wrapper">
-          <div class="joystick-area disabled" id="joystickArea" aria-label="Virtueller Joystick für Motor und Lenkung">
-            <div class="joystick-thumb" id="joystickThumb"></div>
+      <section class="card axis-card">
+        <h2>Motor</h2>
+        <div class="axis-wrapper vertical">
+          <div class="axis-area vertical disabled" id="motorAxis" aria-label="Virtueller Joystick für den Motor" aria-disabled="true">
+            <div class="axis-track"></div>
+            <div class="axis-thumb" id="motorThumb"></div>
           </div>
         </div>
-        <div class="readouts">
-          <div class="readout">
-            <span>Motor</span>
-            <strong id="motorValue">0.00</strong>
+        <div class="axis-readout">
+          <span>Motor</span>
+          <strong id="motorValue">+0.00</strong>
+        </div>
+      </section>
+
+      <section class="card axis-card">
+        <h2>Lenkung</h2>
+        <div class="axis-wrapper horizontal">
+          <div class="axis-area horizontal disabled" id="steeringAxis" aria-label="Virtueller Joystick für die Lenkung" aria-disabled="true">
+            <div class="axis-track"></div>
+            <div class="axis-thumb" id="steeringThumb"></div>
           </div>
-          <div class="readout">
-            <span>Lenkung</span>
-            <strong id="steeringValue">0.00</strong>
-          </div>
+        </div>
+        <div class="axis-readout">
+          <span>Lenkung</span>
+          <strong id="steeringValue">+0.00</strong>
         </div>
       </section>
 
       <section class="card head-card">
         <div>
           <h2 style="margin: 0; font-size: 1.05rem;">Kopfservo</h2>
-          <p class="hint" style="margin: 0.2rem 0 0;">R = rechts, Z = zentriert, L = links.</p>
+          <p class="hint" style="margin-top: 0.2rem;">R = rechts, Z = zentriert, L = links.</p>
         </div>
         <div class="head-buttons" role="group" aria-label="Kopfservo steuern">
           <button class="head-button" type="button" data-head="left">L</button>
@@ -446,11 +467,28 @@
       overrideToggle: document.getElementById('overrideToggle'),
       overrideStatus: document.getElementById('overrideStatus'),
       overrideMessage: document.getElementById('overrideMessage'),
-      joystickArea: document.getElementById('joystickArea'),
-      joystickThumb: document.getElementById('joystickThumb'),
+      motorAxis: document.getElementById('motorAxis'),
+      motorThumb: document.getElementById('motorThumb'),
       motorValue: document.getElementById('motorValue'),
+      steeringAxis: document.getElementById('steeringAxis'),
+      steeringThumb: document.getElementById('steeringThumb'),
       steeringValue: document.getElementById('steeringValue'),
       headButtons: Array.from(document.querySelectorAll('.head-button')),
+    };
+
+    const axisConfig = {
+      motor: {
+        orientation: 'vertical',
+        area: elements.motorAxis,
+        thumb: elements.motorThumb,
+        pointerId: null,
+      },
+      steering: {
+        orientation: 'horizontal',
+        area: elements.steeringAxis,
+        thumb: elements.steeringThumb,
+        pointerId: null,
+      },
     };
 
     const state = {
@@ -458,7 +496,6 @@
       motor: 0,
       steering: 0,
       head: 'center',
-      pointerId: null,
       sendScheduled: false,
       sendInFlight: false,
       resendPending: false,
@@ -479,11 +516,7 @@
       });
     };
 
-    const updateOverrideStatus = () => {
-      elements.overrideToggle.checked = state.overrideEnabled;
-      elements.overrideToggle.setAttribute('aria-checked', state.overrideEnabled ? 'true' : 'false');
-      elements.overrideStatus.classList.toggle('active', state.overrideEnabled);
-      elements.overrideStatus.textContent = state.overrideEnabled ? 'Aktiv' : 'Inaktiv';
+    const buildStatusIcon = () => {
       const icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
       icon.setAttribute('viewBox', '0 0 24 24');
       icon.setAttribute('aria-hidden', 'true');
@@ -495,44 +528,57 @@
         path.setAttribute('d', 'M12 2a10 10 0 1 0 .001 20.001A10 10 0 0 0 12 2Zm0 2a8 8 0 1 1-.001 16.001A8 8 0 0 1 12 4Zm0 3a1 1 0 0 0-1 1v4.382l-2.447 2.447a1 1 0 1 0 1.414 1.414l2.74-2.74a1 1 0 0 0 .293-.707V8a1 1 0 0 0-1-1Z');
       }
       icon.appendChild(path);
+      return icon;
+    };
+
+    const updateOverrideStatus = () => {
+      elements.overrideToggle.checked = state.overrideEnabled;
+      elements.overrideToggle.setAttribute('aria-checked', state.overrideEnabled ? 'true' : 'false');
+      elements.overrideStatus.classList.toggle('active', state.overrideEnabled);
       elements.overrideStatus.innerHTML = '';
-      elements.overrideStatus.appendChild(icon);
+      elements.overrideStatus.appendChild(buildStatusIcon());
       elements.overrideStatus.append(state.overrideEnabled ? ' Aktiv' : ' Inaktiv');
       elements.overrideMessage.textContent = state.overrideEnabled
-        ? 'Virtueller Joystick ist aktiv. Physisches Gamepad wird für Motor/Lenkung ignoriert.'
+        ? 'Virtuelle Joysticks sind aktiv. Physisches Gamepad wird für Motor/Lenkung ignoriert.'
         : 'Steuerung nur verfügbar, wenn aktiviert.';
-      elements.joystickArea.classList.toggle('disabled', !state.overrideEnabled);
+      Object.values(axisConfig).forEach((cfg) => {
+        cfg.area.classList.toggle('disabled', !state.overrideEnabled);
+        cfg.area.setAttribute('aria-disabled', state.overrideEnabled ? 'false' : 'true');
+      });
       updateHeadButtons();
     };
 
-    const getJoystickLimit = () => {
-      const rect = elements.joystickArea.getBoundingClientRect();
-      const size = Math.min(rect.width, rect.height);
-      const thumbSize = elements.joystickThumb.offsetWidth;
-      const limit = (size / 2) - (thumbSize / 2) - 6;
-      return limit > 12 ? limit : Math.max(40, limit);
+    const getAxisLimit = (axis) => {
+      const cfg = axisConfig[axis];
+      if (!cfg) return 0;
+      const rect = cfg.area.getBoundingClientRect();
+      const thumbRect = cfg.thumb.getBoundingClientRect();
+      if (cfg.orientation === 'vertical') {
+        const limit = (rect.height - thumbRect.height) / 2;
+        return limit > 14 ? limit : Math.max(40, limit);
+      }
+      const limit = (rect.width - thumbRect.width) / 2;
+      return limit > 14 ? limit : Math.max(40, limit);
     };
 
-    const renderJoystick = () => {
-      const limit = getJoystickLimit();
-      const offsetX = limit * state.steering;
-      const offsetY = -limit * state.motor;
-      elements.joystickThumb.style.setProperty('--offset-x', `${offsetX}px`);
-      elements.joystickThumb.style.setProperty('--offset-y', `${offsetY}px`);
-    };
-
-    const setJoystick = (steering, motor, { send = true } = {}) => {
-      state.steering = clampAxis(steering);
-      state.motor = clampAxis(motor);
-      renderJoystick();
-      updateReadouts();
-      if (send && state.overrideEnabled) {
-        scheduleSend();
+    const renderAxis = (axis) => {
+      const cfg = axisConfig[axis];
+      if (!cfg) return;
+      const limit = getAxisLimit(axis);
+      if (cfg.orientation === 'vertical') {
+        const offsetY = -limit * state.motor;
+        cfg.thumb.style.setProperty('--offset-y', `${offsetY}px`);
+        cfg.thumb.style.setProperty('--offset-x', '0px');
+      } else {
+        const offsetX = limit * state.steering;
+        cfg.thumb.style.setProperty('--offset-x', `${offsetX}px`);
+        cfg.thumb.style.setProperty('--offset-y', '0px');
       }
     };
 
-    const centerJoystick = (send = true) => {
-      setJoystick(0, 0, { send });
+    const renderAllAxes = () => {
+      renderAxis('motor');
+      renderAxis('steering');
     };
 
     const scheduleSend = (immediate = false) => {
@@ -583,96 +629,130 @@
       }
     };
 
-    const setOverrideEnabled = (enabled) => {
-      if (state.overrideEnabled === enabled) {
+    const setAxisValue = (axis, value, { send = true } = {}) => {
+      const clamped = clampAxis(value);
+      if (axis === 'motor') {
+        state.motor = clamped;
+      } else if (axis === 'steering') {
+        state.steering = clamped;
+      }
+      renderAxis(axis);
+      updateReadouts();
+      if (send && state.overrideEnabled) {
+        scheduleSend();
+      }
+    };
+
+    const centerAxis = (axis, send = true) => {
+      setAxisValue(axis, 0, { send });
+    };
+
+    const centerAllAxes = (send = true) => {
+      centerAxis('motor', send);
+      centerAxis('steering', send);
+    };
+
+    const handleAxisMove = (axis, event) => {
+      const cfg = axisConfig[axis];
+      if (!cfg || !state.overrideEnabled || cfg.pointerId !== event.pointerId) {
         return;
       }
-      state.overrideEnabled = enabled;
-      if (!enabled) {
-        centerJoystick(false);
-        state.head = 'center';
-      }
-      updateOverrideStatus();
-      if (!enabled) {
-        scheduleSend(true);
+      const rect = cfg.area.getBoundingClientRect();
+      const limit = getAxisLimit(axis);
+      if (cfg.orientation === 'vertical') {
+        const centerY = rect.top + rect.height / 2;
+        let dy = event.clientY - centerY;
+        const capped = limit > 0 ? Math.min(Math.max(dy, -limit), limit) : 0;
+        const value = limit > 0 ? -capped / limit : 0;
+        setAxisValue(axis, value);
       } else {
-        scheduleSend(true);
+        const centerX = rect.left + rect.width / 2;
+        let dx = event.clientX - centerX;
+        const capped = limit > 0 ? Math.min(Math.max(dx, -limit), limit) : 0;
+        const value = limit > 0 ? capped / limit : 0;
+        setAxisValue(axis, value);
       }
     };
 
-    const pointerMove = (event) => {
-      if (!state.overrideEnabled || state.pointerId !== event.pointerId) {
-        return;
-      }
-      const rect = elements.joystickArea.getBoundingClientRect();
-      const centerX = rect.left + rect.width / 2;
-      const centerY = rect.top + rect.height / 2;
-      const dx = event.clientX - centerX;
-      const dy = event.clientY - centerY;
-      const limit = getJoystickLimit();
-      const distance = Math.hypot(dx, dy);
-      let adjX = dx;
-      let adjY = dy;
-      if (distance > limit && limit > 0) {
-        const scale = limit / distance;
-        adjX = dx * scale;
-        adjY = dy * scale;
-      }
-      const steering = limit > 0 ? adjX / limit : 0;
-      const motor = limit > 0 ? -adjY / limit : 0;
-      setJoystick(steering, motor);
+    const attachAxisHandlers = (axis) => {
+      const cfg = axisConfig[axis];
+      if (!cfg) return;
+
+      cfg.area.addEventListener('pointerdown', (event) => {
+        if (!state.overrideEnabled) {
+          return;
+        }
+        event.preventDefault();
+        cfg.pointerId = event.pointerId;
+        cfg.area.classList.add('active');
+        cfg.area.setPointerCapture(event.pointerId);
+        handleAxisMove(axis, event);
+      });
+
+      const endInteraction = (event) => {
+        if (cfg.pointerId !== event.pointerId) {
+          return;
+        }
+        cfg.area.releasePointerCapture(event.pointerId);
+        cfg.area.classList.remove('active');
+        cfg.pointerId = null;
+        centerAxis(axis);
+      };
+
+      cfg.area.addEventListener('pointermove', (event) => handleAxisMove(axis, event));
+      cfg.area.addEventListener('pointerup', endInteraction);
+      cfg.area.addEventListener('pointercancel', endInteraction);
+      cfg.area.addEventListener('lostpointercapture', (event) => {
+        if (cfg.pointerId === event.pointerId) {
+          cfg.pointerId = null;
+          cfg.area.classList.remove('active');
+          centerAxis(axis);
+        }
+      });
     };
 
-    const pointerEnd = (event) => {
-      if (state.pointerId !== event.pointerId) {
-        return;
-      }
-      elements.joystickArea.releasePointerCapture(event.pointerId);
-      elements.joystickArea.classList.remove('active');
-      state.pointerId = null;
-      centerJoystick();
-    };
+    Object.keys(axisConfig).forEach(attachAxisHandlers);
 
     elements.overrideToggle.addEventListener('change', () => {
       setOverrideEnabled(elements.overrideToggle.checked);
     });
-
-    elements.joystickArea.addEventListener('pointerdown', (event) => {
-      if (!state.overrideEnabled) {
-        return;
-      }
-      event.preventDefault();
-      state.pointerId = event.pointerId;
-      elements.joystickArea.classList.add('active');
-      elements.joystickArea.setPointerCapture(event.pointerId);
-      pointerMove(event);
-    });
-
-    elements.joystickArea.addEventListener('pointermove', pointerMove);
-    elements.joystickArea.addEventListener('pointerup', pointerEnd);
-    elements.joystickArea.addEventListener('pointercancel', pointerEnd);
 
     elements.headButtons.forEach((button) => {
       button.addEventListener('click', () => {
         if (!state.overrideEnabled) {
           return;
         }
-        const target = button.dataset.head || 'center';
-        state.head = target;
-        updateHeadButtons();
-        scheduleSend(true);
+        const target = (button.dataset.head || 'center').toLowerCase();
+        if (target === 'left' || target === 'center' || target === 'right') {
+          state.head = target;
+          updateHeadButtons();
+          scheduleSend(true);
+        }
       });
     });
 
     window.addEventListener('resize', () => {
-      renderJoystick();
+      renderAllAxes();
     });
+
+    const setOverrideEnabled = (enabled) => {
+      if (state.overrideEnabled === enabled) {
+        return;
+      }
+      state.overrideEnabled = enabled;
+      if (!enabled) {
+        centerAllAxes(false);
+        state.head = 'center';
+      }
+      updateOverrideStatus();
+      scheduleSend(true);
+    };
 
     const applySnapshot = (snapshot) => {
       if (!snapshot || typeof snapshot !== 'object') {
         updateOverrideStatus();
+        renderAllAxes();
         updateReadouts();
-        renderJoystick();
         return;
       }
       const override = snapshot.web_override;
@@ -693,30 +773,32 @@
         state.head = 'center';
       }
       updateOverrideStatus();
-      renderJoystick();
+      renderAllAxes();
       updateReadouts();
+      updateHeadButtons();
     };
 
     const loadInitialState = async () => {
       try {
         const resp = await fetch('/api/state');
         if (!resp.ok) {
-          updateOverrideStatus();
-          updateReadouts();
-          renderJoystick();
-          return;
+          throw new Error(`HTTP ${resp.status}`);
         }
         const data = await resp.json();
         applySnapshot(data);
       } catch (err) {
         console.error('Initialer Status konnte nicht geladen werden', err);
         updateOverrideStatus();
+        renderAllAxes();
         updateReadouts();
-        renderJoystick();
+        updateHeadButtons();
       }
-      updateHeadButtons();
     };
 
+    updateOverrideStatus();
+    renderAllAxes();
+    updateReadouts();
+    updateHeadButtons();
     loadInitialState();
   </script>
 </body>
