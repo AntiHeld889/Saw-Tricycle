@@ -1151,12 +1151,21 @@
       if (signature !== audioOptionsSignature) {
         audioOptionsSignature = signature;
         audioSelect.innerHTML = '';
-        normalized.forEach((opt) => {
+        if (normalized.length === 0) {
           const option = document.createElement('option');
-          option.value = String(opt.id);
-          option.textContent = opt.label;
+          option.value = '';
+          option.textContent = 'Keine passenden Audio-Ausgänge gefunden';
+          option.disabled = true;
+          option.selected = true;
           audioSelect.append(option);
-        });
+        } else {
+          normalized.forEach((opt) => {
+            const option = document.createElement('option');
+            option.value = String(opt.id);
+            option.textContent = opt.label;
+            audioSelect.append(option);
+          });
+        }
       }
       const desired = String(selectedId ?? '');
       const hasDesired = normalized.some((opt) => String(opt.id) === desired);
