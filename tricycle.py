@@ -6,8 +6,7 @@
 # =========================
 
 # ---- Audio & Dateien ----
-ALSA_HP_DEVICE       = "plughw:0,0"           # Analoger Kopfhörer-Ausgang (mit 'aplay -l' prüfen)
-ALSA_USB_DEVICE      = "plughw:1,0"           # USB-Soundkarte (mit 'aplay -l' prüfen)
+DEFAULT_ALSA_DEVICE  = "default"
 HEADPHONE_VOLUME_DEFAULT = 100
 AUDIO_ROUTE_TIMEOUT  = 3                      # Sekunden für amixer-Kommandos
 SOUNDBOARD_PORT_DEFAULT = None
@@ -23,57 +22,7 @@ HEADPHONE_ROUTE_COMMANDS = [
     ["amixer", "-q", "cset", "numid=3", "1"],             # 0=auto, 1=analog, 2=HDMI (älteres RPi-OS)
 ]
 
-AUDIO_OUTPUTS = [
-    {
-        "id": "headphones",
-        "label": "Kopfhörerbuchse",
-        "alsa_device": ALSA_HP_DEVICE,
-        "setup_commands": HEADPHONE_ROUTE_COMMANDS,
-        "volume": {
-            "min": 0,
-            "max": 100,
-            "step": 1,
-            "default": HEADPHONE_VOLUME_DEFAULT,
-            "command": [
-                "amixer",
-                "-q",
-                "sset",
-                "Headphone",
-                "{volume}%",
-            ],
-        },
-    },
-    {
-        "id": "usb",
-        "label": "USB-Soundkarte",
-        "alsa_device": ALSA_USB_DEVICE,
-        "setup_commands": [],
-        "volume": {
-            "min": 0,
-            "max": 100,
-            "step": 1,
-            "default": 100,
-            "command": [
-                "amixer",
-                "-q",
-                "-D",
-                ALSA_USB_DEVICE,
-                "sset",
-                "PCM",
-                "{volume}%",
-            ],
-        },
-    },
-    {
-        "id": "system",
-        "label": "System-Standard",
-        "alsa_device": "default",
-        "setup_commands": [],
-    },
-]
 
-_AUDIO_OUTPUT_MAP = {cfg["id"]: cfg for cfg in AUDIO_OUTPUTS}
-DEFAULT_AUDIO_OUTPUT_ID = AUDIO_OUTPUTS[0]["id"] if AUDIO_OUTPUTS else None
 
 # Gleiches File bei erneutem Tastendruck neu starten?
 RESTART_SAME_TRACK   = True
@@ -188,6 +137,7 @@ PRINT_EVERY_S        = 0.3
 # =========================
 import math
 import os
+import re
 import sys
 import time
 import json
@@ -211,6 +161,151 @@ from evdev import InputDevice, ecodes, list_devices
 import pigpio
 
 from webui import load_asset
+
+
+LEGACY_AUDIO_ID_MAP = {}
+
+
+_APLAY_CARD_LINE_RE = re.compile(
+    r"card\s+(\d+):\s*([^\[]*)\[([^\]]*)\],\s*device\s+(\d+):\s*([^\[]*)\[([^\]]*)\]"
+)
+
+
+def _strip_text(value):
+    return value.strip() if isinstance(value, str) else ""
+
+
+def _list_aplay_playback_devices(timeout=2.0):
+    try:
+        completed = subprocess.run(
+            ["aplay", "-l"],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+    except FileNotFoundError:
+        return []
+    except Exception:
+        return []
+    output = completed.stdout or ""
+    devices = []
+    for line in output.splitlines():
+        match = _APLAY_CARD_LINE_RE.search(line)
+        if not match:
+            continue
+        try:
+            card_index = int(match.group(1))
+            device_index = int(match.group(4))
+        except (TypeError, ValueError):
+            continue
+        devices.append(
+            {
+                "card_index": card_index,
+                "device_index": device_index,
+                "card_name": _strip_text(match.group(2) or ""),
+                "card_desc": _strip_text(match.group(3) or ""),
+                "device_name": _strip_text(match.group(5) or ""),
+                "device_desc": _strip_text(match.group(6) or ""),
+            }
+        )
+    return devices
+
+
+def _build_detected_audio_outputs():
+    outputs = []
+    legacy_map = {}
+    devices = _list_aplay_playback_devices()
+    for entry in devices:
+        parts = [
+            entry.get("card_name"),
+            entry.get("card_desc"),
+            entry.get("device_name"),
+            entry.get("device_desc"),
+        ]
+        combined = " ".join(part for part in parts if part).lower()
+        kind = None
+        if "headphones" in combined:
+            kind = "headphones"
+        elif "usb audio" in combined:
+            kind = "usb"
+        if not kind:
+            continue
+        label_source = entry.get("device_desc") or entry.get("device_name") or entry.get("card_desc") or entry.get("card_name")
+        label = label_source.strip() if isinstance(label_source, str) and label_source.strip() else f"Gerät {entry['card_index']}:{entry['device_index']}"
+        alsa_device = f"plughw:{entry['card_index']},{entry['device_index']}"
+        output_id = f"card{entry['card_index']}-device{entry['device_index']}"
+        if kind == "headphones":
+            volume_default = HEADPHONE_VOLUME_DEFAULT
+            volume_command = [
+                "amixer",
+                "-q",
+                "-c",
+                str(entry["card_index"]),
+                "sset",
+                "Headphone",
+                "{volume}%",
+            ]
+            setup_commands = [list(cmd) for cmd in HEADPHONE_ROUTE_COMMANDS]
+        else:
+            volume_default = 100
+            volume_command = [
+                "amixer",
+                "-q",
+                "-c",
+                str(entry["card_index"]),
+                "sset",
+                "PCM",
+                "{volume}%",
+            ]
+            setup_commands = []
+        outputs.append(
+            {
+                "id": output_id,
+                "label": label,
+                "alsa_device": alsa_device,
+                "setup_commands": setup_commands,
+                "volume": {
+                    "min": 0,
+                    "max": 100,
+                    "step": 1,
+                    "default": volume_default,
+                    "command": volume_command,
+                },
+                "_priority": 0 if kind == "headphones" else 1,
+                "_kind": kind,
+            }
+        )
+        legacy_map.setdefault(kind, output_id)
+        legacy_map.setdefault(alsa_device, output_id)
+        legacy_map.setdefault(f"hw:{entry['card_index']},{entry['device_index']}", output_id)
+    if outputs:
+        outputs.sort(key=lambda cfg: (cfg.get("_priority", 99), cfg.get("label", "").lower()))
+        for cfg in outputs:
+            cfg.pop("_priority", None)
+    else:
+        fallback_id = "system"
+        outputs.append(
+            {
+                "id": fallback_id,
+                "label": "System-Standard",
+                "alsa_device": DEFAULT_ALSA_DEVICE,
+                "setup_commands": [],
+            }
+        )
+        legacy_map.setdefault("system", fallback_id)
+        legacy_map.setdefault(DEFAULT_ALSA_DEVICE, fallback_id)
+    for cfg in outputs:
+        legacy_map.setdefault(cfg["id"], cfg["id"])
+        cfg.pop("_kind", None)
+    return outputs, legacy_map
+
+
+AUDIO_OUTPUTS, _detected_legacy_map = _build_detected_audio_outputs()
+LEGACY_AUDIO_ID_MAP.update(_detected_legacy_map)
+
+_AUDIO_OUTPUT_MAP = {cfg["id"]: cfg for cfg in AUDIO_OUTPUTS}
+DEFAULT_AUDIO_OUTPUT_ID = AUDIO_OUTPUTS[0]["id"] if AUDIO_OUTPUTS else None
 
 
 def _resolve_button_event_code(code_str):
@@ -285,6 +380,9 @@ def _normalize_audio_output_id(audio_id):
     audio_id_str = str(audio_id)
     if audio_id_str in _AUDIO_OUTPUT_MAP:
         return audio_id_str
+    mapped = LEGACY_AUDIO_ID_MAP.get(audio_id_str)
+    if mapped in _AUDIO_OUTPUT_MAP:
+        return mapped
     return None
 
 
@@ -1539,7 +1637,7 @@ class WebControlState:
         profile = get_audio_output(audio_id)
         if profile and profile.get("alsa_device"):
             return profile["alsa_device"]
-        return ALSA_HP_DEVICE
+        return DEFAULT_ALSA_DEVICE
 
     def get_connected_sound_path(self):
         with self._lock:
@@ -1816,12 +1914,15 @@ def apply_audio_volume(audio_id, volume):
     except Exception:
         return False
 
-def _start_player_async(path, alsa_dev=ALSA_HP_DEVICE):
+def _start_player_async(path, alsa_dev=DEFAULT_ALSA_DEVICE):
     """Starte mpg123 bevorzugt, fallback ffplay. Liefert (Popen, playername) oder (None, None)."""
-    try_cmds = [
-        ["mpg123", "-q", "-a", alsa_dev, path],
-        ["ffplay", "-nodisp", "-autoexit", "-loglevel", "error", path],
-    ]
+    try_cmds = []
+    mpg123_cmd = ["mpg123", "-q"]
+    if alsa_dev:
+        mpg123_cmd.extend(["-a", alsa_dev])
+    mpg123_cmd.append(path)
+    try_cmds.append(mpg123_cmd)
+    try_cmds.append(["ffplay", "-nodisp", "-autoexit", "-loglevel", "error", path])
     for cmd in try_cmds:
         try:
             proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -1848,7 +1949,7 @@ def stop_current_sound():
     CURRENT_PLAYER_PROC = None
     CURRENT_PLAYER_PATH = None
 
-def play_sound_switch(path, alsa_dev=ALSA_HP_DEVICE, restart_if_same=None):
+def play_sound_switch(path, alsa_dev=DEFAULT_ALSA_DEVICE, restart_if_same=None):
     """
     Exklusives Abspielen: stoppt laufenden Track und startet 'path'.
     - Wenn 'path' == CURRENT_PLAYER_PATH und RESTART_SAME_TRACK True, wird neu gestartet.
