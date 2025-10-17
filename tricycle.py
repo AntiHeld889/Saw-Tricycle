@@ -76,15 +76,15 @@ DEFAULT_STEERING_ANGLES = {
 }
 
 INVERT_SERVO         = True
-DEADZONE_IN          = 0.10
-DEADZONE_OUT         = 0.12
+DEADZONE_IN          = 0.07
+DEADZONE_OUT         = 0.10
 EXPO_SERVO           = 0.30
 SMOOTH_A_SERVO       = 0.20
 RATE_DEG_S           = 150.0
 MIN_STEP_DEG         = 0.02
 NEUTRAL_HOLD_S       = 2.0
-CENTER_SNAP_DEG      = 0.6
-NEUTRAL_SNAP_S       = 0.15
+CENTER_SNAP_DEG      = 0.4
+NEUTRAL_SNAP_S       = 0.10
 
 # Safe-Start Lenkservo
 SERVO_SAFE_START_S   = 0.8
