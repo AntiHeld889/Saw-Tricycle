@@ -2657,40 +2657,40 @@ def main():
                     if override_enabled:
                         x = override_steering
 
-                        # Arming
-                        if abs(x) <= SERVO_NEUTRAL_THRESH:
-                            if neutral_ok_since_s is None:
-                                neutral_ok_since_s = now
-                            elif (now - neutral_ok_since_s) * 1000.0 >= SERVO_ARM_NEUTRAL_MS:
-                                steer_armed = True
+                    # Arming
+                    if abs(x) <= SERVO_NEUTRAL_THRESH:
+                        if neutral_ok_since_s is None:
+                            neutral_ok_since_s = now
+                        elif (now - neutral_ok_since_s) * 1000.0 >= SERVO_ARM_NEUTRAL_MS:
+                            steer_armed = True
+                    else:
+                        neutral_ok_since_s = None
+
+                    # Safe-Start / un-armed
+                    if (now < safe_start_servo_until) or (not steer_armed):
+                        ax_val_servo = 0.0
+                        target_deg   = MID_DEG
+                    else:
+                        ax_abs = abs(x)
+                        if in_deadzone_hold:
+                            if ax_abs >= DEADZONE_OUT:
+                                in_deadzone_hold = False
                         else:
-                            neutral_ok_since_s = None
+                            if ax_abs <= DEADZONE_IN:
+                                in_deadzone_hold = True
 
-                        # Safe-Start / un-armed
-                        if (now < safe_start_servo_until) or (not steer_armed):
-                            ax_val_servo = 0.0
-                            target_deg   = MID_DEG
+                        if in_deadzone_hold:
+                            shaped = 0.0
+                            if last_zero_ts is None:
+                                last_zero_ts = now
                         else:
-                            ax_abs = abs(x)
-                            if in_deadzone_hold:
-                                if ax_abs >= DEADZONE_OUT:
-                                    in_deadzone_hold = False
-                            else:
-                                if ax_abs <= DEADZONE_IN:
-                                    in_deadzone_hold = True
+                            shaped = shape_expo(x, EXPO_SERVO)
+                            last_zero_ts = None
 
-                            if in_deadzone_hold:
-                                shaped = 0.0
-                                if last_zero_ts is None:
-                                    last_zero_ts = now
-                            else:
-                                shaped = shape_expo(x, EXPO_SERVO)
-                                last_zero_ts = None
-
-                            ax_val_servo = clamp(shaped, -1.0, +1.0)
-                            target_deg   = axis_to_deg_lenkung(ax_val_servo)
-                            if abs(ax_val_servo) > 0.01:
-                                last_active_ts = now
+                        ax_val_servo = clamp(shaped, -1.0, +1.0)
+                        target_deg   = axis_to_deg_lenkung(ax_val_servo)
+                        if abs(ax_val_servo) > 0.01:
+                            last_active_ts = now
 
                     # Auto-Zentrierung nach Inaktivität
                     if (now - last_active_ts) > NEUTRAL_HOLD_S:
