@@ -118,8 +118,6 @@ MOTOR_DIR_SWITCH_PAUSE_S = 0.005
 
 # ---- Servo 2 (Kopf per D-Pad, LATCHEND) ----
 GPIO_PIN_HEAD        = 24
-HEAD_MIN_DEG         = 30.0
-HEAD_MAX_DEG         = 150.0
 HEAD_LEFT_DEG        = 30.0
 HEAD_CENTER_DEG      = 90.0
 HEAD_RIGHT_DEG       = 150.0
@@ -1883,7 +1881,7 @@ def validate_configuration():
     if not (0.0 <= MOTOR_LIMIT_REV <= 1.0 and 0.0 <= MOTOR_LIMIT_FWD <= 1.0):
         raise ValueError("Motorlimits müssen im Bereich [0, 1] liegen")
 
-    if HEAD_MIN_DEG < 0 or HEAD_MAX_DEG > SERVO_RANGE_DEG or not (HEAD_MIN_DEG <= HEAD_CENTER_DEG <= HEAD_MAX_DEG):
+    if HEAD_LEFT_DEG < 0 or HEAD_RIGHT_DEG > SERVO_RANGE_DEG or not (HEAD_LEFT_DEG <= HEAD_CENTER_DEG <= HEAD_RIGHT_DEG):
         raise ValueError("Kopf-Servo Winkel sind ungültig")
 
     if SERVO_ARM_NEUTRAL_MS <= 0 or MOTOR_ARM_NEUTRAL_MS <= 0:
@@ -2262,7 +2260,7 @@ def main():
             steer_armed        = False
             neutral_ok_since_s = None
 
-            head_current     = clamp(HEAD_CENTER_DEG, HEAD_MIN_DEG, HEAD_MAX_DEG)
+            head_current     = clamp(HEAD_CENTER_DEG, HEAD_LEFT_DEG, HEAD_RIGHT_DEG)
             head_target      = head_current
             head_filtered    = head_current
             head_motion_start = head_current
@@ -2476,7 +2474,7 @@ def main():
                     set_motor(pi, motor_speed)
 
                     # ===== Kopf-Servo (latchend) =====
-                    head_target = clamp(head_target, HEAD_MIN_DEG, HEAD_MAX_DEG)
+                    head_target = clamp(head_target, HEAD_LEFT_DEG, HEAD_RIGHT_DEG)
                     head_filtered += (head_target - head_filtered) * HEAD_SMOOTH_A
 
                     if abs(head_filtered - head_motion_end) > 1e-4:
