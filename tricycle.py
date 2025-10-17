@@ -1610,10 +1610,12 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         parsed = urlparse(self.path)
         path_only = parsed.path
-        if path_only == "/settings/motor-limits":
+        if path_only in {"/settings/motor-limits", "/settings/steering-angles"}:
             target = "/more-settings"
             if parsed.query:
                 target = f"{target}?{parsed.query}"
+            if path_only == "/settings/steering-angles":
+                target = f"{target}#steeringAngles"
             self._write_redirect(target)
             return
         if self.path == "/":
