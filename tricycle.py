@@ -948,7 +948,6 @@ class BatteryMonitor:
         (12.4, 10.0),
         (12.2, 5.0),
         (12.0, 0.0),
-        (11.8, 0.0),
     ]
 
     def __init__(self, *, sample_interval=5.0, voltage_soc_curve=None):
