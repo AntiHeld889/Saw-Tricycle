@@ -76,6 +76,11 @@
       flex-direction: column;
       gap: 0.9rem;
     }
+    .settings-section .field {
+      display: flex;
+      flex-direction: column;
+      gap: 0.45rem;
+    }
     .settings-section h2 {
       margin: 0;
       font-size: 1.1rem;
@@ -120,6 +125,47 @@
     }
     .status.success { color: #63f58c; }
     .status.error { color: #ff7a7a; }
+    .steering-grid {
+      display: grid;
+      gap: 0.75rem;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    }
+    .number-input {
+      display: flex;
+      align-items: center;
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 12px;
+      padding: 0.35rem 0.6rem;
+      transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    }
+    .number-input input {
+      flex: 1 1 auto;
+      background: transparent;
+      border: none;
+      color: inherit;
+      font: inherit;
+      min-width: 0;
+      padding: 0;
+      -moz-appearance: textfield;
+    }
+    .number-input input:focus {
+      outline: none;
+    }
+    .number-input input::-webkit-outer-spin-button,
+    .number-input input::-webkit-inner-spin-button {
+      -webkit-appearance: none;
+      margin: 0;
+    }
+    .number-input span {
+      margin-left: 0.35rem;
+      opacity: 0.7;
+      font-size: 0.9rem;
+    }
+    .number-input:focus-within {
+      border-color: rgba(229,9,20,0.55);
+      box-shadow: 0 0 0 3px rgba(229,9,20,0.2);
+    }
     .motor-limits {
       display: flex;
       flex-direction: column;
@@ -200,6 +246,33 @@
     <div class="status-container" role="status" aria-live="polite">
       <p id="status" class="status"></p>
     </div>
+    <section class="settings-section" id="steeringAngles">
+      <h2>Lenkwinkel</h2>
+      <p class="hint">Definiert Mittelstellung und maximale Ausschläge des Servos.</p>
+      <div class="steering-grid">
+        <div class="field">
+          <label for="steeringLeft">Links (max.)</label>
+          <div class="number-input">
+            <input id="steeringLeft" type="number" inputmode="decimal" min="0" max="270" step="0.5" aria-label="Maximaler Lenkwinkel nach links" autocomplete="off">
+            <span>°</span>
+          </div>
+        </div>
+        <div class="field">
+          <label for="steeringMid">Mitte</label>
+          <div class="number-input">
+            <input id="steeringMid" type="number" inputmode="decimal" min="0" max="270" step="0.5" aria-label="Neutralstellung des Lenkservos" autocomplete="off">
+            <span>°</span>
+          </div>
+        </div>
+        <div class="field">
+          <label for="steeringRight">Rechts (max.)</label>
+          <div class="number-input">
+            <input id="steeringRight" type="number" inputmode="decimal" min="0" max="270" step="0.5" aria-label="Maximaler Lenkwinkel nach rechts" autocomplete="off">
+            <span>°</span>
+          </div>
+        </div>
+      </div>
+    </section>
     <section class="settings-section">
       <h2>Motorgrenzen</h2>
       <p class="hint">Begrenzt den maximalen PWM-Anteil für den DC-Motor (0–100&nbsp;%).</p>
@@ -241,8 +314,13 @@
     const motorReverse = document.getElementById('motorReverse');
     const motorForwardValue = document.getElementById('motorForwardValue');
     const motorReverseValue = document.getElementById('motorReverseValue');
+    const steeringLeft = document.getElementById('steeringLeft');
+    const steeringMid = document.getElementById('steeringMid');
+    const steeringRight = document.getElementById('steeringRight');
+    const steeringInputs = [steeringLeft, steeringMid, steeringRight].filter((input) => input);
 
     let motorConfig = null;
+    let steeringConfig = null;
 
     const setStatus = (message, tone = '') => {
       if (!statusEl) {
@@ -342,27 +420,178 @@
       return { forward, reverse };
     };
 
-    async function loadMotorLimits() {
-      if (!motorForward || !motorReverse) {
+    const determineAnglePrecision = (step) => {
+      if (!Number.isFinite(step) || step <= 0) {
+        return 2;
+      }
+      if (step >= 1) {
+        return 0;
+      }
+      if (step >= 0.1) {
+        return 1;
+      }
+      return 2;
+    };
+
+    const quantizeAngle = (value, min, max, step) => {
+      const numeric = Number.parseFloat(value);
+      if (!Number.isFinite(numeric)) {
+        return null;
+      }
+      const limited = Math.max(min, Math.min(max, numeric));
+      if (!Number.isFinite(step) || step <= 0) {
+        return Number.parseFloat(limited.toFixed(3));
+      }
+      const steps = Math.round((limited - min) / step);
+      const quantized = min + steps * step;
+      const clamped = Math.max(min, Math.min(max, quantized));
+      return Number.parseFloat(clamped.toFixed(3));
+    };
+
+    const formatAngleInput = (value, precision) => {
+      if (!Number.isFinite(value)) {
+        return '';
+      }
+      const digits = Number.isInteger(precision) ? precision : 1;
+      const clampedDigits = Math.max(0, Math.min(3, digits));
+      const normalized = Number.parseFloat(value.toFixed(clampedDigits));
+      return Number.isFinite(normalized) ? String(normalized) : '';
+    };
+
+    const clampSteeringValue = (rawValue) => {
+      if (!steeringConfig) {
+        return null;
+      }
+      if (rawValue === undefined || rawValue === null) {
+        return null;
+      }
+      let candidate = rawValue;
+      if (typeof candidate === 'string') {
+        candidate = candidate.trim();
+        if (candidate === '') {
+          return null;
+        }
+        candidate = candidate.replace(',', '.');
+      }
+      const { min, max, step } = steeringConfig;
+      return quantizeAngle(candidate, min, max, step);
+    };
+
+    const applySteeringInputs = (values) => {
+      if (!steeringConfig) {
         return;
       }
+      const precision = steeringConfig.precision ?? 1;
+      if (steeringLeft) {
+        steeringLeft.value = formatAngleInput(values.left, precision);
+      }
+      if (steeringMid) {
+        steeringMid.value = formatAngleInput(values.mid, precision);
+      }
+      if (steeringRight) {
+        steeringRight.value = formatAngleInput(values.right, precision);
+      }
+    };
+
+    const revertSteeringInputs = () => {
+      if (!steeringConfig || !steeringConfig.values) {
+        steeringInputs.forEach((input) => {
+          input.value = '';
+        });
+        return;
+      }
+      applySteeringInputs(steeringConfig.values);
+    };
+
+    const syncSteeringAngles = (info) => {
+      if (steeringInputs.length === 0) {
+        return null;
+      }
+      if (
+        !info ||
+        !Number.isFinite(info.left) ||
+        !Number.isFinite(info.mid) ||
+        !Number.isFinite(info.right)
+      ) {
+        steeringConfig = null;
+        steeringInputs.forEach((input) => {
+          input.disabled = true;
+          input.value = '';
+        });
+        return null;
+      }
+      const min = Number.isFinite(info.min) ? info.min : 0;
+      const max = Number.isFinite(info.max) ? info.max : 270;
+      const step = Number.isFinite(info.step) && info.step > 0 ? info.step : 0.5;
+      const precision = determineAnglePrecision(step);
+      const left = quantizeAngle(info.left, min, max, step);
+      const mid = quantizeAngle(info.mid, min, max, step);
+      const right = quantizeAngle(info.right, min, max, step);
+      if (left === null || mid === null || right === null || !(left <= mid && mid <= right)) {
+        steeringConfig = null;
+        steeringInputs.forEach((input) => {
+          input.disabled = true;
+          input.value = '';
+        });
+        return null;
+      }
+      steeringConfig = {
+        min,
+        max,
+        step,
+        precision,
+        values: { left, mid, right },
+      };
+      steeringInputs.forEach((input) => {
+        input.disabled = false;
+        input.min = String(min);
+        input.max = String(max);
+        input.step = String(step);
+      });
+      applySteeringInputs(steeringConfig.values);
+      return steeringConfig.values;
+    };
+
+    const getCurrentSteeringValues = () => {
+      if (!steeringConfig) {
+        return null;
+      }
+      const left = clampSteeringValue(steeringLeft?.value);
+      const mid = clampSteeringValue(steeringMid?.value);
+      const right = clampSteeringValue(steeringRight?.value);
+      if (left === null || mid === null || right === null) {
+        return null;
+      }
+      if (!(left <= mid && mid <= right)) {
+        return null;
+      }
+      return { left, mid, right };
+    };
+
+    async function loadAdvancedSettings() {
       try {
-        setStatus('Lade Motor-Grenzen …');
+        setStatus('Lade Einstellungen …');
         const resp = await fetch('/api/state');
         if (!resp.ok) {
           throw new Error(`Status ${resp.status}`);
         }
         const data = await resp.json();
         const motorValues = syncMotorLimits(data.motor_limits);
-        if (motorValues) {
-          setStatus('Motor-Grenzen geladen.', 'success');
+        const steeringValues = syncSteeringAngles(data.steering_angles);
+        if (motorValues && steeringValues) {
+          setStatus('Motor-Grenzen und Lenkwinkel geladen.', 'success');
+        } else if (motorValues) {
+          setStatus('Motor-Grenzen geladen. Lenkwinkel nicht verfügbar.', 'success');
+        } else if (steeringValues) {
+          setStatus('Lenkwinkel geladen. Motor-Grenzen nicht verfügbar.', 'success');
         } else {
-          setStatus('Motor-Grenzen nicht verfügbar.', 'error');
+          setStatus('Keine erweiterten Einstellungen verfügbar.', 'error');
         }
       } catch (err) {
-        console.error('Laden der Motor-Grenzen fehlgeschlagen', err);
-        setStatus('Motor-Grenzen konnten nicht geladen werden.', 'error');
+        console.error('Laden der erweiterten Einstellungen fehlgeschlagen', err);
+        setStatus('Erweiterte Einstellungen konnten nicht geladen werden.', 'error');
         syncMotorLimits(null);
+        syncSteeringAngles(null);
       }
     }
 
@@ -381,6 +610,7 @@
           throw new Error(`Status ${resp.status}`);
         }
         const data = await resp.json();
+        syncSteeringAngles(data.steering_angles);
         const updated = syncMotorLimits(data.motor_limits);
         if (updated) {
           setStatus('Motor-Grenzen gespeichert.', 'success');
@@ -391,6 +621,42 @@
         console.error('Speichern der Motor-Grenzen fehlgeschlagen', err);
         setStatus('Motor-Grenzen konnten nicht gespeichert werden.', 'error');
       }
+    }
+
+    async function saveSteeringAngles(values) {
+      if (!values) {
+        return;
+      }
+      try {
+        setStatus('Speichere Lenkwinkel …');
+        const resp = await fetch('/api/control', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ steering_angles: values })
+        });
+        if (!resp.ok) {
+          throw new Error(`Status ${resp.status}`);
+        }
+        const data = await resp.json();
+        const updated = syncSteeringAngles(data.steering_angles);
+        syncMotorLimits(data.motor_limits);
+        if (updated) {
+          setStatus('Lenkwinkel gespeichert.', 'success');
+        } else {
+          setStatus('Lenkwinkel konnten nicht gespeichert werden.', 'error');
+        }
+      } catch (err) {
+        console.error('Speichern der Lenkwinkel fehlgeschlagen', err);
+        revertSteeringInputs();
+        setStatus('Lenkwinkel konnten nicht gespeichert werden.', 'error');
+      }
+    }
+
+    if (steeringInputs.length > 0) {
+      steeringInputs.forEach((input) => {
+        input.disabled = true;
+        input.value = '';
+      });
     }
 
     if (motorForward) {
@@ -444,7 +710,60 @@
       });
     }
 
-    loadMotorLimits();
+    if (steeringInputs.length > 0) {
+      const handleSteeringChange = () => {
+        const values = getCurrentSteeringValues();
+        if (!values) {
+          setStatus('Ungültige Lenkwinkel. Bitte Werte prüfen.', 'error');
+          revertSteeringInputs();
+          return;
+        }
+        if (
+          steeringConfig &&
+          steeringConfig.values &&
+          values.left === steeringConfig.values.left &&
+          values.mid === steeringConfig.values.mid &&
+          values.right === steeringConfig.values.right
+        ) {
+          applySteeringInputs(steeringConfig.values);
+          return;
+        }
+        applySteeringInputs(values);
+        saveSteeringAngles(values);
+      };
+      steeringInputs.forEach((input) => {
+        input.addEventListener('input', () => {
+          if (!steeringConfig) {
+            return;
+          }
+          const raw = input.value;
+          if (raw === undefined || raw === null) {
+            return;
+          }
+          const normalized = String(raw).trim();
+          if (
+            normalized === '' ||
+            normalized.endsWith('.') ||
+            normalized.endsWith(',') ||
+            normalized === '-' ||
+            normalized === '+'
+          ) {
+            return;
+          }
+          const value = clampSteeringValue(normalized);
+          if (value === null) {
+            return;
+          }
+          const formatted = formatAngleInput(value, steeringConfig.precision);
+          if (formatted !== raw) {
+            input.value = formatted;
+          }
+        });
+        input.addEventListener('change', handleSteeringChange);
+      });
+    }
+
+    loadAdvancedSettings();
   </script>
 </body>
 </html>
