@@ -1996,11 +1996,6 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
     BATTERY_PAGE_NAME = "battery.html"
     MORE_SETTINGS_PAGE_NAME = "more_settings.html"
     GAMEPAD_PAGE_NAME = "gamepad.html"
-    ASSET_PREFIX = "/assets/"
-    ASSET_CONTENT_TYPES = {
-        ".css": "text/css; charset=utf-8",
-        ".js": "application/javascript; charset=utf-8",
-    }
 
     def _write_response(self, status, body, content_type="text/html; charset=utf-8"):
         encoded = body.encode("utf-8")
@@ -2032,17 +2027,6 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         parsed = urlparse(self.path)
         path_only = parsed.path
-        if path_only.startswith(self.ASSET_PREFIX):
-            asset_name = path_only.lstrip("/")
-            try:
-                body = load_asset(asset_name)
-            except FileNotFoundError:
-                self._write_response(404, "Asset not found", "text/plain; charset=utf-8")
-                return
-            suffix = Path(asset_name).suffix.lower()
-            content_type = self.ASSET_CONTENT_TYPES.get(suffix, "text/plain; charset=utf-8")
-            self._write_response(200, body, content_type)
-            return
         if path_only in {"/settings/motor-limits", "/settings/steering-angles"}:
             target = "/more-settings"
             if parsed.query:
