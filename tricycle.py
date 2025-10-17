@@ -1109,6 +1109,24 @@ def sanitize_steering_angles(payload):
     return {"left": left, "mid": mid, "right": right}
 
 
+def sanitize_bool(value, *, default=False):
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        if math.isnan(value):
+            return default
+        return value != 0
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if not normalized:
+            return False
+        if normalized in {"1", "true", "on", "yes", "enable", "enabled"}:
+            return True
+        if normalized in {"0", "false", "off", "no", "disable", "disabled"}:
+            return False
+    return default
+
+
 def sanitize_web_axis(value):
     try:
         numeric = float(value)
@@ -1509,7 +1527,7 @@ class WebControlState:
             self._web_head_position = "center"
             return
 
-        enabled = bool(payload.get("enabled"))
+        enabled = sanitize_bool(payload.get("enabled"))
         if not enabled:
             self._web_override_enabled = False
             self._web_override_motor = 0.0
@@ -2542,7 +2560,7 @@ def main():
                     override_steering = 0.0
                     override_head_angle = None
                     if isinstance(override_snapshot, dict):
-                        override_enabled = bool(override_snapshot.get("enabled"))
+                        override_enabled = sanitize_bool(override_snapshot.get("enabled"))
                         if override_enabled:
                             motor_val = override_snapshot.get("motor")
                             if isinstance(motor_val, (int, float)) and math.isfinite(motor_val):
