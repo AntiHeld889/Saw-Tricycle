@@ -178,7 +178,6 @@
     button:hover { background: #ff1a25; }
     button:active { transform: translateY(1px); }
     button:disabled { opacity: 0.55; cursor: not-allowed; }
-    .audio-output { display: flex; flex-direction: column; gap: 0.4rem; }
     select {
       background: rgba(255,255,255,0.05);
       border: 1px solid rgba(255,255,255,0.12);
@@ -245,7 +244,6 @@
         height: 46px;
         border-radius: 12px;
       }
-      .audio-output { width: 100%; }
     }
     @media (max-width: 520px) {
       .card {
@@ -357,7 +355,7 @@
     </div>
     <div class="card-content">
       <div class="info-card system-card">
-        <h2>System</h2>
+        <h2>Übersicht</h2>
         <div class="system-overview">
           <a id="batteryIndicator" class="battery-indicator unavailable" aria-live="polite" title="Akkustand unbekannt" href="/battery">
             <svg viewBox="0 0 46 24" aria-hidden="true" focusable="false">
@@ -392,10 +390,6 @@
                 <path d="M19.14 12.94c.04-.31.06-.63.06-.94s-.02-.63-.06-.94l2.03-1.58a.5.5 0 0 0 .12-.64l-1.92-3.32a.5.5 0 0 0-.6-.22l-2.39.96a7.1 7.1 0 0 0-1.62-.94l-.36-2.54A.5.5 0 0 0 14.92 2h-3.84a.5.5 0 0 0-.5.43l-.36 2.54a7.1 7.1 0 0 0-1.62.94l-2.39-.96a.5.5 0 0 0-.6.22L3.69 8.45a.5.5 0 0 0 .12.64l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94l-2.03 1.58a.5.5 0 0 0-.12.64l1.92 3.32c.14.24.43.33.68.22l2.39-.96c.49.39 1.04.71 1.62.94l.36 2.54c.04.25.25.43.5.43h3.84c.25 0 .46-.18.5-.43l.36-2.54c.58-.23 1.13-.55 1.62-.94l2.39.96c.25.11.54.02.68-.22l1.92-3.32a.5.5 0 0 0-.12-.64zm-7.14 2.56a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z"/>
               </svg>
             </a>
-          </div>
-          <div class="audio-output">
-            <label for="audioDevice">Audioausgang</label>
-            <select id="audioDevice" aria-label="Audioausgang"></select>
           </div>
         </div>
       </div>
