@@ -499,6 +499,9 @@
       resendPending: false,
     };
 
+    const POLL_INTERVAL_MS = 2000;
+    let statePollTimer = null;
+
     const formatValue = (value) => `${value >= 0 ? '+' : ''}${value.toFixed(2)}`;
 
     const updateReadouts = () => {
@@ -611,11 +614,21 @@
       const payload = buildPayload();
       state.sendInFlight = true;
       try {
-        await fetch('/api/control', {
+        const resp = await fetch('/api/control', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
         });
+        if (resp && resp.ok) {
+          try {
+            const data = await resp.json();
+            applySnapshot(data);
+          } catch (err) {
+            console.error('Antwort des Servers konnte nicht gelesen werden', err);
+          }
+        } else if (resp) {
+          console.error('Server meldet einen Fehler beim Senden', resp.status);
+        }
       } catch (err) {
         console.error('Senden fehlgeschlagen', err);
       } finally {
@@ -624,6 +637,7 @@
           state.resendPending = false;
           flushSend();
         }
+        scheduleStatePoll();
       }
     };
 
@@ -776,9 +790,36 @@
       updateHeadButtons();
     };
 
+    function scheduleStatePoll(delay = POLL_INTERVAL_MS) {
+      if (statePollTimer !== null) {
+        window.clearTimeout(statePollTimer);
+      }
+      statePollTimer = window.setTimeout(() => {
+        statePollTimer = null;
+        pollState().catch(() => {
+          // Fehler wird bereits innerhalb von pollState protokolliert.
+        });
+      }, Math.max(0, delay));
+    }
+
+    async function pollState() {
+      try {
+        const resp = await fetch('/api/state', { cache: 'no-store' });
+        if (!resp.ok) {
+          throw new Error(`HTTP ${resp.status}`);
+        }
+        const data = await resp.json();
+        applySnapshot(data);
+      } catch (err) {
+        console.error('Statusaktualisierung fehlgeschlagen', err);
+      } finally {
+        scheduleStatePoll();
+      }
+    }
+
     const loadInitialState = async () => {
       try {
-        const resp = await fetch('/api/state');
+        const resp = await fetch('/api/state', { cache: 'no-store' });
         if (!resp.ok) {
           throw new Error(`HTTP ${resp.status}`);
         }
@@ -790,6 +831,8 @@
         renderAllAxes();
         updateReadouts();
         updateHeadButtons();
+      } finally {
+        scheduleStatePoll();
       }
     };
 
