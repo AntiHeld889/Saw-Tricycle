@@ -55,6 +55,7 @@ BUTTON_DEFINITIONS = [{"code": code, "label": label} for code, label in BUTTON_L
 BUTTON_MODE_NONE = "none"
 BUTTON_MODE_MP3 = "mp3"
 BUTTON_MODE_COMMAND = "command"
+BUTTON_MODE_DISABLE_OVERRIDE = "disable_web_override"
 
 # ---- Servo 1 (Lenkung auf ABS_Z) ----
 GPIO_PIN_SERVO       = 17
@@ -753,6 +754,8 @@ def sanitize_button_action(code, value, available_files=None):
         if command:
             return {"mode": BUTTON_MODE_COMMAND, "value": command}
         return None
+    if mode == BUTTON_MODE_DISABLE_OVERRIDE:
+        return {"mode": BUTTON_MODE_DISABLE_OVERRIDE}
     if mode == BUTTON_MODE_NONE:
         return None
     return None
@@ -1566,6 +1569,24 @@ class WebControlState:
             "head_angle": round(self._web_head_override, 3),
             "head_position": self._web_head_position,
         }
+
+    def disable_web_override(self):
+        with self._lock:
+            changed = (
+                self._web_override_enabled
+                or self._web_override_motor
+                or self._web_override_steering
+                or self._web_head_position != "center"
+                or self._web_head_override != self._head_angles["mid"]
+            )
+            self._web_override_enabled = False
+            self._web_override_motor = 0.0
+            self._web_override_steering = 0.0
+            self._web_head_override = self._head_angles["mid"]
+            self._web_head_position = "center"
+            if changed:
+                self._last_update = time.time()
+            return changed
 
     def _build_button_actions_snapshot_locked(self):
         assignments = {}
@@ -2613,6 +2634,8 @@ def main():
                                                         f"[Button] Kommando konnte nicht gestartet werden ({button_code}): {exc}",
                                                         file=sys.stderr,
                                                     )
+                                        elif mode == BUTTON_MODE_DISABLE_OVERRIDE:
+                                            web_state.disable_web_override()
 
                             e = dev.read_one()
                     except OSError as exc:

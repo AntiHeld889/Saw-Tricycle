@@ -8,18 +8,25 @@ try:
     import board
     import adafruit_ina260
 except ImportError as exc:  # pragma: no cover - abhängig von Hardware-Setup
-    print(
-        "Fehler: Benötigte Bibliotheken konnten nicht importiert werden:"
-        f" {exc}.\n"
-        "Installiere 'adafruit-circuitpython-ina260' und stelle sicher, dass"
-        " I2C aktiviert ist.",
-        file=sys.stderr,
-    )
-    sys.exit(1)
+    board = None  # type: ignore[assignment]
+    adafruit_ina260 = None  # type: ignore[assignment]
+    _IMPORT_ERROR: Exception | None = exc
+else:
+    _IMPORT_ERROR = None
 
 
 def main() -> int:
     """Initialisiert den Sensor und gibt laufend Messwerte aus."""
+    if _IMPORT_ERROR is not None:
+        print(
+            "Fehler: Benötigte Bibliotheken konnten nicht importiert werden:",
+            f" {_IMPORT_ERROR}.\n"
+            "Installiere 'adafruit-circuitpython-ina260' und stelle sicher, dass",
+            " I2C aktiviert ist.",
+            file=sys.stderr,
+        )
+        return 1
+
     try:
         i2c = board.I2C()  # type: ignore[call-arg]
     except Exception as exc:  # pragma: no cover - abhängig von Hardware-Setup
