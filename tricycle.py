@@ -17,6 +17,8 @@ CAMERA_PORT_DEFAULT = None
 CAMERA_PORT_MIN = 1
 CAMERA_PORT_MAX = 65535
 
+LIGHT_URL_DEFAULT = None
+
 # Vorkonfigurierte Audioausgänge für Web-Dropdown (ID, Label, ALSA-Device, Setup-Kommandos)
 HEADPHONE_ROUTE_COMMANDS = [
     ["amixer", "-q", "cset", "numid=3", "1"],             # 0=auto, 1=analog, 2=HDMI (älteres RPi-OS)
@@ -694,6 +696,33 @@ def sanitize_camera_port(value):
     return str(numeric)
 
 
+def sanitize_light_url(value, *, allowed_schemes=("http", "https")):
+    if value is None:
+        return None
+    try:
+        raw = str(value).strip()
+    except Exception:
+        return None
+    if not raw:
+        return None
+    if any(ch.isspace() for ch in raw):
+        return None
+    normalized = raw
+    if "://" not in normalized:
+        normalized = f"http://{normalized}"
+    try:
+        parsed = urlparse(normalized)
+    except Exception:
+        return None
+    scheme = (parsed.scheme or "").lower()
+    if scheme not in allowed_schemes:
+        return None
+    if not parsed.netloc:
+        return None
+    sanitized = parsed._replace(scheme=scheme)
+    return sanitized.geturl()
+
+
 def sanitize_disconnect_command(value, *, max_length=1024):
     if value is None:
         return None
@@ -873,9 +902,11 @@ def load_persisted_link_settings():
     stored = data.get("links") if isinstance(data, dict) else {}
     soundboard_port = None
     camera_port = None
+    light_url = None
     if isinstance(stored, dict):
         soundboard_port = sanitize_soundboard_port(stored.get("soundboard_port"))
         camera_port = sanitize_camera_port(stored.get("camera_port"))
+        light_url = sanitize_light_url(stored.get("light_url"))
     if (soundboard_port is None or camera_port is None) and isinstance(data, dict):
         legacy_sound = data.get("sound")
         if isinstance(legacy_sound, dict):
@@ -890,10 +921,13 @@ def load_persisted_link_settings():
         if soundboard_port is not None
         else SOUNDBOARD_PORT_DEFAULT,
         "camera_port": camera_port if camera_port is not None else CAMERA_PORT_DEFAULT,
+        "light_url": light_url if light_url is not None else LIGHT_URL_DEFAULT,
     }
 
 
-def persist_link_settings(*, soundboard_port=_UNSET, camera_port=_UNSET):
+def persist_link_settings(
+    *, soundboard_port=_UNSET, camera_port=_UNSET, light_url=_UNSET
+):
     payload = _load_persisted_state()
     link_state = payload.get("links") if isinstance(payload, dict) else {}
     if not isinstance(link_state, dict):
@@ -910,6 +944,12 @@ def persist_link_settings(*, soundboard_port=_UNSET, camera_port=_UNSET):
             link_state.pop("camera_port", None)
         else:
             link_state["camera_port"] = sanitized_camera
+    if light_url is not _UNSET:
+        sanitized_url = sanitize_light_url(light_url)
+        if sanitized_url is None:
+            link_state.pop("light_url", None)
+        else:
+            link_state["light_url"] = sanitized_url
     if link_state:
         payload["links"] = link_state
     else:
@@ -1418,6 +1458,7 @@ class WebControlState:
         initial_disconnect_command=None,
         initial_soundboard_port=None,
         initial_camera_port=None,
+        initial_light_url=None,
         initial_button_actions=None,
         battery_monitor=None,
     ):
@@ -1443,6 +1484,7 @@ class WebControlState:
         self._disconnect_command = sanitize_disconnect_command(initial_disconnect_command)
         self._soundboard_port = sanitize_soundboard_port(initial_soundboard_port)
         self._camera_port = sanitize_camera_port(initial_camera_port)
+        self._light_url = sanitize_light_url(initial_light_url)
         self._button_actions = normalize_button_actions_map(initial_button_actions)
         self._refresh_sound_files_locked()
         self._motor_limit_forward = MOTOR_LIMIT_FWD
@@ -1528,6 +1570,7 @@ class WebControlState:
             "startup_sound": self._startup_sound,
             "soundboard_port": self._soundboard_port,
             "camera_port": self._camera_port,
+            "light_url": self._light_url,
         }
 
     def _build_gamepad_snapshot_locked(self):
@@ -1709,6 +1752,7 @@ class WebControlState:
         disconnect_command=None,
         soundboard_port=None,
         camera_port=None,
+        light_url=None,
         web_override=None,
         button_actions=None,
     ):
@@ -1730,6 +1774,7 @@ class WebControlState:
             previous_disconnect_command = self._disconnect_command
             previous_soundboard_port = self._soundboard_port
             previous_camera_port = self._camera_port
+            previous_light_url = self._light_url
             if audio_device is not None:
                 audio_id = str(audio_device)
                 if audio_id in _AUDIO_OUTPUT_MAP and audio_id != self._audio_device:
@@ -1832,6 +1877,10 @@ class WebControlState:
                 sanitized_camera = sanitize_camera_port(camera_port)
                 if sanitized_camera != self._camera_port:
                     self._camera_port = sanitized_camera
+            if light_url is not None:
+                sanitized_url = sanitize_light_url(light_url)
+                if sanitized_url != self._light_url:
+                    self._light_url = sanitized_url
             if web_override is not None:
                 self._apply_web_override_locked(web_override)
             self._ensure_sound_selections_locked()
@@ -1851,10 +1900,12 @@ class WebControlState:
             if (
                 self._soundboard_port != previous_soundboard_port
                 or self._camera_port != previous_camera_port
+                or self._light_url != previous_light_url
             ):
                 link_settings_to_persist = {
                     "soundboard_port": self._soundboard_port,
                     "camera_port": self._camera_port,
+                    "light_url": self._light_url,
                 }
             if self._disconnect_command != previous_disconnect_command:
                 gamepad_settings_to_persist = {
@@ -2126,6 +2177,7 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
                 disconnect_command=data.get("disconnect_command"),
                 soundboard_port=data.get("soundboard_port"),
                 camera_port=data.get("camera_port"),
+                light_url=data.get("light_url"),
                 web_override=data.get("web_override"),
                 button_actions=data.get("button_actions"),
             )
@@ -2497,6 +2549,7 @@ def main():
         initial_disconnect_command=persisted_gamepad.get("disconnect_command"),
         initial_soundboard_port=persisted_links.get("soundboard_port"),
         initial_camera_port=persisted_links.get("camera_port"),
+        initial_light_url=persisted_links.get("light_url"),
         initial_button_actions=persisted_button_actions,
         battery_monitor=battery_monitor,
     )
