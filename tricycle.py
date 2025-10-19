@@ -13,6 +13,8 @@ SOUNDBOARD_PORT_DEFAULT = None
 SOUNDBOARD_PORT_MIN = 1
 SOUNDBOARD_PORT_MAX = 65535
 
+MAX_SOUND_UPLOAD_SIZE = 20 * 1024 * 1024      # 20 MB Upload-Limit für MP3-Dateien
+
 CAMERA_PORT_DEFAULT = None
 CAMERA_PORT_MIN = 1
 CAMERA_PORT_MAX = 65535
@@ -166,6 +168,8 @@ import time
 import json
 import threading
 import subprocess
+import io
+import cgi
 from functools import lru_cache
 from pathlib import Path
 from types import MappingProxyType
@@ -629,6 +633,38 @@ def sanitize_sound_directory(path):
     return absolute
 
 
+def sanitize_uploaded_mp3_filename(filename):
+    if filename is None:
+        return None
+    try:
+        raw_name = os.path.basename(str(filename))
+    except Exception:
+        return None
+    raw_name = raw_name.replace("\\", "/")
+    raw_name = os.path.basename(raw_name)
+    raw_name = raw_name.strip()
+    if not raw_name or raw_name in {".", ".."}:
+        return None
+    if not raw_name.lower().endswith(".mp3"):
+        return None
+    stem = raw_name[: -4].strip()
+    if not stem:
+        return None
+    sanitized_stem = re.sub(r"[^0-9A-Za-zäöüÄÖÜß()\[\]{} _.-]", "_", stem)
+    sanitized_stem = re.sub(r"\s+", " ", sanitized_stem).strip()
+    sanitized_stem = re.sub(r"__+", "_", sanitized_stem)
+    if not sanitized_stem or sanitized_stem in {".", ".."}:
+        return None
+    sanitized = f"{sanitized_stem}.mp3"
+    if len(sanitized) > 255:
+        sanitized = sanitized[:255]
+        if not sanitized.lower().endswith(".mp3"):
+            sanitized = sanitized[:251] + ".mp3"
+    if "/" in sanitized or "\\" in sanitized:
+        return None
+    return sanitized
+
+
 def sanitize_soundboard_port(value):
     if value is None:
         return None
@@ -838,6 +874,18 @@ def list_mp3_files(directory):
         return sorted(files, key=str.casefold)
     except Exception:
         return []
+
+
+def ensure_unique_filename(directory, filename, *, max_attempts=1000):
+    base, ext = os.path.splitext(filename)
+    candidate = filename
+    counter = 1
+    while os.path.exists(os.path.join(directory, candidate)):
+        candidate = f"{base} ({counter}){ext}"
+        counter += 1
+        if counter > max_attempts:
+            raise FileExistsError("Zu viele Dateien mit ähnlichem Namen vorhanden")
+    return candidate
 
 
 def load_persisted_sound_settings():
@@ -1714,6 +1762,10 @@ class WebControlState:
             return None
         return resolved
 
+    def get_sound_directory(self):
+        with self._lock:
+            return self._sound_directory
+
     def _build_volume_snapshot_locked(self):
         audio_id = self._audio_device
         profile = get_audio_volume_profile(audio_id)
@@ -1939,6 +1991,16 @@ class WebControlState:
             apply_audio_volume(*apply_volume_change)
         return self._finalize_snapshot(snapshot)
 
+    def refresh_sound_files(self):
+        button_actions_to_persist = None
+        with self._lock:
+            if self._refresh_sound_files_locked():
+                button_actions_to_persist = dict(self._button_actions)
+            snapshot = self.snapshot_locked()
+        if button_actions_to_persist is not None:
+            persist_button_actions(button_actions_to_persist)
+        return self._finalize_snapshot(snapshot)
+
     def snapshot(self):
         with self._lock:
             snapshot = self.snapshot_locked()
@@ -2086,6 +2148,161 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
         if data:
             self.wfile.write(data)
 
+    def _write_json_response(self, status, payload):
+        body = json.dumps(payload)
+        self._write_response(status, body, "application/json")
+
+    def _handle_sound_upload(self):
+        if not self.control_state:
+            self._write_json_response(
+                503,
+                {"status": "error", "message": "Sound-Upload ist nicht verfügbar."},
+            )
+            return
+        directory = self.control_state.get_sound_directory() if hasattr(self.control_state, "get_sound_directory") else None
+        if not directory:
+            self._write_json_response(
+                400,
+                {"status": "error", "message": "Kein MP3-Verzeichnis konfiguriert."},
+            )
+            return
+        content_type = self.headers.get("Content-Type", "")
+        if "multipart/form-data" not in content_type.lower():
+            self._write_json_response(
+                400,
+                {"status": "error", "message": "Ungültiger Inhaltstyp."},
+            )
+            return
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+        except ValueError:
+            length = 0
+        if length <= 0:
+            self._write_json_response(
+                400,
+                {"status": "error", "message": "Es wurde keine Datei übertragen."},
+            )
+            return
+        if length > MAX_SOUND_UPLOAD_SIZE + 65536:
+            remaining = length
+            while remaining > 0:
+                chunk = self.rfile.read(min(65536, remaining))
+                if not chunk:
+                    break
+                remaining -= len(chunk)
+            self._write_json_response(
+                413,
+                {
+                    "status": "error",
+                    "message": "MP3-Datei überschreitet das Upload-Limit von 20 MB.",
+                },
+            )
+            return
+        raw = self.rfile.read(length)
+        if not raw:
+            self._write_json_response(
+                400,
+                {"status": "error", "message": "Es wurde keine Datei übertragen."},
+            )
+            return
+        try:
+            form = cgi.FieldStorage(
+                fp=io.BytesIO(raw),
+                headers=self.headers,
+                environ={
+                    "REQUEST_METHOD": "POST",
+                    "CONTENT_TYPE": content_type,
+                    "CONTENT_LENGTH": str(len(raw)),
+                },
+                keep_blank_values=True,
+            )
+        except Exception:
+            self._write_json_response(
+                400,
+                {"status": "error", "message": "Upload konnte nicht verarbeitet werden."},
+            )
+            return
+        file_item = None
+        items = getattr(form, "list", None)
+        if items:
+            for item in items:
+                if getattr(item, "name", None) == "file" and getattr(item, "filename", None):
+                    file_item = item
+                    break
+        elif getattr(form, "filename", None):
+            file_item = form
+        if file_item is None:
+            self._write_json_response(
+                400,
+                {"status": "error", "message": "Keine MP3-Datei ausgewählt."},
+            )
+            return
+        filename = sanitize_uploaded_mp3_filename(getattr(file_item, "filename", ""))
+        if not filename:
+            self._write_json_response(
+                400,
+                {"status": "error", "message": "Dateiname ist ungültig oder keine MP3-Datei."},
+            )
+            return
+        file_content = b""
+        try:
+            if file_item.file:
+                file_item.file.seek(0)
+                file_content = file_item.file.read()
+        except Exception:
+            file_content = b""
+        if not file_content:
+            self._write_json_response(
+                400,
+                {"status": "error", "message": "Die hochgeladene Datei ist leer."},
+            )
+            return
+        if len(file_content) > MAX_SOUND_UPLOAD_SIZE:
+            self._write_json_response(
+                413,
+                {
+                    "status": "error",
+                    "message": "MP3-Datei überschreitet das Upload-Limit von 20 MB.",
+                },
+            )
+            return
+        target_dir = Path(directory)
+        try:
+            target_dir.mkdir(parents=True, exist_ok=True)
+        except OSError:
+            self._write_json_response(
+                500,
+                {"status": "error", "message": "MP3-Verzeichnis kann nicht erstellt werden."},
+            )
+            return
+        try:
+            final_name = ensure_unique_filename(str(target_dir), filename)
+        except FileExistsError:
+            self._write_json_response(
+                409,
+                {
+                    "status": "error",
+                    "message": "Datei konnte nicht gespeichert werden (Namenskonflikt).",
+                },
+            )
+            return
+        try:
+            target_path = target_dir / final_name
+            with open(target_path, "wb") as handle:
+                handle.write(file_content)
+        except OSError:
+            self._write_json_response(
+                500,
+                {"status": "error", "message": "MP3-Datei konnte nicht gespeichert werden."},
+            )
+            return
+        snapshot = self.control_state.refresh_sound_files()
+        payload = dict(snapshot)
+        payload["uploaded_file"] = final_name
+        payload["upload_message"] = f"MP3 \u201e{final_name}\u201c hochgeladen."
+        payload["status"] = "ok"
+        self._write_json_response(200, payload)
+
     def do_GET(self):
         parsed = urlparse(self.path)
         path_only = parsed.path
@@ -2151,6 +2368,9 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
         self._write_response(404, "Not found", "text/plain; charset=utf-8")
 
     def do_POST(self):
+        if self.path == "/api/sounds/upload":
+            self._handle_sound_upload()
+            return
         if not self.path.startswith("/api/control"):
             self._write_response(404, "Not found", "text/plain; charset=utf-8")
             return
