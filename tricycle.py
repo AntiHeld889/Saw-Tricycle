@@ -91,13 +91,24 @@ SERVO_SAFE_START_S   = 0.8
 SERVO_ARM_NEUTRAL_MS = 400
 SERVO_NEUTRAL_THRESH = 0.08
 
-# ---- Motor (Cytron MD13S) ----
+# ---- Motor (Cytron MDD10A) ----
 MOTOR_AXIS_CENTERED_NAME = "ABS_Y"
 MOTOR_AXIS_GAS_NAME      = "ABS_GAS"
 MOTOR_AXIS_BRAKE_NAME    = "ABS_BRAKE"
 
-GPIO_PIN_MOTOR_PWM   = 18
-GPIO_PIN_MOTOR_DIR   = 27
+MOTOR_DRIVER_CHANNELS = (
+    {
+        "pwm": 13,
+        "dir": 6,
+        "forward_high": True,
+    },
+    {
+        # Zweiter Kanal für gebrückte Ausgänge
+        "pwm": 19,
+        "dir": 26,
+        "forward_high": True,
+    },
+)
 PWM_FREQ_HZ          = 20000
 INVERT_MOTOR         = True
 
@@ -2161,6 +2172,15 @@ def validate_configuration():
     if SERVO_ARM_NEUTRAL_MS <= 0 or MOTOR_ARM_NEUTRAL_MS <= 0:
         raise ValueError("ARM_NEUTRAL_MS Werte müssen positiv sein")
 
+    if not MOTOR_DRIVER_CHANNELS:
+        raise ValueError("MOTOR_DRIVER_CHANNELS darf nicht leer sein")
+
+    for idx, channel in enumerate(MOTOR_DRIVER_CHANNELS, start=1):
+        pwm_pin = channel.get("pwm")
+        dir_pin = channel.get("dir")
+        if pwm_pin is None and dir_pin is None:
+            raise ValueError(f"Motor-Kanal {idx} benötigt mindestens einen definierten Pin")
+
     if not AUDIO_OUTPUTS:
         raise ValueError("AUDIO_OUTPUTS darf nicht leer sein")
 
@@ -2375,35 +2395,59 @@ def read_abs(dev, code):
 
 
 # --------- pigpio / Motor-Pins ---------
-def setup_motor_pins(pi):
-    pi.set_mode(GPIO_PIN_MOTOR_DIR, pigpio.OUTPUT)
-    pi.write(GPIO_PIN_MOTOR_DIR, 0)
-    pi.hardware_PWM(GPIO_PIN_MOTOR_PWM, PWM_FREQ_HZ, 0)
+_last_motor_directions = []
 
-_last_motor_direction = None
+
+def setup_motor_pins(pi):
+    global _last_motor_directions
+
+    _last_motor_directions = [None] * len(MOTOR_DRIVER_CHANNELS)
+    for channel in MOTOR_DRIVER_CHANNELS:
+        dir_pin = channel.get("dir")
+        pwm_pin = channel.get("pwm")
+        if dir_pin is not None:
+            pi.set_mode(dir_pin, pigpio.OUTPUT)
+            initial_dir = 0 if channel.get("forward_high", True) else 1
+            pi.write(dir_pin, initial_dir)
+        if pwm_pin is not None:
+            pi.hardware_PWM(pwm_pin, PWM_FREQ_HZ, 0)
 
 
 def set_motor(pi, speed_norm):
-    global _last_motor_direction
+    global _last_motor_directions
 
     s = clamp(speed_norm, -1.0, +1.0)
     if abs(s) < 1e-3:
-        pi.hardware_PWM(GPIO_PIN_MOTOR_PWM, PWM_FREQ_HZ, 0)
-        _last_motor_direction = None
+        for idx, channel in enumerate(MOTOR_DRIVER_CHANNELS):
+            pwm_pin = channel.get("pwm")
+            if pwm_pin is not None:
+                pi.hardware_PWM(pwm_pin, PWM_FREQ_HZ, 0)
+            _last_motor_directions[idx] = None
         return
 
     direction = 1 if s > 0 else 0
-    if _last_motor_direction is None:
-        pi.write(GPIO_PIN_MOTOR_DIR, direction)
-    elif direction != _last_motor_direction:
-        pi.hardware_PWM(GPIO_PIN_MOTOR_PWM, PWM_FREQ_HZ, 0)
-        if MOTOR_DIR_SWITCH_PAUSE_S > 0:
-            time.sleep(MOTOR_DIR_SWITCH_PAUSE_S)
-        pi.write(GPIO_PIN_MOTOR_DIR, direction)
-
     duty = int(abs(s) * 1_000_000)   # pigpio hardware_PWM erwartet 0..1_000_000
-    pi.hardware_PWM(GPIO_PIN_MOTOR_PWM, PWM_FREQ_HZ, duty)
-    _last_motor_direction = direction
+
+    for idx, channel in enumerate(MOTOR_DRIVER_CHANNELS):
+        dir_pin = channel.get("dir")
+        pwm_pin = channel.get("pwm")
+        forward_high = channel.get("forward_high", True)
+        desired_dir = direction if forward_high else 1 - direction
+
+        if dir_pin is not None:
+            last_dir = _last_motor_directions[idx]
+            if last_dir is None:
+                pi.write(dir_pin, desired_dir)
+            elif desired_dir != last_dir:
+                if pwm_pin is not None:
+                    pi.hardware_PWM(pwm_pin, PWM_FREQ_HZ, 0)
+                if MOTOR_DIR_SWITCH_PAUSE_S > 0:
+                    time.sleep(MOTOR_DIR_SWITCH_PAUSE_S)
+                pi.write(dir_pin, desired_dir)
+            _last_motor_directions[idx] = desired_dir
+
+        if pwm_pin is not None:
+            pi.hardware_PWM(pwm_pin, PWM_FREQ_HZ, duty)
 
 
 # --------- Main ---------
