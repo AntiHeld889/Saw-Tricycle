@@ -13,6 +13,10 @@ SOUNDBOARD_PORT_DEFAULT = None
 SOUNDBOARD_PORT_MIN = 1
 SOUNDBOARD_PORT_MAX = 65535
 
+WEB_PORT_DEFAULT = 8081
+WEB_PORT_MIN = 1
+WEB_PORT_MAX = 65535
+
 MAX_SOUND_UPLOAD_SIZE = 20 * 1024 * 1024      # 20 MB Upload-Limit für MP3-Dateien
 
 CAMERA_PORT_DEFAULT = None
@@ -683,6 +687,24 @@ def sanitize_soundboard_port(value):
     return numeric
 
 
+def sanitize_web_port(value):
+    if value is None:
+        return None
+    try:
+        if isinstance(value, str):
+            stripped = value.strip()
+            if not stripped:
+                return None
+            numeric = int(stripped, 10)
+        else:
+            numeric = int(value)
+    except (TypeError, ValueError):
+        return None
+    if not (WEB_PORT_MIN <= numeric <= WEB_PORT_MAX):
+        return None
+    return numeric
+
+
 def sanitize_camera_port(value):
     if value is None:
         return None
@@ -951,10 +973,12 @@ def load_persisted_link_settings():
     soundboard_port = None
     camera_port = None
     light_url = None
+    web_port = None
     if isinstance(stored, dict):
         soundboard_port = sanitize_soundboard_port(stored.get("soundboard_port"))
         camera_port = sanitize_camera_port(stored.get("camera_port"))
         light_url = sanitize_light_url(stored.get("light_url"))
+        web_port = sanitize_web_port(stored.get("web_port"))
     if (soundboard_port is None or camera_port is None) and isinstance(data, dict):
         legacy_sound = data.get("sound")
         if isinstance(legacy_sound, dict):
@@ -970,11 +994,12 @@ def load_persisted_link_settings():
         else SOUNDBOARD_PORT_DEFAULT,
         "camera_port": camera_port if camera_port is not None else CAMERA_PORT_DEFAULT,
         "light_url": light_url if light_url is not None else LIGHT_URL_DEFAULT,
+        "web_port": web_port if web_port is not None else WEB_PORT_DEFAULT,
     }
 
 
 def persist_link_settings(
-    *, soundboard_port=_UNSET, camera_port=_UNSET, light_url=_UNSET
+    *, soundboard_port=_UNSET, camera_port=_UNSET, light_url=_UNSET, web_port=_UNSET
 ):
     payload = _load_persisted_state()
     link_state = payload.get("links") if isinstance(payload, dict) else {}
@@ -998,6 +1023,12 @@ def persist_link_settings(
             link_state.pop("light_url", None)
         else:
             link_state["light_url"] = sanitized_url
+    if web_port is not _UNSET:
+        sanitized_web = sanitize_web_port(web_port)
+        if sanitized_web is None:
+            link_state.pop("web_port", None)
+        else:
+            link_state["web_port"] = sanitized_web
     if link_state:
         payload["links"] = link_state
     else:
@@ -1507,6 +1538,7 @@ class WebControlState:
         initial_soundboard_port=None,
         initial_camera_port=None,
         initial_light_url=None,
+        initial_web_port=None,
         initial_button_actions=None,
         battery_monitor=None,
     ):
@@ -1533,7 +1565,11 @@ class WebControlState:
         self._soundboard_port = sanitize_soundboard_port(initial_soundboard_port)
         self._camera_port = sanitize_camera_port(initial_camera_port)
         self._light_url = sanitize_light_url(initial_light_url)
-        self._button_actions = normalize_button_actions_map(initial_button_actions)
+        self._web_port = sanitize_web_port(initial_web_port)
+        if self._web_port is None:
+            self._web_port = WEB_PORT_DEFAULT
+        normalized_actions = normalize_button_actions_map(initial_button_actions)
+        self._button_actions = normalized_actions if normalized_actions is not None else {}
         self._refresh_sound_files_locked()
         self._motor_limit_forward = MOTOR_LIMIT_FWD
         self._motor_limit_reverse = MOTOR_LIMIT_REV
@@ -1619,6 +1655,7 @@ class WebControlState:
             "soundboard_port": self._soundboard_port,
             "camera_port": self._camera_port,
             "light_url": self._light_url,
+            "web_port": self._web_port,
         }
 
     def _build_gamepad_snapshot_locked(self):
@@ -1766,6 +1803,10 @@ class WebControlState:
         with self._lock:
             return self._sound_directory
 
+    def get_web_port(self):
+        with self._lock:
+            return self._web_port
+
     def _build_volume_snapshot_locked(self):
         audio_id = self._audio_device
         profile = get_audio_volume_profile(audio_id)
@@ -1805,6 +1846,7 @@ class WebControlState:
         soundboard_port=None,
         camera_port=None,
         light_url=None,
+        web_port=None,
         web_override=None,
         button_actions=None,
     ):
@@ -1827,6 +1869,7 @@ class WebControlState:
             previous_soundboard_port = self._soundboard_port
             previous_camera_port = self._camera_port
             previous_light_url = self._light_url
+            previous_web_port = self._web_port
             if audio_device is not None:
                 audio_id = str(audio_device)
                 if audio_id in _AUDIO_OUTPUT_MAP and audio_id != self._audio_device:
@@ -1933,6 +1976,12 @@ class WebControlState:
                 sanitized_url = sanitize_light_url(light_url)
                 if sanitized_url != self._light_url:
                     self._light_url = sanitized_url
+            if web_port is not None:
+                sanitized_web = sanitize_web_port(web_port)
+                if sanitized_web is None:
+                    sanitized_web = WEB_PORT_DEFAULT
+                if sanitized_web != self._web_port:
+                    self._web_port = sanitized_web
             if web_override is not None:
                 self._apply_web_override_locked(web_override)
             self._ensure_sound_selections_locked()
@@ -1953,11 +2002,13 @@ class WebControlState:
                 self._soundboard_port != previous_soundboard_port
                 or self._camera_port != previous_camera_port
                 or self._light_url != previous_light_url
+                or self._web_port != previous_web_port
             ):
                 link_settings_to_persist = {
                     "soundboard_port": self._soundboard_port,
                     "camera_port": self._camera_port,
                     "light_url": self._light_url,
+                    "web_port": self._web_port,
                 }
             if self._disconnect_command != previous_disconnect_command:
                 gamepad_settings_to_persist = {
@@ -2398,6 +2449,7 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
                 soundboard_port=data.get("soundboard_port"),
                 camera_port=data.get("camera_port"),
                 light_url=data.get("light_url"),
+                web_port=data.get("web_port"),
                 web_override=data.get("web_override"),
                 button_actions=data.get("button_actions"),
             )
@@ -2410,11 +2462,17 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
         return
 
 
-def start_webserver(state):
-    """Startet den HTTP-Server für die Websteuerung auf Port 8081."""
+def start_webserver(state, port=WEB_PORT_DEFAULT):
+    """Startet den HTTP-Server für die Websteuerung."""
 
     ControlRequestHandler.control_state = state
-    server = ThreadingHTTPServer(("0.0.0.0", 8081), ControlRequestHandler)
+    try:
+        bound_port = int(port)
+    except (TypeError, ValueError):
+        bound_port = WEB_PORT_DEFAULT
+    if not (WEB_PORT_MIN <= bound_port <= WEB_PORT_MAX):
+        bound_port = WEB_PORT_DEFAULT
+    server = ThreadingHTTPServer(("0.0.0.0", bound_port), ControlRequestHandler)
 
     thread = threading.Thread(target=server.serve_forever, name="web-control", daemon=True)
     thread.start()
@@ -2770,13 +2828,15 @@ def main():
         initial_soundboard_port=persisted_links.get("soundboard_port"),
         initial_camera_port=persisted_links.get("camera_port"),
         initial_light_url=persisted_links.get("light_url"),
+        initial_web_port=persisted_links.get("web_port"),
         initial_button_actions=persisted_button_actions,
         battery_monitor=battery_monitor,
     )
     web_server = None
     try:
-        web_server = start_webserver(web_state)
-        print("Websteuerung aktiv: http://<IP>:8081/ (Override schaltet Gamepad aus)")
+        port = web_state.get_web_port()
+        web_server = start_webserver(web_state, port=port)
+        print(f"Websteuerung aktiv: http://<IP>:{port}/ (Override schaltet Gamepad aus)")
     except Exception as exc:
         print(f"Webserver konnte nicht gestartet werden: {exc}", file=sys.stderr)
         web_server = None
