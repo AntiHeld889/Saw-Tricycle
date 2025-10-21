@@ -34,7 +34,6 @@ HEADPHONE_ROUTE_COMMANDS = [
 
 # Gleiches File bei erneutem Tastendruck neu starten?
 RESTART_SAME_TRACK   = True
-PLAYER_FAIL_FAST_GRACE_S = 0.2  # Zeitfenster um fehlgeschlagene Player sofort zu erkennen
 
 _UNSET = object()
 
@@ -64,17 +63,10 @@ BUTTON_DEFINITIONS = [{"code": code, "label": label} for code, label in BUTTON_L
 BUTTON_MODE_NONE = "none"
 BUTTON_MODE_MP3 = "mp3"
 BUTTON_MODE_COMMAND = "command"
+BUTTON_MODE_DISABLE_OVERRIDE = "disable_web_override"
 
-# ---- Servo 1 (Lenkung) ----
-GPIO_PIN_MIN         = 0
-GPIO_PIN_MAX         = 27
-
-GPIO_PIN_SERVO_DEFAULT = 17
-GPIO_PIN_SERVO       = GPIO_PIN_SERVO_DEFAULT
-SERVO_AXIS_NAME_DEFAULT = "ABS_Z"
-SERVO_AXIS_NAME_OVERRIDES = {
-    GAMEPAD_NAME_EXACT: "ABS_RX",
-}
+# ---- Servo 1 (Lenkung auf ABS_Z) ----
+GPIO_PIN_SERVO       = 17
 US_MIN               = 600
 US_MAX               = 2400
 SERVO_RANGE_DEG      = 270.0
@@ -90,17 +82,6 @@ DEFAULT_STEERING_ANGLES = {
     "mid": MID_DEG,
     "right": RIGHT_MAX_DEG,
 }
-
-STEERING_PULSE_STEP_US = 1
-DEFAULT_STEERING_PULSES = {
-    "left": int(round(US_MIN + (US_MAX - US_MIN) * (LEFT_MAX_DEG / SERVO_RANGE_DEG))),
-    "mid": int(round(US_MIN + (US_MAX - US_MIN) * (MID_DEG / SERVO_RANGE_DEG))),
-    "right": int(round(US_MIN + (US_MAX - US_MIN) * (RIGHT_MAX_DEG / SERVO_RANGE_DEG))),
-}
-
-STEERING_LEFT_US = DEFAULT_STEERING_PULSES["left"]
-STEERING_MID_US = DEFAULT_STEERING_PULSES["mid"]
-STEERING_RIGHT_US = DEFAULT_STEERING_PULSES["right"]
 
 INVERT_SERVO         = True
 DEADZONE_IN          = 0.07
@@ -123,7 +104,7 @@ MOTOR_AXIS_CENTERED_NAME = "ABS_Y"
 MOTOR_AXIS_GAS_NAME      = "ABS_GAS"
 MOTOR_AXIS_BRAKE_NAME    = "ABS_BRAKE"
 
-DEFAULT_MOTOR_DRIVER_CHANNELS = (
+MOTOR_DRIVER_CHANNELS = (
     {
         "pwm": 13,
         "dir": 6,
@@ -136,7 +117,6 @@ DEFAULT_MOTOR_DRIVER_CHANNELS = (
         "forward_high": True,
     },
 )
-MOTOR_DRIVER_CHANNELS = tuple(dict(channel) for channel in DEFAULT_MOTOR_DRIVER_CHANNELS)
 PWM_FREQ_HZ          = 20000
 INVERT_MOTOR         = True
 
@@ -160,8 +140,7 @@ MOTOR_NEUTRAL_THRESH = 0.08
 MOTOR_DIR_SWITCH_PAUSE_S = 0.015
 
 # ---- Servo 2 (Kopf per D-Pad, LATCHEND) ----
-GPIO_PIN_HEAD_DEFAULT = 24
-GPIO_PIN_HEAD        = GPIO_PIN_HEAD_DEFAULT
+GPIO_PIN_HEAD        = 24
 HEAD_LEFT_DEG        = 30.0
 HEAD_CENTER_DEG      = 90.0
 HEAD_RIGHT_DEG       = 150.0
@@ -176,15 +155,6 @@ DEFAULT_HEAD_ANGLES = {
     "left": HEAD_LEFT_DEG,
     "mid": HEAD_CENTER_DEG,
     "right": HEAD_RIGHT_DEG,
-}
-
-DEFAULT_GPIO_SETTINGS = {
-    "steering_servo": GPIO_PIN_SERVO_DEFAULT,
-    "head_servo": GPIO_PIN_HEAD_DEFAULT,
-    "motor_driver": [
-        {"pwm": channel["pwm"], "dir": channel["dir"], "forward_high": channel.get("forward_high", True)}
-        for channel in DEFAULT_MOTOR_DRIVER_CHANNELS
-    ],
 }
 
 # ---- Debug/Output ----
@@ -885,6 +855,8 @@ def sanitize_button_action(code, value, available_files=None):
         if command:
             return {"mode": BUTTON_MODE_COMMAND, "value": command}
         return None
+    if mode == BUTTON_MODE_DISABLE_OVERRIDE:
+        return {"mode": BUTTON_MODE_DISABLE_OVERRIDE}
     if mode == BUTTON_MODE_NONE:
         return None
     return None
@@ -1185,90 +1157,6 @@ def persist_motor_limits(*, forward=None, reverse=None):
     return _persist_state(payload)
 
 
-# ---- GPIO-Konfiguration ----
-def _sanitize_gpio_pin(value):
-    try:
-        numeric = int(value)
-    except (TypeError, ValueError):
-        return None
-    if not (GPIO_PIN_MIN <= numeric <= GPIO_PIN_MAX):
-        return None
-    return numeric
-
-
-def _sanitize_motor_driver_channel(payload):
-    if not isinstance(payload, dict):
-        return None
-    pwm_pin = _sanitize_gpio_pin(payload.get("pwm"))
-    dir_pin = _sanitize_gpio_pin(payload.get("dir"))
-    if pwm_pin is None or dir_pin is None:
-        return None
-    forward_high = sanitize_bool(payload.get("forward_high"), default=True)
-    return {"pwm": pwm_pin, "dir": dir_pin, "forward_high": forward_high}
-
-
-def sanitize_gpio_settings(payload):
-    if not isinstance(payload, dict):
-        return None
-    steering_pin = _sanitize_gpio_pin(payload.get("steering_servo"))
-    head_pin = _sanitize_gpio_pin(payload.get("head_servo"))
-    channels_raw = payload.get("motor_driver")
-    channels = []
-    if isinstance(channels_raw, (list, tuple)):
-        for entry in channels_raw:
-            sanitized = _sanitize_motor_driver_channel(entry)
-            if sanitized is not None:
-                channels.append(sanitized)
-    if steering_pin is None or head_pin is None or not channels:
-        return None
-    return {
-        "steering_servo": steering_pin,
-        "head_servo": head_pin,
-        "motor_driver": channels,
-    }
-
-
-def load_persisted_gpio_settings(defaults=None):
-    if defaults is None:
-        defaults = DEFAULT_GPIO_SETTINGS
-    default_settings = sanitize_gpio_settings(defaults)
-    if default_settings is None:
-        default_settings = sanitize_gpio_settings(DEFAULT_GPIO_SETTINGS)
-    data = _load_persisted_state()
-    if isinstance(data, dict):
-        sanitized = sanitize_gpio_settings(data.get("gpio"))
-        if sanitized is not None:
-            return sanitized
-    return default_settings
-
-
-def persist_gpio_settings(settings):
-    sanitized = sanitize_gpio_settings(settings)
-    if sanitized is None:
-        return False
-    payload = _load_persisted_state()
-    payload["gpio"] = sanitized
-    return _persist_state(payload)
-
-
-def apply_gpio_settings(settings):
-    sanitized = sanitize_gpio_settings(settings)
-    if sanitized is None:
-        return False
-    global GPIO_PIN_SERVO, GPIO_PIN_HEAD, MOTOR_DRIVER_CHANNELS
-    GPIO_PIN_SERVO = sanitized["steering_servo"]
-    GPIO_PIN_HEAD = sanitized["head_servo"]
-    MOTOR_DRIVER_CHANNELS = tuple(
-        {
-            "pwm": channel["pwm"],
-            "dir": channel["dir"],
-            "forward_high": channel.get("forward_high", True),
-        }
-        for channel in sanitized["motor_driver"]
-    )
-    return True
-
-
 # ---- Kopfsteuerungs-Persistenz ----
 def _sanitize_head_value(value):
     try:
@@ -1357,43 +1245,6 @@ def sanitize_steering_angles(payload):
     return {"left": left, "mid": mid, "right": right}
 
 
-def _sanitize_steering_pulse_value(value):
-    if value is None:
-        return None
-    if isinstance(value, str):
-        candidate = value.strip().replace(",", ".")
-        if not candidate:
-            return None
-        try:
-            value = float(candidate)
-        except ValueError:
-            return None
-    if isinstance(value, (int, float)):
-        if not math.isfinite(value):
-            return None
-        limited = clamp(float(value), US_MIN, US_MAX)
-        if STEERING_PULSE_STEP_US > 0:
-            steps = round((limited - US_MIN) / STEERING_PULSE_STEP_US)
-            limited = US_MIN + steps * STEERING_PULSE_STEP_US
-        return int(round(clamp(limited, US_MIN, US_MAX)))
-    return None
-
-
-def sanitize_steering_pulses(payload):
-    if not isinstance(payload, dict):
-        return None
-    left = _sanitize_steering_pulse_value(payload.get("left"))
-    mid = _sanitize_steering_pulse_value(payload.get("mid"))
-    right = _sanitize_steering_pulse_value(payload.get("right"))
-    if left is None or mid is None or right is None:
-        return None
-    monotonic_increasing = left <= mid <= right
-    monotonic_decreasing = left >= mid >= right
-    if not (monotonic_increasing or monotonic_decreasing):
-        return None
-    return {"left": left, "mid": mid, "right": right}
-
-
 def sanitize_bool(value, *, default=False):
     if isinstance(value, bool):
         return value
@@ -1410,6 +1261,67 @@ def sanitize_bool(value, *, default=False):
         if normalized in {"0", "false", "off", "no", "disable", "disabled"}:
             return False
     return default
+
+
+def sanitize_web_axis(value):
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(numeric):
+        return None
+    return clamp(numeric, -1.0, +1.0)
+
+
+def sanitize_head_override_command(value, *, head_angles=None):
+    if head_angles is None or not isinstance(head_angles, dict):
+        head_angles = DEFAULT_HEAD_ANGLES
+
+    def _angle_for(key):
+        angle = head_angles.get(key)
+        if angle is None:
+            return None
+        return clamp(angle, HEAD_LEFT_DEG, HEAD_RIGHT_DEG)
+
+    if value is None:
+        return None
+
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        mapping = {
+            "l": "left",
+            "links": "left",
+            "left": "left",
+            "r": "right",
+            "rechts": "right",
+            "right": "right",
+            "z": "mid",
+            "zentriert": "mid",
+            "center": "mid",
+            "mitte": "mid",
+            "mittel": "mid",
+            "mid": "mid",
+            "middle": "mid",
+        }
+        key = mapping.get(normalized)
+        if key is None:
+            return None
+        angle = _angle_for(key)
+        if angle is None:
+            return None
+        label = "center" if key == "mid" else key
+        return {"angle": angle, "position": label}
+
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(numeric):
+        return None
+    angle = clamp(numeric, HEAD_LEFT_DEG, HEAD_RIGHT_DEG)
+    return {"angle": angle, "position": "custom"}
+
+
 def load_persisted_steering_angles(defaults=None):
     if defaults is None:
         defaults = DEFAULT_STEERING_ANGLES
@@ -1439,38 +1351,6 @@ def apply_steering_angles(angles):
     LEFT_MAX_DEG = sanitized["left"]
     MID_DEG = sanitized["mid"]
     RIGHT_MAX_DEG = sanitized["right"]
-    return True
-
-
-def load_persisted_steering_pulses(defaults=None):
-    if defaults is None:
-        defaults = DEFAULT_STEERING_PULSES
-    data = _load_persisted_state()
-    if isinstance(data, dict):
-        raw = data.get("steering_pulses")
-        sanitized = sanitize_steering_pulses(raw)
-        if sanitized:
-            return sanitized
-    return dict(defaults)
-
-
-def persist_steering_pulses(pulses):
-    sanitized = sanitize_steering_pulses(pulses)
-    if sanitized is None:
-        return False
-    payload = _load_persisted_state()
-    payload["steering_pulses"] = sanitized
-    return _persist_state(payload)
-
-
-def apply_steering_pulses(pulses):
-    sanitized = sanitize_steering_pulses(pulses)
-    if sanitized is None:
-        return False
-    global STEERING_LEFT_US, STEERING_MID_US, STEERING_RIGHT_US
-    STEERING_LEFT_US = sanitized["left"]
-    STEERING_MID_US = sanitized["mid"]
-    STEERING_RIGHT_US = sanitized["right"]
     return True
 
 
@@ -1650,7 +1530,6 @@ class WebControlState:
         initial_volume_map=None,
         initial_motor_limits=None,
         initial_steering_angles=None,
-        initial_steering_pulses=None,
         initial_head_angles=None,
         initial_sound_directory=None,
         initial_connected_sound=None,
@@ -1661,14 +1540,11 @@ class WebControlState:
         initial_light_url=None,
         initial_web_port=None,
         initial_button_actions=None,
-        initial_gpio_settings=None,
-        gpio_apply_callback=None,
         battery_monitor=None,
     ):
         self._lock = threading.Lock()
         self._last_update = 0.0
         self._battery_monitor = battery_monitor
-        self._gpio_apply_callback = gpio_apply_callback
         normalized_device = _normalize_audio_output_id(initial_audio_device)
         self._audio_device = normalized_device or DEFAULT_AUDIO_OUTPUT_ID
         self._audio_volumes = {}
@@ -1714,16 +1590,6 @@ class WebControlState:
             if sanitized is not None:
                 self._steering_angles = sanitized
                 apply_steering_angles(sanitized)
-        self._steering_pulses = {
-            "left": STEERING_LEFT_US,
-            "mid": STEERING_MID_US,
-            "right": STEERING_RIGHT_US,
-        }
-        if isinstance(initial_steering_pulses, dict):
-            sanitized_pulses = sanitize_steering_pulses(initial_steering_pulses)
-            if sanitized_pulses is not None:
-                self._steering_pulses = sanitized_pulses
-                apply_steering_pulses(sanitized_pulses)
         self._head_angles = {
             "left": HEAD_LEFT_DEG,
             "mid": HEAD_CENTER_DEG,
@@ -1734,10 +1600,11 @@ class WebControlState:
             if sanitized_head is not None:
                 self._head_angles = sanitized_head
                 apply_head_angles(sanitized_head)
-        sanitized_gpio = sanitize_gpio_settings(initial_gpio_settings)
-        if sanitized_gpio is None:
-            sanitized_gpio = sanitize_gpio_settings(DEFAULT_GPIO_SETTINGS)
-        self._gpio_settings = sanitized_gpio
+        self._web_override_enabled = False
+        self._web_override_motor = 0.0
+        self._web_override_steering = 0.0
+        self._web_head_override = self._head_angles["mid"]
+        self._web_head_position = "center"
 
     def _ensure_volume_defaults_locked(self, audio_id):
         profile = get_audio_volume_profile(audio_id)
@@ -1791,30 +1658,77 @@ class WebControlState:
             "web_port": self._web_port,
         }
 
-    def _build_gpio_snapshot_locked(self):
-        settings = self._gpio_settings
-        if settings is None:
-            settings = sanitize_gpio_settings(DEFAULT_GPIO_SETTINGS)
-        motor_channels = [
-            {
-                "pwm": channel["pwm"],
-                "dir": channel["dir"],
-                "forward_high": channel.get("forward_high", True),
-            }
-            for channel in settings["motor_driver"]
-        ]
-        return {
-            "steering_servo": settings["steering_servo"],
-            "head_servo": settings["head_servo"],
-            "motor_driver": motor_channels,
-            "pin_min": GPIO_PIN_MIN,
-            "pin_max": GPIO_PIN_MAX,
-        }
-
     def _build_gamepad_snapshot_locked(self):
         return {
             "disconnect_command": self._disconnect_command,
         }
+
+    def _apply_web_override_locked(self, payload):
+        if not isinstance(payload, dict):
+            self._web_override_enabled = False
+            self._web_override_motor = 0.0
+            self._web_override_steering = 0.0
+            self._web_head_override = self._head_angles["mid"]
+            self._web_head_position = "center"
+            return
+
+        enabled = sanitize_bool(payload.get("enabled"))
+        if not enabled:
+            self._web_override_enabled = False
+            self._web_override_motor = 0.0
+            self._web_override_steering = 0.0
+            self._web_head_override = self._head_angles["mid"]
+            self._web_head_position = "center"
+            return
+
+        motor_value = sanitize_web_axis(payload.get("motor"))
+        steering_value = sanitize_web_axis(payload.get("steering"))
+        head_command = sanitize_head_override_command(payload.get("head"), head_angles=self._head_angles)
+
+        self._web_override_enabled = True
+        self._web_override_motor = motor_value if motor_value is not None else 0.0
+        self._web_override_steering = steering_value if steering_value is not None else 0.0
+        self._web_override_motor = round(clamp(self._web_override_motor, -1.0, +1.0), 4)
+        self._web_override_steering = round(clamp(self._web_override_steering, -1.0, +1.0), 4)
+
+        if head_command is not None:
+            self._web_head_override = head_command["angle"]
+            self._web_head_position = head_command["position"]
+        else:
+            self._web_head_override = clamp(
+                self._web_head_override,
+                self._head_angles["left"],
+                self._head_angles["right"],
+            )
+            if self._web_head_position not in {"left", "right", "center", "custom"}:
+                self._web_head_position = "center"
+
+    def _build_web_override_snapshot_locked(self):
+        return {
+            "enabled": self._web_override_enabled,
+            "motor": round(self._web_override_motor, 4),
+            "steering": round(self._web_override_steering, 4),
+            "head_angle": round(self._web_head_override, 3),
+            "head_position": self._web_head_position,
+        }
+
+    def disable_web_override(self):
+        with self._lock:
+            changed = (
+                self._web_override_enabled
+                or self._web_override_motor
+                or self._web_override_steering
+                or self._web_head_position != "center"
+                or self._web_head_override != self._head_angles["mid"]
+            )
+            self._web_override_enabled = False
+            self._web_override_motor = 0.0
+            self._web_override_steering = 0.0
+            self._web_head_override = self._head_angles["mid"]
+            self._web_head_position = "center"
+            if changed:
+                self._last_update = time.time()
+            return changed
 
     def _build_button_actions_snapshot_locked(self):
         assignments = {}
@@ -1924,7 +1838,6 @@ class WebControlState:
         audio_volume=None,
         motor_limits=None,
         steering_angles=None,
-        steering_pulses=None,
         head_angles=None,
         sound_directory=None,
         connected_sound=None,
@@ -1934,8 +1847,8 @@ class WebControlState:
         camera_port=None,
         light_url=None,
         web_port=None,
+        web_override=None,
         button_actions=None,
-        gpio=None,
     ):
         new_audio_id = None
         persist_audio_id = None
@@ -1943,14 +1856,11 @@ class WebControlState:
         apply_volume_change = None
         motor_limits_to_persist = None
         steering_angles_to_persist = None
-        steering_pulses_to_persist = None
         head_angles_to_persist = None
         sound_settings_to_persist = None
         gamepad_settings_to_persist = None
         button_actions_to_persist = None
         link_settings_to_persist = None
-        gpio_settings_to_persist = None
-        gpio_settings_to_apply = None
         with self._lock:
             previous_directory = self._sound_directory
             previous_connected_sound = self._connected_sound
@@ -2002,22 +1912,23 @@ class WebControlState:
                 if sanitized is not None and sanitized != self._steering_angles:
                     self._steering_angles = sanitized
                     steering_angles_to_persist = sanitized
-            if steering_pulses is not None and isinstance(steering_pulses, dict):
-                sanitized_pulses = sanitize_steering_pulses(steering_pulses)
-                if sanitized_pulses is not None and sanitized_pulses != self._steering_pulses:
-                    self._steering_pulses = sanitized_pulses
-                    steering_pulses_to_persist = sanitized_pulses
             if head_angles is not None and isinstance(head_angles, dict):
                 sanitized_head = sanitize_head_angles(head_angles)
                 if sanitized_head is not None and sanitized_head != self._head_angles:
                     self._head_angles = sanitized_head
                     head_angles_to_persist = sanitized_head
-            if gpio is not None:
-                sanitized_gpio = sanitize_gpio_settings(gpio)
-                if sanitized_gpio is not None and sanitized_gpio != self._gpio_settings:
-                    self._gpio_settings = sanitized_gpio
-                    gpio_settings_to_persist = sanitized_gpio
-                    gpio_settings_to_apply = sanitized_gpio
+                    if self._web_head_position == "left":
+                        self._web_head_override = sanitized_head["left"]
+                    elif self._web_head_position == "right":
+                        self._web_head_override = sanitized_head["right"]
+                    elif self._web_head_position == "center":
+                        self._web_head_override = sanitized_head["mid"]
+                    else:
+                        self._web_head_override = clamp(
+                            self._web_head_override,
+                            sanitized_head["left"],
+                            sanitized_head["right"],
+                        )
             if sound_directory is not None:
                 sanitized_dir = sanitize_sound_directory(sound_directory)
                 refreshed = False
@@ -2071,6 +1982,8 @@ class WebControlState:
                     sanitized_web = WEB_PORT_DEFAULT
                 if sanitized_web != self._web_port:
                     self._web_port = sanitized_web
+            if web_override is not None:
+                self._apply_web_override_locked(web_override)
             self._ensure_sound_selections_locked()
             if button_actions is not None:
                 if self._apply_button_action_updates_locked(button_actions):
@@ -2112,25 +2025,9 @@ class WebControlState:
         if steering_angles_to_persist is not None:
             apply_steering_angles(steering_angles_to_persist)
             persist_steering_angles(steering_angles_to_persist)
-        if steering_pulses_to_persist is not None:
-            apply_steering_pulses(steering_pulses_to_persist)
-            persist_steering_pulses(steering_pulses_to_persist)
         if head_angles_to_persist is not None:
             apply_head_angles(head_angles_to_persist)
             persist_head_angles(head_angles_to_persist)
-        if gpio_settings_to_apply is not None:
-            applied = False
-            callback = self._gpio_apply_callback
-            if callable(callback):
-                try:
-                    result = callback(gpio_settings_to_apply)
-                    applied = bool(result) if result is not None else True
-                except Exception as exc:
-                    print(f"GPIO-Konfiguration konnte nicht angewendet werden: {exc}", file=sys.stderr)
-            if not applied:
-                apply_gpio_settings(gpio_settings_to_apply)
-        if gpio_settings_to_persist is not None:
-            persist_gpio_settings(gpio_settings_to_persist)
         if sound_settings_to_persist is not None:
             persist_sound_settings(**sound_settings_to_persist)
         if link_settings_to_persist is not None:
@@ -2177,14 +2074,6 @@ class WebControlState:
                 "max": SERVO_RANGE_DEG,
                 "step": STEERING_STEP_DEG,
             },
-            "steering_pulses": {
-                "left": self._steering_pulses["left"],
-                "mid": self._steering_pulses["mid"],
-                "right": self._steering_pulses["right"],
-                "min": US_MIN,
-                "max": US_MAX,
-                "step": STEERING_PULSE_STEP_US,
-            },
             "head_angles": {
                 "left": self._head_angles["left"],
                 "mid": self._head_angles["mid"],
@@ -2198,10 +2087,10 @@ class WebControlState:
                 {"id": cfg["id"], "label": cfg["label"]}
                 for cfg in AUDIO_OUTPUTS
             ],
-            "gpio": self._build_gpio_snapshot_locked(),
             "button_actions": self._build_button_actions_snapshot_locked(),
             "sound": self._build_sound_snapshot_locked(),
             "gamepad": self._build_gamepad_snapshot_locked(),
+            "web_override": self._build_web_override_snapshot_locked(),
             "audio_volume": self._build_volume_snapshot_locked(),
             "last_update": self._last_update,
         }
@@ -2281,6 +2170,8 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
     SETTINGS_PAGE_NAME = "settings.html"
     BATTERY_PAGE_NAME = "battery.html"
     MORE_SETTINGS_PAGE_NAME = "more_settings.html"
+    GAMEPAD_PAGE_NAME = "gamepad.html"
+
     def _write_response(self, status, body, content_type="text/html; charset=utf-8"):
         encoded = body.encode("utf-8")
         self.send_response(status)
@@ -2486,6 +2377,9 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
         if self.path == "/battery":
             self._write_response(200, load_asset(self.BATTERY_PAGE_NAME))
             return
+        if self.path == "/gamepad":
+            self._write_response(200, load_asset(self.GAMEPAD_PAGE_NAME))
+            return
         if self.path.startswith("/api/state"):
             state = self.control_state.snapshot() if self.control_state else {}
             body = json.dumps(state)
@@ -2556,9 +2450,8 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
                 camera_port=data.get("camera_port"),
                 light_url=data.get("light_url"),
                 web_port=data.get("web_port"),
+                web_override=data.get("web_override"),
                 button_actions=data.get("button_actions"),
-                gpio=data.get("gpio"),
-                steering_pulses=data.get("steering_pulses"),
             )
 
         body = json.dumps(state)
@@ -2596,12 +2489,6 @@ def validate_configuration():
 
     if not (0.0 <= LEFT_MAX_DEG <= MID_DEG <= RIGHT_MAX_DEG <= SERVO_RANGE_DEG):
         raise ValueError("Lenkwinkel müssen innerhalb der Servo-Range liegen und sortiert sein")
-
-    pulses = sanitize_steering_pulses(
-        {"left": STEERING_LEFT_US, "mid": STEERING_MID_US, "right": STEERING_RIGHT_US}
-    )
-    if pulses is None:
-        raise ValueError("Lenkservo-Pulse müssen monoton und innerhalb der Limits liegen")
 
     if DEADZONE_IN < 0 or DEADZONE_OUT < 0 or DEADZONE_IN >= DEADZONE_OUT:
         raise ValueError("DEADZONE_IN/OUT müssen >=0 und DEADZONE_IN < DEADZONE_OUT sein")
@@ -2653,21 +2540,7 @@ def deg_to_us_unclamped(deg):
 
 def deg_to_us_lenkung(deg):
     d = clamp(deg, LEFT_MAX_DEG, RIGHT_MAX_DEG)
-    if d <= MID_DEG:
-        denom = MID_DEG - LEFT_MAX_DEG
-        if denom <= 0:
-            pulse = STEERING_MID_US
-        else:
-            ratio = (d - LEFT_MAX_DEG) / denom
-            pulse = STEERING_LEFT_US + ratio * (STEERING_MID_US - STEERING_LEFT_US)
-    else:
-        denom = RIGHT_MAX_DEG - MID_DEG
-        if denom <= 0:
-            pulse = STEERING_MID_US
-        else:
-            ratio = (d - MID_DEG) / denom
-            pulse = STEERING_MID_US + ratio * (STEERING_RIGHT_US - STEERING_MID_US)
-    return int(round(clamp(pulse, US_MIN, US_MAX)))
+    return deg_to_us_unclamped(d)
 
 def axis_to_deg_lenkung(ax):
     if ax >= 0:
@@ -2716,12 +2589,7 @@ def apply_audio_volume(audio_id, volume):
         return False
 
 def _start_player_async(path, alsa_dev=DEFAULT_ALSA_DEVICE):
-    """
-    Starte mpg123 bevorzugt, fallback ffplay. Liefert (Popen, playername) oder (None, None).
-
-    Erkennt Player, die sofort mit Fehlercode beenden (z.B. falsches ALSA-Device) und
-    versucht in diesem Fall den nächsten Kandidaten.
-    """
+    """Starte mpg123 bevorzugt, fallback ffplay. Liefert (Popen, playername) oder (None, None)."""
     try_cmds = []
     mpg123_cmd = ["mpg123", "-q"]
     if alsa_dev:
@@ -2732,28 +2600,11 @@ def _start_player_async(path, alsa_dev=DEFAULT_ALSA_DEVICE):
     for cmd in try_cmds:
         try:
             proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            return proc, cmd[0]
         except FileNotFoundError:
             continue
         except Exception:
             continue
-        try:
-            time.sleep(PLAYER_FAIL_FAST_GRACE_S)
-        except Exception:
-            pass
-        if proc.poll() is None:
-            return proc, cmd[0]
-        returncode = proc.returncode
-        if returncode == 0:
-            print(
-                f"[MP3] Player '{cmd[0]}' beendete sich sofort ohne Ton (Datei zu kurz?)",
-                file=sys.stderr,
-            )
-        else:
-            print(
-                f"[MP3] Player '{cmd[0]}' beendete sich sofort mit Code {returncode}",
-                file=sys.stderr,
-            )
-        continue
     print("Kein Player gefunden (mpg123/ffplay). Installiere: sudo apt-get install mpg123 ffmpeg", file=sys.stderr)
     return None, None
 
@@ -2856,18 +2707,6 @@ def find_gamepad():
             sys.exit(1)
         time.sleep(0.5)
 
-
-def resolve_servo_axis(dev):
-    name = dev.name or ""
-    axis_name = SERVO_AXIS_NAME_OVERRIDES.get(name, SERVO_AXIS_NAME_DEFAULT)
-    try:
-        axis_code = getattr(ecodes, axis_name)
-    except AttributeError as exc:
-        print(f"Unbekannte Servo-Achse '{axis_name}' für {name}: {exc}", file=sys.stderr)
-        sys.exit(1)
-    return axis_code, axis_name
-
-
 def get_abs_range(caps, code):
     """Kompatibel für unterschiedliche evdev-Formate."""
     for c, info in caps.get(ecodes.EV_ABS, []):
@@ -2943,19 +2782,12 @@ def set_motor(pi, speed_norm):
 
 # --------- Main ---------
 def main():
-    persisted_pulses = load_persisted_steering_pulses()
-    if not apply_steering_pulses(persisted_pulses):
-        apply_steering_pulses(DEFAULT_STEERING_PULSES)
-        persisted_pulses = dict(DEFAULT_STEERING_PULSES)
     persisted_steering = load_persisted_steering_angles()
     if not apply_steering_angles(persisted_steering):
         apply_steering_angles(DEFAULT_STEERING_ANGLES)
     persisted_head = load_persisted_head_angles()
     if not apply_head_angles(persisted_head):
         apply_head_angles(DEFAULT_HEAD_ANGLES)
-    persisted_gpio = load_persisted_gpio_settings()
-    if not apply_gpio_settings(persisted_gpio):
-        apply_gpio_settings(DEFAULT_GPIO_SETTINGS)
     validate_configuration()
 
     MOTOR_AXIS_CENTERED = getattr(ecodes, MOTOR_AXIS_CENTERED_NAME)
@@ -2983,21 +2815,11 @@ def main():
     persisted_button_actions = load_persisted_button_actions()
     battery_monitor = BatteryMonitor()
 
-    def apply_gpio_from_web(settings):
-        sanitized = sanitize_gpio_settings(settings)
-        if sanitized is None:
-            return False
-        apply_gpio_settings(sanitized)
-        setup_motor_pins(pi)
-        set_motor(pi, 0.0)
-        return True
-
     web_state = WebControlState(
         initial_audio_device=persisted_audio.get("audio_device"),
         initial_volume_map=persisted_audio.get("volumes"),
         initial_motor_limits=persisted_motor_limits,
         initial_steering_angles=persisted_steering,
-        initial_steering_pulses=persisted_pulses,
         initial_head_angles=persisted_head,
         initial_sound_directory=persisted_sound.get("directory"),
         initial_connected_sound=persisted_sound.get("connected_sound"),
@@ -3008,8 +2830,6 @@ def main():
         initial_light_url=persisted_links.get("light_url"),
         initial_web_port=persisted_links.get("web_port"),
         initial_button_actions=persisted_button_actions,
-        initial_gpio_settings=persisted_gpio,
-        gpio_apply_callback=apply_gpio_from_web,
         battery_monitor=battery_monitor,
     )
     web_server = None
@@ -3042,7 +2862,6 @@ def main():
         while True:
             dev = find_gamepad()
             device_path = getattr(dev, "path", None)
-            servo_axis_code, servo_axis_name = resolve_servo_axis(dev)
 
             safe_start_motor_until = time.monotonic() + MOTOR_SAFE_START_S
             safe_start_servo_until = time.monotonic() + SERVO_SAFE_START_S
@@ -3058,13 +2877,13 @@ def main():
                 sys.exit(1)
 
             # Achsenbereiche
-            rng_servo  = get_abs_range(caps, servo_axis_code)
+            rng_servo  = get_abs_range(caps, ecodes.ABS_Z)
             rng_center = get_abs_range(caps, MOTOR_AXIS_CENTERED)
             rng_gas    = get_abs_range(caps, MOTOR_AXIS_GAS)
             rng_brake  = get_abs_range(caps, MOTOR_AXIS_BRAKE)
 
             if rng_servo is None:
-                print(f"Lenkachse ({servo_axis_name}) nicht gefunden!", file=sys.stderr)
+                print("Lenkachse (ABS_Z) nicht gefunden!", file=sys.stderr)
                 sys.exit(1)
 
             lo_s, hi_s = rng_servo
@@ -3137,11 +2956,37 @@ def main():
                         if isinstance(right_val, (int, float)) and math.isfinite(right_val):
                             head_right = clamp(float(right_val), HEAD_LEFT_DEG, HEAD_RIGHT_DEG)
 
+                    override_snapshot = control_snapshot.get("web_override")
+                    override_enabled = False
+                    override_motor = 0.0
+                    override_steering = 0.0
+                    override_head_angle = None
+                    if isinstance(override_snapshot, dict):
+                        override_enabled = sanitize_bool(override_snapshot.get("enabled"))
+                        if override_enabled:
+                            motor_val = override_snapshot.get("motor")
+                            if isinstance(motor_val, (int, float)) and math.isfinite(motor_val):
+                                override_motor = clamp(float(motor_val), -1.0, +1.0)
+                            steering_val = override_snapshot.get("steering")
+                            if isinstance(steering_val, (int, float)) and math.isfinite(steering_val):
+                                override_steering = clamp(float(steering_val), -1.0, +1.0)
+                            head_angle_val = override_snapshot.get("head_angle")
+                            if isinstance(head_angle_val, (int, float)) and math.isfinite(head_angle_val):
+                                override_head_angle = clamp(float(head_angle_val), head_left, head_right)
+                            else:
+                                head_pos = override_snapshot.get("head_position")
+                                if head_pos == "left":
+                                    override_head_angle = head_left
+                                elif head_pos == "right":
+                                    override_head_angle = head_right
+                                elif head_pos == "center":
+                                    override_head_angle = head_mid
+
                     # Events (Buttons & Kopfsteuerung)
                     try:
                         e = dev.read_one()
                         while e:
-                            if e.type == ecodes.EV_ABS and now >= safe_start_head_until:
+                            if (not override_enabled) and e.type == ecodes.EV_ABS and now >= safe_start_head_until:
                                 # Kopfservo LATCHEND via D-Pad:
                                 if e.code == ecodes.ABS_HAT0X:
                                     if   e.value == -1: head_target = HEAD_LEFT_DEG
@@ -3170,14 +3015,16 @@ def main():
                                                         f"[Button] Kommando konnte nicht gestartet werden ({button_code}): {exc}",
                                                         file=sys.stderr,
                                                     )
+                                        elif mode == BUTTON_MODE_DISABLE_OVERRIDE:
+                                            web_state.disable_web_override()
 
                             e = dev.read_one()
                     except OSError as exc:
                         print(f"[Gamepad] Lesefehler: {exc}")
                         raise GamepadDisconnected from None
 
-                    # ===== Lenkservo =====
-                    raw_s = read_abs(dev, servo_axis_code)
+                    # ===== Lenkservo (ABS_Z) =====
+                    raw_s = read_abs(dev, ecodes.ABS_Z)
                     x = 0.0
                     if raw_s is None:
                         missing_servo_reads += 1
@@ -3188,6 +3035,9 @@ def main():
                         x = norm_axis_centered(raw_s, lo_s, hi_s)
                         if INVERT_SERVO:
                             x = -x
+                    if override_enabled:
+                        x = override_steering
+
                     # Arming
                     if abs(x) <= SERVO_NEUTRAL_THRESH:
                         if neutral_ok_since_s is None:
@@ -3275,13 +3125,17 @@ def main():
                             brake = norm_axis_trigger(raw_b, lo_b, hi_b)  # 0..1
 
                     y_total = clamp(y_centered + gas - brake, -1.0, +1.0)
-                    if brake >= BRAKE_LATCH_THRESHOLD:
-                        brake_latched = True
-                    elif brake_latched and forward_intent >= BRAKE_REARM_FORWARD_THRESH:
+                    if override_enabled:
+                        y_total = override_motor
                         brake_latched = False
+                    else:
+                        if brake >= BRAKE_LATCH_THRESHOLD:
+                            brake_latched = True
+                        elif brake_latched and forward_intent >= BRAKE_REARM_FORWARD_THRESH:
+                            brake_latched = False
 
-                    if brake_latched and y_total > 0.0:
-                        y_total = min(y_total, 0.0)
+                        if brake_latched and y_total > 0.0:
+                            y_total = min(y_total, 0.0)
 
                     # Arming & Deadzone
                     if abs(y_total) <= MOTOR_NEUTRAL_THRESH:
@@ -3335,6 +3189,8 @@ def main():
                     set_motor(pi, motor_speed)
 
                     # ===== Kopf-Servo (latchend) =====
+                    if override_enabled and override_head_angle is not None and now >= safe_start_head_until:
+                        head_target = clamp(override_head_angle, head_left, head_right)
                     head_target = clamp(head_target, HEAD_LEFT_DEG, HEAD_RIGHT_DEG)
                     head_filtered += (head_target - head_filtered) * HEAD_SMOOTH_A
 
