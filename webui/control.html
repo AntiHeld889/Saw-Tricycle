@@ -404,7 +404,7 @@
         </div>
       </div>
     </div>
-    <footer id="webPortInfo">Läuft auf Port 8081</footer>
+    <footer>Läuft auf Port 8081</footer>
   </div>
   <script>
     const state = {
@@ -413,10 +413,8 @@
       soundboardPort: null,
       cameraTarget: null,
       lightUrl: null,
-      webPort: null,
     };
     const audioSelect = document.getElementById('audioDevice');
-    const webPortInfo = document.getElementById('webPortInfo');
     const batteryIndicator = document.getElementById('batteryIndicator');
     const batteryFill = document.getElementById('batteryFill');
     const batteryLabel = document.getElementById('batteryLabel');
@@ -501,41 +499,6 @@
         return null;
       }
       return trimmed;
-    };
-
-    const getLocationPort = () => {
-      if (typeof window === 'undefined' || !window.location) {
-        return null;
-      }
-      const raw = window.location.port;
-      if (!raw) {
-        return null;
-      }
-      const parsed = Number.parseInt(raw, 10);
-      return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
-    };
-
-    const updateWebPortInfo = (portValue) => {
-      if (!webPortInfo) {
-        return;
-      }
-      let numeric = null;
-      if (Number.isInteger(portValue) && portValue > 0) {
-        numeric = portValue;
-      } else if (typeof portValue === 'number' && Number.isFinite(portValue)) {
-        const rounded = Math.trunc(portValue);
-        if (rounded > 0) {
-          numeric = rounded;
-        }
-      }
-      if (numeric === null) {
-        numeric = getLocationPort();
-      }
-      if (typeof numeric === 'number' && numeric > 0) {
-        webPortInfo.textContent = `Läuft auf Port ${numeric}`;
-      } else {
-        webPortInfo.textContent = 'Websteuerung aktiv';
-      }
     };
 
     const buildServiceUrl = (port) => {
@@ -816,14 +779,11 @@
         updateBattery(data.battery ?? null);
         const soundInfo = data.sound && typeof data.sound === 'object' ? data.sound : null;
         const portValue = soundInfo ? parseSoundboardPort(soundInfo.soundboard_port) : null;
-        const webPortValue = soundInfo ? parseSoundboardPort(soundInfo.web_port) : null;
         const cameraValue = soundInfo ? parseCameraTarget(soundInfo.camera_port) : null;
         const lightValue = soundInfo ? parseLightUrl(soundInfo.light_url) : null;
         state.soundboardPort = portValue;
-        state.webPort = webPortValue;
         state.cameraTarget = cameraValue;
         state.lightUrl = lightValue;
-        updateWebPortInfo(webPortValue);
         updateSoundboardButton(portValue);
         updateCameraButton(cameraValue);
         updateLightButton(lightValue);
@@ -836,7 +796,6 @@
     updateSoundboardButton(null);
     updateCameraButton(null);
     updateLightButton(null);
-    updateWebPortInfo(null);
     pollState();
     setInterval(pollState, 1500);
   </script>
