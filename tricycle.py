@@ -65,7 +65,11 @@ BUTTON_MODE_MP3 = "mp3"
 BUTTON_MODE_COMMAND = "command"
 
 # ---- Servo 1 (Lenkung auf ABS_Z) ----
-GPIO_PIN_SERVO       = 17
+GPIO_PIN_MIN         = 0
+GPIO_PIN_MAX         = 27
+
+GPIO_PIN_SERVO_DEFAULT = 17
+GPIO_PIN_SERVO       = GPIO_PIN_SERVO_DEFAULT
 US_MIN               = 600
 US_MAX               = 2400
 SERVO_RANGE_DEG      = 270.0
@@ -103,7 +107,7 @@ MOTOR_AXIS_CENTERED_NAME = "ABS_Y"
 MOTOR_AXIS_GAS_NAME      = "ABS_GAS"
 MOTOR_AXIS_BRAKE_NAME    = "ABS_BRAKE"
 
-MOTOR_DRIVER_CHANNELS = (
+DEFAULT_MOTOR_DRIVER_CHANNELS = (
     {
         "pwm": 13,
         "dir": 6,
@@ -116,6 +120,7 @@ MOTOR_DRIVER_CHANNELS = (
         "forward_high": True,
     },
 )
+MOTOR_DRIVER_CHANNELS = tuple(dict(channel) for channel in DEFAULT_MOTOR_DRIVER_CHANNELS)
 PWM_FREQ_HZ          = 20000
 INVERT_MOTOR         = True
 
@@ -139,7 +144,8 @@ MOTOR_NEUTRAL_THRESH = 0.08
 MOTOR_DIR_SWITCH_PAUSE_S = 0.015
 
 # ---- Servo 2 (Kopf per D-Pad, LATCHEND) ----
-GPIO_PIN_HEAD        = 24
+GPIO_PIN_HEAD_DEFAULT = 24
+GPIO_PIN_HEAD        = GPIO_PIN_HEAD_DEFAULT
 HEAD_LEFT_DEG        = 30.0
 HEAD_CENTER_DEG      = 90.0
 HEAD_RIGHT_DEG       = 150.0
@@ -154,6 +160,15 @@ DEFAULT_HEAD_ANGLES = {
     "left": HEAD_LEFT_DEG,
     "mid": HEAD_CENTER_DEG,
     "right": HEAD_RIGHT_DEG,
+}
+
+DEFAULT_GPIO_SETTINGS = {
+    "steering_servo": GPIO_PIN_SERVO_DEFAULT,
+    "head_servo": GPIO_PIN_HEAD_DEFAULT,
+    "motor_driver": [
+        {"pwm": channel["pwm"], "dir": channel["dir"], "forward_high": channel.get("forward_high", True)}
+        for channel in DEFAULT_MOTOR_DRIVER_CHANNELS
+    ],
 }
 
 # ---- Debug/Output ----
@@ -1154,6 +1169,90 @@ def persist_motor_limits(*, forward=None, reverse=None):
     return _persist_state(payload)
 
 
+# ---- GPIO-Konfiguration ----
+def _sanitize_gpio_pin(value):
+    try:
+        numeric = int(value)
+    except (TypeError, ValueError):
+        return None
+    if not (GPIO_PIN_MIN <= numeric <= GPIO_PIN_MAX):
+        return None
+    return numeric
+
+
+def _sanitize_motor_driver_channel(payload):
+    if not isinstance(payload, dict):
+        return None
+    pwm_pin = _sanitize_gpio_pin(payload.get("pwm"))
+    dir_pin = _sanitize_gpio_pin(payload.get("dir"))
+    if pwm_pin is None or dir_pin is None:
+        return None
+    forward_high = sanitize_bool(payload.get("forward_high"), default=True)
+    return {"pwm": pwm_pin, "dir": dir_pin, "forward_high": forward_high}
+
+
+def sanitize_gpio_settings(payload):
+    if not isinstance(payload, dict):
+        return None
+    steering_pin = _sanitize_gpio_pin(payload.get("steering_servo"))
+    head_pin = _sanitize_gpio_pin(payload.get("head_servo"))
+    channels_raw = payload.get("motor_driver")
+    channels = []
+    if isinstance(channels_raw, (list, tuple)):
+        for entry in channels_raw:
+            sanitized = _sanitize_motor_driver_channel(entry)
+            if sanitized is not None:
+                channels.append(sanitized)
+    if steering_pin is None or head_pin is None or not channels:
+        return None
+    return {
+        "steering_servo": steering_pin,
+        "head_servo": head_pin,
+        "motor_driver": channels,
+    }
+
+
+def load_persisted_gpio_settings(defaults=None):
+    if defaults is None:
+        defaults = DEFAULT_GPIO_SETTINGS
+    default_settings = sanitize_gpio_settings(defaults)
+    if default_settings is None:
+        default_settings = sanitize_gpio_settings(DEFAULT_GPIO_SETTINGS)
+    data = _load_persisted_state()
+    if isinstance(data, dict):
+        sanitized = sanitize_gpio_settings(data.get("gpio"))
+        if sanitized is not None:
+            return sanitized
+    return default_settings
+
+
+def persist_gpio_settings(settings):
+    sanitized = sanitize_gpio_settings(settings)
+    if sanitized is None:
+        return False
+    payload = _load_persisted_state()
+    payload["gpio"] = sanitized
+    return _persist_state(payload)
+
+
+def apply_gpio_settings(settings):
+    sanitized = sanitize_gpio_settings(settings)
+    if sanitized is None:
+        return False
+    global GPIO_PIN_SERVO, GPIO_PIN_HEAD, MOTOR_DRIVER_CHANNELS
+    GPIO_PIN_SERVO = sanitized["steering_servo"]
+    GPIO_PIN_HEAD = sanitized["head_servo"]
+    MOTOR_DRIVER_CHANNELS = tuple(
+        {
+            "pwm": channel["pwm"],
+            "dir": channel["dir"],
+            "forward_high": channel.get("forward_high", True),
+        }
+        for channel in sanitized["motor_driver"]
+    )
+    return True
+
+
 # ---- Kopfsteuerungs-Persistenz ----
 def _sanitize_head_value(value):
     try:
@@ -1476,11 +1575,14 @@ class WebControlState:
         initial_light_url=None,
         initial_web_port=None,
         initial_button_actions=None,
+        initial_gpio_settings=None,
+        gpio_apply_callback=None,
         battery_monitor=None,
     ):
         self._lock = threading.Lock()
         self._last_update = 0.0
         self._battery_monitor = battery_monitor
+        self._gpio_apply_callback = gpio_apply_callback
         normalized_device = _normalize_audio_output_id(initial_audio_device)
         self._audio_device = normalized_device or DEFAULT_AUDIO_OUTPUT_ID
         self._audio_volumes = {}
@@ -1536,6 +1638,10 @@ class WebControlState:
             if sanitized_head is not None:
                 self._head_angles = sanitized_head
                 apply_head_angles(sanitized_head)
+        sanitized_gpio = sanitize_gpio_settings(initial_gpio_settings)
+        if sanitized_gpio is None:
+            sanitized_gpio = sanitize_gpio_settings(DEFAULT_GPIO_SETTINGS)
+        self._gpio_settings = sanitized_gpio
 
     def _ensure_volume_defaults_locked(self, audio_id):
         profile = get_audio_volume_profile(audio_id)
@@ -1587,6 +1693,26 @@ class WebControlState:
             "camera_port": self._camera_port,
             "light_url": self._light_url,
             "web_port": self._web_port,
+        }
+
+    def _build_gpio_snapshot_locked(self):
+        settings = self._gpio_settings
+        if settings is None:
+            settings = sanitize_gpio_settings(DEFAULT_GPIO_SETTINGS)
+        motor_channels = [
+            {
+                "pwm": channel["pwm"],
+                "dir": channel["dir"],
+                "forward_high": channel.get("forward_high", True),
+            }
+            for channel in settings["motor_driver"]
+        ]
+        return {
+            "steering_servo": settings["steering_servo"],
+            "head_servo": settings["head_servo"],
+            "motor_driver": motor_channels,
+            "pin_min": GPIO_PIN_MIN,
+            "pin_max": GPIO_PIN_MAX,
         }
 
     def _build_gamepad_snapshot_locked(self):
@@ -1712,6 +1838,7 @@ class WebControlState:
         light_url=None,
         web_port=None,
         button_actions=None,
+        gpio=None,
     ):
         new_audio_id = None
         persist_audio_id = None
@@ -1724,6 +1851,8 @@ class WebControlState:
         gamepad_settings_to_persist = None
         button_actions_to_persist = None
         link_settings_to_persist = None
+        gpio_settings_to_persist = None
+        gpio_settings_to_apply = None
         with self._lock:
             previous_directory = self._sound_directory
             previous_connected_sound = self._connected_sound
@@ -1780,6 +1909,12 @@ class WebControlState:
                 if sanitized_head is not None and sanitized_head != self._head_angles:
                     self._head_angles = sanitized_head
                     head_angles_to_persist = sanitized_head
+            if gpio is not None:
+                sanitized_gpio = sanitize_gpio_settings(gpio)
+                if sanitized_gpio is not None and sanitized_gpio != self._gpio_settings:
+                    self._gpio_settings = sanitized_gpio
+                    gpio_settings_to_persist = sanitized_gpio
+                    gpio_settings_to_apply = sanitized_gpio
             if sound_directory is not None:
                 sanitized_dir = sanitize_sound_directory(sound_directory)
                 refreshed = False
@@ -1877,6 +2012,19 @@ class WebControlState:
         if head_angles_to_persist is not None:
             apply_head_angles(head_angles_to_persist)
             persist_head_angles(head_angles_to_persist)
+        if gpio_settings_to_apply is not None:
+            applied = False
+            callback = self._gpio_apply_callback
+            if callable(callback):
+                try:
+                    result = callback(gpio_settings_to_apply)
+                    applied = bool(result) if result is not None else True
+                except Exception as exc:
+                    print(f"GPIO-Konfiguration konnte nicht angewendet werden: {exc}", file=sys.stderr)
+            if not applied:
+                apply_gpio_settings(gpio_settings_to_apply)
+        if gpio_settings_to_persist is not None:
+            persist_gpio_settings(gpio_settings_to_persist)
         if sound_settings_to_persist is not None:
             persist_sound_settings(**sound_settings_to_persist)
         if link_settings_to_persist is not None:
@@ -1936,6 +2084,7 @@ class WebControlState:
                 {"id": cfg["id"], "label": cfg["label"]}
                 for cfg in AUDIO_OUTPUTS
             ],
+            "gpio": self._build_gpio_snapshot_locked(),
             "button_actions": self._build_button_actions_snapshot_locked(),
             "sound": self._build_sound_snapshot_locked(),
             "gamepad": self._build_gamepad_snapshot_locked(),
@@ -2294,6 +2443,7 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
                 light_url=data.get("light_url"),
                 web_port=data.get("web_port"),
                 button_actions=data.get("button_actions"),
+                gpio=data.get("gpio"),
             )
 
         body = json.dumps(state)
@@ -2630,6 +2780,9 @@ def main():
     persisted_head = load_persisted_head_angles()
     if not apply_head_angles(persisted_head):
         apply_head_angles(DEFAULT_HEAD_ANGLES)
+    persisted_gpio = load_persisted_gpio_settings()
+    if not apply_gpio_settings(persisted_gpio):
+        apply_gpio_settings(DEFAULT_GPIO_SETTINGS)
     validate_configuration()
 
     MOTOR_AXIS_CENTERED = getattr(ecodes, MOTOR_AXIS_CENTERED_NAME)
@@ -2657,6 +2810,15 @@ def main():
     persisted_button_actions = load_persisted_button_actions()
     battery_monitor = BatteryMonitor()
 
+    def apply_gpio_from_web(settings):
+        sanitized = sanitize_gpio_settings(settings)
+        if sanitized is None:
+            return False
+        apply_gpio_settings(sanitized)
+        setup_motor_pins(pi)
+        set_motor(pi, 0.0)
+        return True
+
     web_state = WebControlState(
         initial_audio_device=persisted_audio.get("audio_device"),
         initial_volume_map=persisted_audio.get("volumes"),
@@ -2672,6 +2834,8 @@ def main():
         initial_light_url=persisted_links.get("light_url"),
         initial_web_port=persisted_links.get("web_port"),
         initial_button_actions=persisted_button_actions,
+        initial_gpio_settings=persisted_gpio,
+        gpio_apply_callback=apply_gpio_from_web,
         battery_monitor=battery_monitor,
     )
     web_server = None
