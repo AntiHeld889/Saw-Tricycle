@@ -86,6 +86,17 @@ DEFAULT_STEERING_ANGLES = {
     "right": RIGHT_MAX_DEG,
 }
 
+STEERING_PULSE_STEP_US = 1
+DEFAULT_STEERING_PULSES = {
+    "left": int(round(US_MIN + (US_MAX - US_MIN) * (LEFT_MAX_DEG / SERVO_RANGE_DEG))),
+    "mid": int(round(US_MIN + (US_MAX - US_MIN) * (MID_DEG / SERVO_RANGE_DEG))),
+    "right": int(round(US_MIN + (US_MAX - US_MIN) * (RIGHT_MAX_DEG / SERVO_RANGE_DEG))),
+}
+
+STEERING_LEFT_US = DEFAULT_STEERING_PULSES["left"]
+STEERING_MID_US = DEFAULT_STEERING_PULSES["mid"]
+STEERING_RIGHT_US = DEFAULT_STEERING_PULSES["right"]
+
 INVERT_SERVO         = True
 DEADZONE_IN          = 0.07
 DEADZONE_OUT         = 0.10
@@ -1341,6 +1352,43 @@ def sanitize_steering_angles(payload):
     return {"left": left, "mid": mid, "right": right}
 
 
+def _sanitize_steering_pulse_value(value):
+    if value is None:
+        return None
+    if isinstance(value, str):
+        candidate = value.strip().replace(",", ".")
+        if not candidate:
+            return None
+        try:
+            value = float(candidate)
+        except ValueError:
+            return None
+    if isinstance(value, (int, float)):
+        if not math.isfinite(value):
+            return None
+        limited = clamp(float(value), US_MIN, US_MAX)
+        if STEERING_PULSE_STEP_US > 0:
+            steps = round((limited - US_MIN) / STEERING_PULSE_STEP_US)
+            limited = US_MIN + steps * STEERING_PULSE_STEP_US
+        return int(round(clamp(limited, US_MIN, US_MAX)))
+    return None
+
+
+def sanitize_steering_pulses(payload):
+    if not isinstance(payload, dict):
+        return None
+    left = _sanitize_steering_pulse_value(payload.get("left"))
+    mid = _sanitize_steering_pulse_value(payload.get("mid"))
+    right = _sanitize_steering_pulse_value(payload.get("right"))
+    if left is None or mid is None or right is None:
+        return None
+    monotonic_increasing = left <= mid <= right
+    monotonic_decreasing = left >= mid >= right
+    if not (monotonic_increasing or monotonic_decreasing):
+        return None
+    return {"left": left, "mid": mid, "right": right}
+
+
 def sanitize_bool(value, *, default=False):
     if isinstance(value, bool):
         return value
@@ -1386,6 +1434,38 @@ def apply_steering_angles(angles):
     LEFT_MAX_DEG = sanitized["left"]
     MID_DEG = sanitized["mid"]
     RIGHT_MAX_DEG = sanitized["right"]
+    return True
+
+
+def load_persisted_steering_pulses(defaults=None):
+    if defaults is None:
+        defaults = DEFAULT_STEERING_PULSES
+    data = _load_persisted_state()
+    if isinstance(data, dict):
+        raw = data.get("steering_pulses")
+        sanitized = sanitize_steering_pulses(raw)
+        if sanitized:
+            return sanitized
+    return dict(defaults)
+
+
+def persist_steering_pulses(pulses):
+    sanitized = sanitize_steering_pulses(pulses)
+    if sanitized is None:
+        return False
+    payload = _load_persisted_state()
+    payload["steering_pulses"] = sanitized
+    return _persist_state(payload)
+
+
+def apply_steering_pulses(pulses):
+    sanitized = sanitize_steering_pulses(pulses)
+    if sanitized is None:
+        return False
+    global STEERING_LEFT_US, STEERING_MID_US, STEERING_RIGHT_US
+    STEERING_LEFT_US = sanitized["left"]
+    STEERING_MID_US = sanitized["mid"]
+    STEERING_RIGHT_US = sanitized["right"]
     return True
 
 
@@ -1565,6 +1645,7 @@ class WebControlState:
         initial_volume_map=None,
         initial_motor_limits=None,
         initial_steering_angles=None,
+        initial_steering_pulses=None,
         initial_head_angles=None,
         initial_sound_directory=None,
         initial_connected_sound=None,
@@ -1628,6 +1709,16 @@ class WebControlState:
             if sanitized is not None:
                 self._steering_angles = sanitized
                 apply_steering_angles(sanitized)
+        self._steering_pulses = {
+            "left": STEERING_LEFT_US,
+            "mid": STEERING_MID_US,
+            "right": STEERING_RIGHT_US,
+        }
+        if isinstance(initial_steering_pulses, dict):
+            sanitized_pulses = sanitize_steering_pulses(initial_steering_pulses)
+            if sanitized_pulses is not None:
+                self._steering_pulses = sanitized_pulses
+                apply_steering_pulses(sanitized_pulses)
         self._head_angles = {
             "left": HEAD_LEFT_DEG,
             "mid": HEAD_CENTER_DEG,
@@ -1828,6 +1919,7 @@ class WebControlState:
         audio_volume=None,
         motor_limits=None,
         steering_angles=None,
+        steering_pulses=None,
         head_angles=None,
         sound_directory=None,
         connected_sound=None,
@@ -1846,6 +1938,7 @@ class WebControlState:
         apply_volume_change = None
         motor_limits_to_persist = None
         steering_angles_to_persist = None
+        steering_pulses_to_persist = None
         head_angles_to_persist = None
         sound_settings_to_persist = None
         gamepad_settings_to_persist = None
@@ -1904,6 +1997,11 @@ class WebControlState:
                 if sanitized is not None and sanitized != self._steering_angles:
                     self._steering_angles = sanitized
                     steering_angles_to_persist = sanitized
+            if steering_pulses is not None and isinstance(steering_pulses, dict):
+                sanitized_pulses = sanitize_steering_pulses(steering_pulses)
+                if sanitized_pulses is not None and sanitized_pulses != self._steering_pulses:
+                    self._steering_pulses = sanitized_pulses
+                    steering_pulses_to_persist = sanitized_pulses
             if head_angles is not None and isinstance(head_angles, dict):
                 sanitized_head = sanitize_head_angles(head_angles)
                 if sanitized_head is not None and sanitized_head != self._head_angles:
@@ -2009,6 +2107,9 @@ class WebControlState:
         if steering_angles_to_persist is not None:
             apply_steering_angles(steering_angles_to_persist)
             persist_steering_angles(steering_angles_to_persist)
+        if steering_pulses_to_persist is not None:
+            apply_steering_pulses(steering_pulses_to_persist)
+            persist_steering_pulses(steering_pulses_to_persist)
         if head_angles_to_persist is not None:
             apply_head_angles(head_angles_to_persist)
             persist_head_angles(head_angles_to_persist)
@@ -2070,6 +2171,14 @@ class WebControlState:
                 "min": 0.0,
                 "max": SERVO_RANGE_DEG,
                 "step": STEERING_STEP_DEG,
+            },
+            "steering_pulses": {
+                "left": self._steering_pulses["left"],
+                "mid": self._steering_pulses["mid"],
+                "right": self._steering_pulses["right"],
+                "min": US_MIN,
+                "max": US_MAX,
+                "step": STEERING_PULSE_STEP_US,
             },
             "head_angles": {
                 "left": self._head_angles["left"],
@@ -2444,6 +2553,7 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
                 web_port=data.get("web_port"),
                 button_actions=data.get("button_actions"),
                 gpio=data.get("gpio"),
+                steering_pulses=data.get("steering_pulses"),
             )
 
         body = json.dumps(state)
@@ -2481,6 +2591,12 @@ def validate_configuration():
 
     if not (0.0 <= LEFT_MAX_DEG <= MID_DEG <= RIGHT_MAX_DEG <= SERVO_RANGE_DEG):
         raise ValueError("Lenkwinkel müssen innerhalb der Servo-Range liegen und sortiert sein")
+
+    pulses = sanitize_steering_pulses(
+        {"left": STEERING_LEFT_US, "mid": STEERING_MID_US, "right": STEERING_RIGHT_US}
+    )
+    if pulses is None:
+        raise ValueError("Lenkservo-Pulse müssen monoton und innerhalb der Limits liegen")
 
     if DEADZONE_IN < 0 or DEADZONE_OUT < 0 or DEADZONE_IN >= DEADZONE_OUT:
         raise ValueError("DEADZONE_IN/OUT müssen >=0 und DEADZONE_IN < DEADZONE_OUT sein")
@@ -2532,7 +2648,21 @@ def deg_to_us_unclamped(deg):
 
 def deg_to_us_lenkung(deg):
     d = clamp(deg, LEFT_MAX_DEG, RIGHT_MAX_DEG)
-    return deg_to_us_unclamped(d)
+    if d <= MID_DEG:
+        denom = MID_DEG - LEFT_MAX_DEG
+        if denom <= 0:
+            pulse = STEERING_MID_US
+        else:
+            ratio = (d - LEFT_MAX_DEG) / denom
+            pulse = STEERING_LEFT_US + ratio * (STEERING_MID_US - STEERING_LEFT_US)
+    else:
+        denom = RIGHT_MAX_DEG - MID_DEG
+        if denom <= 0:
+            pulse = STEERING_MID_US
+        else:
+            ratio = (d - MID_DEG) / denom
+            pulse = STEERING_MID_US + ratio * (STEERING_RIGHT_US - STEERING_MID_US)
+    return int(round(clamp(pulse, US_MIN, US_MAX)))
 
 def axis_to_deg_lenkung(ax):
     if ax >= 0:
@@ -2774,6 +2904,10 @@ def set_motor(pi, speed_norm):
 
 # --------- Main ---------
 def main():
+    persisted_pulses = load_persisted_steering_pulses()
+    if not apply_steering_pulses(persisted_pulses):
+        apply_steering_pulses(DEFAULT_STEERING_PULSES)
+        persisted_pulses = dict(DEFAULT_STEERING_PULSES)
     persisted_steering = load_persisted_steering_angles()
     if not apply_steering_angles(persisted_steering):
         apply_steering_angles(DEFAULT_STEERING_ANGLES)
@@ -2824,6 +2958,7 @@ def main():
         initial_volume_map=persisted_audio.get("volumes"),
         initial_motor_limits=persisted_motor_limits,
         initial_steering_angles=persisted_steering,
+        initial_steering_pulses=persisted_pulses,
         initial_head_angles=persisted_head,
         initial_sound_directory=persisted_sound.get("directory"),
         initial_connected_sound=persisted_sound.get("connected_sound"),
