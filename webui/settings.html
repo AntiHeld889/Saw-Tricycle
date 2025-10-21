@@ -561,7 +561,6 @@
     const BUTTON_MODE_NONE = 'none';
     const BUTTON_MODE_MP3 = 'mp3';
     const BUTTON_MODE_COMMAND = 'command';
-    const BUTTON_MODE_DISABLE_OVERRIDE = 'disable_web_override';
     const SOUND_UPLOAD_MAX_BYTES = 20 * 1024 * 1024;
     const buttonActionControls = new Map();
     let buttonAssignments = {};
@@ -757,10 +756,6 @@
         optionCommand.value = BUTTON_MODE_COMMAND;
         optionCommand.textContent = 'Befehl ausführen';
         modeSelect.append(optionCommand);
-        const optionDisableOverride = document.createElement('option');
-        optionDisableOverride.value = BUTTON_MODE_DISABLE_OVERRIDE;
-        optionDisableOverride.textContent = 'Web-Override deaktivieren';
-        modeSelect.append(optionDisableOverride);
         row.append(modeSelect);
         const mp3Wrapper = document.createElement('div');
         mp3Wrapper.className = 'button-action-mp3 sound-row';
@@ -834,10 +829,6 @@
             } else {
               saveButtonAction(code, BUTTON_MODE_NONE, '');
             }
-          } else if (selectedMode === BUTTON_MODE_DISABLE_OVERRIDE) {
-            controls.mp3Wrapper.hidden = true;
-            controls.commandWrapper.hidden = true;
-            saveButtonAction(code, BUTTON_MODE_DISABLE_OVERRIDE, '');
           } else {
             controls.mp3Wrapper.hidden = true;
             controls.commandWrapper.hidden = true;
@@ -895,7 +886,6 @@
         BUTTON_MODE_NONE,
         BUTTON_MODE_MP3,
         BUTTON_MODE_COMMAND,
-        BUTTON_MODE_DISABLE_OVERRIDE,
       ].includes(mode)
         ? mode
         : BUTTON_MODE_NONE;
@@ -1049,8 +1039,6 @@
         if (!normalizedValue) {
           normalizedMode = BUTTON_MODE_NONE;
         }
-      } else if (normalizedMode === BUTTON_MODE_DISABLE_OVERRIDE) {
-        normalizedValue = '';
       } else {
         normalizedMode = BUTTON_MODE_NONE;
       }
@@ -1061,14 +1049,13 @@
         normalizedMode === currentMode
         && (
           normalizedMode === BUTTON_MODE_NONE
-          || normalizedMode === BUTTON_MODE_DISABLE_OVERRIDE
           || normalizedValue === currentValue
         )
       ) {
         return;
       }
       const entry = { mode: normalizedMode };
-      if (normalizedMode !== BUTTON_MODE_NONE && normalizedMode !== BUTTON_MODE_DISABLE_OVERRIDE) {
+      if (normalizedMode !== BUTTON_MODE_NONE) {
         entry.value = normalizedValue;
       }
       const payload = { button_actions: { [code]: entry } };
@@ -1104,8 +1091,6 @@
               && saved.value.toLowerCase() === normalizedValue.toLowerCase();
           } else if (normalizedMode === BUTTON_MODE_COMMAND) {
             success = saved.mode === BUTTON_MODE_COMMAND && saved.value === normalizedValue;
-          } else if (normalizedMode === BUTTON_MODE_DISABLE_OVERRIDE) {
-            success = saved.mode === BUTTON_MODE_DISABLE_OVERRIDE;
           }
         }
         if (success) {
