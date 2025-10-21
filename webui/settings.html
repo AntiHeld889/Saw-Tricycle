@@ -177,57 +177,6 @@
     .sound-row select {
       flex: 1 1 auto;
     }
-    .file-upload-row {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 0.6rem;
-      align-items: center;
-    }
-    .file-upload-row input[type="file"] {
-      flex: 1 1 220px;
-      min-width: 0;
-      background: rgba(255,255,255,0.05);
-      border: 1px solid rgba(255,255,255,0.12);
-      color: #fff;
-      padding: 0.45rem 0.6rem;
-      border-radius: 12px;
-      cursor: pointer;
-      transition: border-color 0.2s ease, box-shadow 0.2s ease;
-    }
-    .file-upload-row input[type="file"]:focus {
-      outline: none;
-      border-color: rgba(229,9,20,0.55);
-      box-shadow: 0 0 0 3px rgba(229,9,20,0.2);
-    }
-    .file-upload-row input[type="file"]:disabled {
-      opacity: 0.6;
-      cursor: not-allowed;
-      box-shadow: none;
-      border-color: rgba(255,255,255,0.12);
-    }
-    .file-upload-row input[type="file"]::file-selector-button {
-      margin-right: 0.75rem;
-      padding: 0.35rem 0.9rem;
-      border-radius: 10px;
-      border: 1px solid rgba(229,9,20,0.4);
-      background: rgba(229,9,20,0.16);
-      color: #fff;
-      font-size: 0.9rem;
-      font-weight: 600;
-      cursor: pointer;
-      transition: background 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
-    }
-    .file-upload-row input[type="file"]::file-selector-button:hover:not(:disabled) {
-      background: rgba(229,9,20,0.28);
-      border-color: rgba(229,9,20,0.55);
-    }
-    .file-upload-row input[type="file"]::file-selector-button:active:not(:disabled) {
-      transform: translateY(1px);
-    }
-    .file-upload-row input[type="file"]::file-selector-button:disabled {
-      cursor: not-allowed;
-      opacity: 0.6;
-    }
     .button-actions {
       display: flex;
       flex-direction: column;
@@ -439,14 +388,6 @@
         <p class="hint">Alle MP3-Dateien aus diesem Ordner stehen für Sounds zur Auswahl.</p>
       </div>
       <div class="field">
-        <label for="soundUpload">Eigene MP3 hinzufügen</label>
-        <div class="file-upload-row">
-          <input id="soundUpload" type="file" accept=".mp3,audio/mpeg" aria-label="MP3-Datei auswählen">
-          <button type="button" class="button" id="soundUploadButton">MP3 hochladen</button>
-        </div>
-        <p class="hint">Unterstützt MP3-Dateien bis 20&nbsp;MB. Die Datei wird im gewählten Verzeichnis gespeichert.</p>
-      </div>
-      <div class="field">
         <label for="connectedSound">Connected Sound</label>
         <div class="sound-row">
           <select id="connectedSound" aria-label="Connected Sound auswählen"></select>
@@ -469,16 +410,6 @@
     </section>
     <section class="settings-section">
       <h2>Weblinks</h2>
-      <div class="field">
-        <label for="webPort">Webserver-Port</label>
-        <div class="text-input">
-          <input id="webPort" type="text" inputmode="numeric" pattern="[0-9]*" autocomplete="off" placeholder="8081" aria-label="Port für den Saw Tricycle Webserver">
-        </div>
-        <div class="button-row">
-          <button type="button" class="button" id="webPortSave">Port speichern</button>
-        </div>
-        <p class="hint">Wirksam nach Neustart der Anwendung.</p>
-      </div>
       <div class="field">
         <label for="soundboardPort">Soundboard URL PORT</label>
         <div class="text-input">
@@ -540,8 +471,6 @@
     const motorReverseValue = document.getElementById('motorReverseValue');
     const soundDirectoryInput = document.getElementById('soundDirectory');
     const soundDirectorySave = document.getElementById('soundDirectorySave');
-    const webPortInput = document.getElementById('webPort');
-    const webPortSave = document.getElementById('webPortSave');
     const soundboardPortInput = document.getElementById('soundboardPort');
     const soundboardPortSave = document.getElementById('soundboardPortSave');
     const cameraPortInput = document.getElementById('cameraPort');
@@ -552,8 +481,6 @@
     const connectedSoundPreviewButton = document.querySelector('[data-sound-preview="connected"]');
     const startupSoundSelect = document.getElementById('startupSound');
     const startupSoundPreviewButton = document.querySelector('[data-sound-preview="startup"]');
-    const soundUploadInput = document.getElementById('soundUpload');
-    const soundUploadButton = document.getElementById('soundUploadButton');
     const soundPreviewPlayer = document.getElementById('soundPreviewPlayer');
     const buttonActionsContainer = document.getElementById('buttonActionsContainer');
     const disconnectCommandInput = document.getElementById('disconnectCommand');
@@ -562,14 +489,12 @@
     const BUTTON_MODE_MP3 = 'mp3';
     const BUTTON_MODE_COMMAND = 'command';
     const BUTTON_MODE_DISABLE_OVERRIDE = 'disable_web_override';
-    const SOUND_UPLOAD_MAX_BYTES = 20 * 1024 * 1024;
     const buttonActionControls = new Map();
     let buttonAssignments = {};
     let buttonDefinitions = [];
     let currentSoundFiles = [];
     let soundDirectoryConfigured = false;
     let syncingButtonActions = false;
-    let soundUploadInProgress = false;
     audioSelect.disabled = true;
     let audioOptionsSignature = '';
     let volumeConfig = null;
@@ -600,13 +525,6 @@
     }
     if (soundDirectorySave) {
       soundDirectorySave.disabled = true;
-    }
-    if (webPortInput) {
-      webPortInput.disabled = true;
-      webPortInput.value = '';
-    }
-    if (webPortSave) {
-      webPortSave.disabled = true;
     }
     if (soundboardPortInput) {
       soundboardPortInput.disabled = true;
@@ -640,13 +558,6 @@
     }
     if (startupSoundPreviewButton) {
       startupSoundPreviewButton.disabled = true;
-    }
-    if (soundUploadInput) {
-      soundUploadInput.disabled = true;
-      soundUploadInput.value = '';
-    }
-    if (soundUploadButton) {
-      soundUploadButton.disabled = true;
     }
     if (disconnectCommandInput) {
       disconnectCommandInput.disabled = true;
@@ -688,24 +599,6 @@
       });
     };
     updatePreviewButtonState();
-    const updateSoundUploadAvailability = () => {
-      if (!soundUploadInput || !soundUploadButton) {
-        return;
-      }
-      if (soundUploadInProgress) {
-        soundUploadInput.disabled = true;
-        soundUploadButton.disabled = true;
-        return;
-      }
-      const hasDirectory = soundDirectoryConfigured;
-      const hasFile = Boolean(soundUploadInput.files && soundUploadInput.files.length > 0);
-      soundUploadInput.disabled = !hasDirectory;
-      if (!hasDirectory && soundUploadInput.value) {
-        soundUploadInput.value = '';
-      }
-      soundUploadButton.disabled = !hasDirectory || !hasFile;
-    };
-    updateSoundUploadAvailability();
     if (soundPreviewPlayer) {
       soundPreviewPlayer.addEventListener('error', (event) => {
         console.error('Sound-Vorschau fehlgeschlagen', event);
@@ -1498,14 +1391,6 @@
         soundDirectoryInput.disabled = true;
         soundDirectorySave.disabled = true;
         soundDirectoryConfigured = false;
-        updateSoundUploadAvailability();
-        if (webPortInput) {
-          webPortInput.value = '';
-          webPortInput.disabled = true;
-        }
-        if (webPortSave) {
-          webPortSave.disabled = true;
-        }
         if (soundboardPortInput) {
           soundboardPortInput.value = '';
           soundboardPortInput.disabled = true;
@@ -1542,22 +1427,13 @@
         : [];
       const connectedSound = typeof info.connected_sound === 'string' ? info.connected_sound : '';
       const startupSound = typeof info.startup_sound === 'string' ? info.startup_sound : '';
-      const webPort = parseSoundboardPort(info.web_port);
       const soundboardPort = parseSoundboardPort(info.soundboard_port);
       const cameraTarget = parseCameraTarget(info.camera_port);
       const lightUrl = parseLightUrl(info.light_url);
       soundDirectoryConfigured = Boolean(directory);
-      updateSoundUploadAvailability();
       soundDirectoryInput.disabled = false;
       soundDirectoryInput.value = directory;
       soundDirectorySave.disabled = false;
-      if (webPortInput) {
-        webPortInput.disabled = false;
-        webPortInput.value = webPort !== null ? String(webPort) : '';
-      }
-      if (webPortSave) {
-        webPortSave.disabled = false;
-      }
       if (soundboardPortInput) {
         soundboardPortInput.disabled = false;
         soundboardPortInput.value = soundboardPort !== null ? String(soundboardPort) : '';
@@ -1602,7 +1478,6 @@
         files,
         connectedSound: connectedSelected || '',
         startupSound: startupSelected || '',
-        webPort,
         soundboardPort,
         cameraTarget,
         lightUrl: lightUrl || '',
@@ -1811,158 +1686,6 @@
       } catch (err) {
         console.error('Speichern des Sound-Pfads fehlgeschlagen', err);
         setStatus('Sound-Pfad konnte nicht gespeichert werden.', 'error');
-      }
-    }
-
-    async function handleSoundUpload() {
-      if (!soundUploadInput || !soundUploadButton) {
-        return;
-      }
-      if (soundUploadInProgress) {
-        return;
-      }
-      if (!soundDirectoryConfigured) {
-        setStatus('Kein MP3-Verzeichnis konfiguriert.', 'error');
-        updateSoundUploadAvailability();
-        return;
-      }
-      const file = soundUploadInput.files && soundUploadInput.files.length > 0
-        ? soundUploadInput.files[0]
-        : null;
-      if (!file) {
-        setStatus('Bitte eine MP3-Datei auswählen.', 'error');
-        updateSoundUploadAvailability();
-        return;
-      }
-      const fileName = typeof file.name === 'string' ? file.name : '';
-      if (!fileName.toLowerCase().endsWith('.mp3')) {
-        setStatus('Bitte eine MP3-Datei auswählen.', 'error');
-        soundUploadInput.value = '';
-        updateSoundUploadAvailability();
-        return;
-      }
-      if (file.size > SOUND_UPLOAD_MAX_BYTES) {
-        setStatus('MP3-Datei ist zu groß (max. 20 MB).', 'error');
-        soundUploadInput.value = '';
-        updateSoundUploadAvailability();
-        return;
-      }
-      const formData = new FormData();
-      formData.append('file', file, fileName || 'sound.mp3');
-      const displayName = fileName || 'MP3';
-      let clearSelection = false;
-      soundUploadInProgress = true;
-      updateSoundUploadAvailability();
-      try {
-        setStatus(`Lade „${displayName}“ hoch …`);
-        const resp = await fetch('/api/sounds/upload', {
-          method: 'POST',
-          body: formData,
-        });
-        let data = null;
-        try {
-          data = await resp.json();
-        } catch (err) {
-          data = null;
-        }
-        if (!resp.ok) {
-          const message = data && typeof data.message === 'string'
-            ? data.message
-            : `MP3 konnte nicht hochgeladen werden (Status ${resp.status}).`;
-          setStatus(message, 'error');
-          return;
-        }
-        if (!data || typeof data !== 'object') {
-          setStatus('Antwort vom Server konnte nicht verarbeitet werden.', 'error');
-          return;
-        }
-        const selected = typeof data.audio_device === 'string' ? data.audio_device : null;
-        syncAudioSelection(data.audio_outputs, selected);
-        const volumeValue = syncVolume(data.audio_volume);
-        syncMotorLimits(data.motor_limits);
-        const soundInfo = syncSoundSettings(data.sound);
-        syncGamepadSettings(data.gamepad);
-        syncButtonActions(data.button_actions);
-        const uploadedName = typeof data.uploaded_file === 'string' ? data.uploaded_file : fileName;
-        const successMessage = typeof data.upload_message === 'string'
-          ? data.upload_message
-          : `MP3 „${uploadedName || displayName}“ hochgeladen.`;
-        const normalizedSuccessMessage = successMessage.endsWith('.')
-          ? successMessage.slice(0, -1)
-          : successMessage;
-        const messages = [];
-        if (selected) {
-          messages.push(volumeValue !== null ? 'Audio-Ausgabe & Lautstärke synchronisiert' : 'Audio-Ausgabe synchronisiert');
-        }
-        if (soundInfo) {
-          if (!soundInfo.configured) {
-            messages.push('Kein MP3-Verzeichnis konfiguriert');
-          } else if (Array.isArray(soundInfo.files) && soundInfo.files.length === 0) {
-            messages.push('Keine MP3-Dateien gefunden');
-          }
-        }
-        messages.push(normalizedSuccessMessage);
-        setStatus(`${messages.join(' · ')}.`, 'success');
-        clearSelection = true;
-      } catch (err) {
-        console.error('Upload der MP3-Datei fehlgeschlagen', err);
-        setStatus('MP3-Datei konnte nicht hochgeladen werden.', 'error');
-      } finally {
-        soundUploadInProgress = false;
-        if (clearSelection) {
-          soundUploadInput.value = '';
-        }
-        updateSoundUploadAvailability();
-      }
-    }
-
-    async function saveWebPort(rawPort) {
-      if (!webPortInput || !webPortSave) {
-        return;
-      }
-      const rawValue = typeof rawPort === 'string' ? rawPort.trim() : String(rawPort ?? '').trim();
-      if (!rawValue) {
-        setStatus('Bitte einen gültigen Port eingeben.', 'error');
-        webPortInput.focus();
-        return;
-      }
-      const numeric = Number.parseInt(rawValue, 10);
-      if (!Number.isInteger(numeric) || numeric < 1 || numeric > 65535) {
-        setStatus('Port muss zwischen 1 und 65535 liegen.', 'error');
-        webPortInput.focus();
-        return;
-      }
-      try {
-        setStatus('Speichere Webserver-Port …');
-        const payload = { web_port: numeric };
-        const currentDevice = audioSelect.value;
-        if (currentDevice) {
-          payload.audio_device = currentDevice;
-        }
-        const resp = await fetch('/api/control', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        });
-        if (!resp.ok) {
-          throw new Error(`Status ${resp.status}`);
-        }
-        const data = await resp.json();
-        syncAudioSelection(data.audio_outputs, data.audio_device);
-        syncVolume(data.audio_volume);
-        syncMotorLimits(data.motor_limits);
-        const soundInfo = syncSoundSettings(data.sound);
-        syncGamepadSettings(data.gamepad);
-        syncButtonActions(data.button_actions);
-        const savedPort = soundInfo ? soundInfo.webPort : null;
-        if (savedPort === numeric) {
-          setStatus('Webserver-Port gespeichert. Bitte Anwendung neu starten.', 'success');
-        } else {
-          setStatus('Webserver-Port konnte nicht gespeichert werden.', 'error');
-        }
-      } catch (err) {
-        console.error('Speichern des Webserver-Ports fehlgeschlagen', err);
-        setStatus('Webserver-Port konnte nicht gespeichert werden.', 'error');
       }
     }
 
@@ -2358,42 +2081,6 @@
         if (event.key === 'Enter') {
           event.preventDefault();
           saveSoundDirectory(soundDirectoryInput.value ?? '');
-        }
-      });
-    }
-    if (soundUploadInput) {
-      soundUploadInput.addEventListener('change', () => {
-        if (soundUploadInput.files && soundUploadInput.files.length > 0) {
-          const file = soundUploadInput.files[0];
-          if (file) {
-            const name = typeof file.name === 'string' ? file.name : '';
-            if (name && !name.toLowerCase().endsWith('.mp3')) {
-              setStatus('Bitte eine MP3-Datei auswählen.', 'error');
-              soundUploadInput.value = '';
-            } else if (file.size > SOUND_UPLOAD_MAX_BYTES) {
-              setStatus('MP3-Datei ist zu groß (max. 20 MB).', 'error');
-              soundUploadInput.value = '';
-            }
-          }
-        }
-        updateSoundUploadAvailability();
-      });
-    }
-    if (soundUploadButton) {
-      soundUploadButton.addEventListener('click', () => {
-        handleSoundUpload();
-      });
-    }
-    if (webPortSave && webPortInput) {
-      webPortSave.addEventListener('click', () => {
-        saveWebPort(webPortInput.value ?? '');
-      });
-    }
-    if (webPortInput) {
-      webPortInput.addEventListener('keydown', (event) => {
-        if (event.key === 'Enter') {
-          event.preventDefault();
-          saveWebPort(webPortInput.value ?? '');
         }
       });
     }
