@@ -34,6 +34,7 @@ HEADPHONE_ROUTE_COMMANDS = [
 
 # Gleiches File bei erneutem Tastendruck neu starten?
 RESTART_SAME_TRACK   = True
+PLAYER_FAIL_FAST_GRACE_S = 0.2  # Zeitfenster um fehlgeschlagene Player sofort zu erkennen
 
 _UNSET = object()
 
@@ -2715,7 +2716,12 @@ def apply_audio_volume(audio_id, volume):
         return False
 
 def _start_player_async(path, alsa_dev=DEFAULT_ALSA_DEVICE):
-    """Starte mpg123 bevorzugt, fallback ffplay. Liefert (Popen, playername) oder (None, None)."""
+    """
+    Starte mpg123 bevorzugt, fallback ffplay. Liefert (Popen, playername) oder (None, None).
+
+    Erkennt Player, die sofort mit Fehlercode beenden (z.B. falsches ALSA-Device) und
+    versucht in diesem Fall den nächsten Kandidaten.
+    """
     try_cmds = []
     mpg123_cmd = ["mpg123", "-q"]
     if alsa_dev:
@@ -2726,11 +2732,28 @@ def _start_player_async(path, alsa_dev=DEFAULT_ALSA_DEVICE):
     for cmd in try_cmds:
         try:
             proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            return proc, cmd[0]
         except FileNotFoundError:
             continue
         except Exception:
             continue
+        try:
+            time.sleep(PLAYER_FAIL_FAST_GRACE_S)
+        except Exception:
+            pass
+        if proc.poll() is None:
+            return proc, cmd[0]
+        returncode = proc.returncode
+        if returncode == 0:
+            print(
+                f"[MP3] Player '{cmd[0]}' beendete sich sofort ohne Ton (Datei zu kurz?)",
+                file=sys.stderr,
+            )
+        else:
+            print(
+                f"[MP3] Player '{cmd[0]}' beendete sich sofort mit Code {returncode}",
+                file=sys.stderr,
+            )
+        continue
     print("Kein Player gefunden (mpg123/ffplay). Installiere: sudo apt-get install mpg123 ffmpeg", file=sys.stderr)
     return None, None
 
