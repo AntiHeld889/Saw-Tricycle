@@ -480,12 +480,16 @@
         area: elements.motorAxis,
         thumb: elements.motorThumb,
         pointerId: null,
+        pointerCaptured: false,
+        windowEndHandler: null,
       },
       steering: {
         orientation: 'horizontal',
         area: elements.steeringAxis,
         thumb: elements.steeringThumb,
         pointerId: null,
+        pointerCaptured: false,
+        windowEndHandler: null,
       },
     };
 
@@ -690,6 +694,15 @@
       const cfg = axisConfig[axis];
       if (!cfg) return;
 
+      const detachWindowHandlers = () => {
+        if (cfg.windowEndHandler) {
+          window.removeEventListener('pointerup', cfg.windowEndHandler);
+          window.removeEventListener('pointercancel', cfg.windowEndHandler);
+          window.removeEventListener('pointerleave', cfg.windowEndHandler);
+          cfg.windowEndHandler = null;
+        }
+      };
+
       cfg.area.addEventListener('pointerdown', (event) => {
         if (!state.overrideEnabled) {
           return;
@@ -697,7 +710,24 @@
         event.preventDefault();
         cfg.pointerId = event.pointerId;
         cfg.area.classList.add('active');
-        cfg.area.setPointerCapture(event.pointerId);
+        cfg.pointerCaptured = false;
+        if (typeof cfg.area.setPointerCapture === 'function') {
+          try {
+            cfg.area.setPointerCapture(event.pointerId);
+            cfg.pointerCaptured = true;
+          } catch (error) {
+            cfg.pointerCaptured = false;
+          }
+        }
+        detachWindowHandlers();
+        cfg.windowEndHandler = (endEvent) => {
+          if (cfg.pointerId === endEvent.pointerId) {
+            endInteraction(endEvent);
+          }
+        };
+        window.addEventListener('pointerup', cfg.windowEndHandler);
+        window.addEventListener('pointercancel', cfg.windowEndHandler);
+        window.addEventListener('pointerleave', cfg.windowEndHandler);
         handleAxisMove(axis, event);
       });
 
@@ -705,7 +735,15 @@
         if (cfg.pointerId !== event.pointerId) {
           return;
         }
-        cfg.area.releasePointerCapture(event.pointerId);
+        detachWindowHandlers();
+        if (cfg.pointerCaptured && typeof cfg.area.releasePointerCapture === 'function') {
+          try {
+            cfg.area.releasePointerCapture(event.pointerId);
+          } catch (error) {
+            // ignore release errors
+          }
+        }
+        cfg.pointerCaptured = false;
         cfg.area.classList.remove('active');
         cfg.pointerId = null;
         centerAxis(axis);
@@ -714,8 +752,15 @@
       cfg.area.addEventListener('pointermove', (event) => handleAxisMove(axis, event));
       cfg.area.addEventListener('pointerup', endInteraction);
       cfg.area.addEventListener('pointercancel', endInteraction);
+      cfg.area.addEventListener('pointerleave', (event) => {
+        if (cfg.pointerId === event.pointerId && event.buttons === 0) {
+          endInteraction(event);
+        }
+      });
       cfg.area.addEventListener('lostpointercapture', (event) => {
         if (cfg.pointerId === event.pointerId) {
+          detachWindowHandlers();
+          cfg.pointerCaptured = false;
           cfg.pointerId = null;
           cfg.area.classList.remove('active');
           centerAxis(axis);
