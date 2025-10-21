@@ -2531,7 +2531,10 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
             self._write_response(404, "Not found", "text/plain; charset=utf-8")
             return
 
-        length = int(self.headers.get("Content-Length", "0"))
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+        except (TypeError, ValueError):
+            length = 0
         raw = self.rfile.read(length) if length > 0 else b""
         try:
             data = json.loads(raw.decode("utf-8")) if raw else {}
