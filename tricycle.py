@@ -13,12 +13,6 @@ SOUNDBOARD_PORT_DEFAULT = None
 SOUNDBOARD_PORT_MIN = 1
 SOUNDBOARD_PORT_MAX = 65535
 
-WEB_PORT_DEFAULT = 8081
-WEB_PORT_MIN = 1
-WEB_PORT_MAX = 65535
-
-MAX_SOUND_UPLOAD_SIZE = 20 * 1024 * 1024      # 20 MB Upload-Limit für MP3-Dateien
-
 CAMERA_PORT_DEFAULT = None
 CAMERA_PORT_MIN = 1
 CAMERA_PORT_MAX = 65535
@@ -38,8 +32,8 @@ RESTART_SAME_TRACK   = True
 _UNSET = object()
 
 # ---- Gamepad ----
-GAMEPAD_NAME_EXACT   = "8BitDo Ultimate 2 Wireless Controller"
-GAMEPAD_NAME_FALLBACK= "8BitDo Ultimate C 2.4G Wireless Controller"
+GAMEPAD_NAME_EXACT   = "8BitDo Ultimate C 2.4G Wireless Controller"
+GAMEPAD_NAME_FALLBACK= "8BitDo"
 WAIT_FOR_DEVICE_S    = 15.0
 GAMEPAD_MAX_MISSING_SERVO_READS = 25  # ca. 0,5s bei 20ms Loopzeit
 
@@ -172,8 +166,6 @@ import time
 import json
 import threading
 import subprocess
-import io
-import cgi
 from functools import lru_cache
 from pathlib import Path
 from types import MappingProxyType
@@ -637,38 +629,6 @@ def sanitize_sound_directory(path):
     return absolute
 
 
-def sanitize_uploaded_mp3_filename(filename):
-    if filename is None:
-        return None
-    try:
-        raw_name = os.path.basename(str(filename))
-    except Exception:
-        return None
-    raw_name = raw_name.replace("\\", "/")
-    raw_name = os.path.basename(raw_name)
-    raw_name = raw_name.strip()
-    if not raw_name or raw_name in {".", ".."}:
-        return None
-    if not raw_name.lower().endswith(".mp3"):
-        return None
-    stem = raw_name[: -4].strip()
-    if not stem:
-        return None
-    sanitized_stem = re.sub(r"[^0-9A-Za-zäöüÄÖÜß()\[\]{} _.-]", "_", stem)
-    sanitized_stem = re.sub(r"\s+", " ", sanitized_stem).strip()
-    sanitized_stem = re.sub(r"__+", "_", sanitized_stem)
-    if not sanitized_stem or sanitized_stem in {".", ".."}:
-        return None
-    sanitized = f"{sanitized_stem}.mp3"
-    if len(sanitized) > 255:
-        sanitized = sanitized[:255]
-        if not sanitized.lower().endswith(".mp3"):
-            sanitized = sanitized[:251] + ".mp3"
-    if "/" in sanitized or "\\" in sanitized:
-        return None
-    return sanitized
-
-
 def sanitize_soundboard_port(value):
     if value is None:
         return None
@@ -683,24 +643,6 @@ def sanitize_soundboard_port(value):
     except (TypeError, ValueError):
         return None
     if not (SOUNDBOARD_PORT_MIN <= numeric <= SOUNDBOARD_PORT_MAX):
-        return None
-    return numeric
-
-
-def sanitize_web_port(value):
-    if value is None:
-        return None
-    try:
-        if isinstance(value, str):
-            stripped = value.strip()
-            if not stripped:
-                return None
-            numeric = int(stripped, 10)
-        else:
-            numeric = int(value)
-    except (TypeError, ValueError):
-        return None
-    if not (WEB_PORT_MIN <= numeric <= WEB_PORT_MAX):
         return None
     return numeric
 
@@ -898,18 +840,6 @@ def list_mp3_files(directory):
         return []
 
 
-def ensure_unique_filename(directory, filename, *, max_attempts=1000):
-    base, ext = os.path.splitext(filename)
-    candidate = filename
-    counter = 1
-    while os.path.exists(os.path.join(directory, candidate)):
-        candidate = f"{base} ({counter}){ext}"
-        counter += 1
-        if counter > max_attempts:
-            raise FileExistsError("Zu viele Dateien mit ähnlichem Namen vorhanden")
-    return candidate
-
-
 def load_persisted_sound_settings():
     data = _load_persisted_state()
     stored = data.get("sound") if isinstance(data, dict) else {}
@@ -973,12 +903,10 @@ def load_persisted_link_settings():
     soundboard_port = None
     camera_port = None
     light_url = None
-    web_port = None
     if isinstance(stored, dict):
         soundboard_port = sanitize_soundboard_port(stored.get("soundboard_port"))
         camera_port = sanitize_camera_port(stored.get("camera_port"))
         light_url = sanitize_light_url(stored.get("light_url"))
-        web_port = sanitize_web_port(stored.get("web_port"))
     if (soundboard_port is None or camera_port is None) and isinstance(data, dict):
         legacy_sound = data.get("sound")
         if isinstance(legacy_sound, dict):
@@ -994,12 +922,11 @@ def load_persisted_link_settings():
         else SOUNDBOARD_PORT_DEFAULT,
         "camera_port": camera_port if camera_port is not None else CAMERA_PORT_DEFAULT,
         "light_url": light_url if light_url is not None else LIGHT_URL_DEFAULT,
-        "web_port": web_port if web_port is not None else WEB_PORT_DEFAULT,
     }
 
 
 def persist_link_settings(
-    *, soundboard_port=_UNSET, camera_port=_UNSET, light_url=_UNSET, web_port=_UNSET
+    *, soundboard_port=_UNSET, camera_port=_UNSET, light_url=_UNSET
 ):
     payload = _load_persisted_state()
     link_state = payload.get("links") if isinstance(payload, dict) else {}
@@ -1023,12 +950,6 @@ def persist_link_settings(
             link_state.pop("light_url", None)
         else:
             link_state["light_url"] = sanitized_url
-    if web_port is not _UNSET:
-        sanitized_web = sanitize_web_port(web_port)
-        if sanitized_web is None:
-            link_state.pop("web_port", None)
-        else:
-            link_state["web_port"] = sanitized_web
     if link_state:
         payload["links"] = link_state
     else:
@@ -1538,7 +1459,6 @@ class WebControlState:
         initial_soundboard_port=None,
         initial_camera_port=None,
         initial_light_url=None,
-        initial_web_port=None,
         initial_button_actions=None,
         battery_monitor=None,
     ):
@@ -1565,11 +1485,7 @@ class WebControlState:
         self._soundboard_port = sanitize_soundboard_port(initial_soundboard_port)
         self._camera_port = sanitize_camera_port(initial_camera_port)
         self._light_url = sanitize_light_url(initial_light_url)
-        self._web_port = sanitize_web_port(initial_web_port)
-        if self._web_port is None:
-            self._web_port = WEB_PORT_DEFAULT
-        normalized_actions = normalize_button_actions_map(initial_button_actions)
-        self._button_actions = normalized_actions if normalized_actions is not None else {}
+        self._button_actions = normalize_button_actions_map(initial_button_actions)
         self._refresh_sound_files_locked()
         self._motor_limit_forward = MOTOR_LIMIT_FWD
         self._motor_limit_reverse = MOTOR_LIMIT_REV
@@ -1655,7 +1571,6 @@ class WebControlState:
             "soundboard_port": self._soundboard_port,
             "camera_port": self._camera_port,
             "light_url": self._light_url,
-            "web_port": self._web_port,
         }
 
     def _build_gamepad_snapshot_locked(self):
@@ -1799,14 +1714,6 @@ class WebControlState:
             return None
         return resolved
 
-    def get_sound_directory(self):
-        with self._lock:
-            return self._sound_directory
-
-    def get_web_port(self):
-        with self._lock:
-            return self._web_port
-
     def _build_volume_snapshot_locked(self):
         audio_id = self._audio_device
         profile = get_audio_volume_profile(audio_id)
@@ -1846,7 +1753,6 @@ class WebControlState:
         soundboard_port=None,
         camera_port=None,
         light_url=None,
-        web_port=None,
         web_override=None,
         button_actions=None,
     ):
@@ -1869,7 +1775,6 @@ class WebControlState:
             previous_soundboard_port = self._soundboard_port
             previous_camera_port = self._camera_port
             previous_light_url = self._light_url
-            previous_web_port = self._web_port
             if audio_device is not None:
                 audio_id = str(audio_device)
                 if audio_id in _AUDIO_OUTPUT_MAP and audio_id != self._audio_device:
@@ -1976,12 +1881,6 @@ class WebControlState:
                 sanitized_url = sanitize_light_url(light_url)
                 if sanitized_url != self._light_url:
                     self._light_url = sanitized_url
-            if web_port is not None:
-                sanitized_web = sanitize_web_port(web_port)
-                if sanitized_web is None:
-                    sanitized_web = WEB_PORT_DEFAULT
-                if sanitized_web != self._web_port:
-                    self._web_port = sanitized_web
             if web_override is not None:
                 self._apply_web_override_locked(web_override)
             self._ensure_sound_selections_locked()
@@ -2002,13 +1901,11 @@ class WebControlState:
                 self._soundboard_port != previous_soundboard_port
                 or self._camera_port != previous_camera_port
                 or self._light_url != previous_light_url
-                or self._web_port != previous_web_port
             ):
                 link_settings_to_persist = {
                     "soundboard_port": self._soundboard_port,
                     "camera_port": self._camera_port,
                     "light_url": self._light_url,
-                    "web_port": self._web_port,
                 }
             if self._disconnect_command != previous_disconnect_command:
                 gamepad_settings_to_persist = {
@@ -2040,16 +1937,6 @@ class WebControlState:
             apply_audio_output(new_audio_id)
         if apply_volume_change is not None:
             apply_audio_volume(*apply_volume_change)
-        return self._finalize_snapshot(snapshot)
-
-    def refresh_sound_files(self):
-        button_actions_to_persist = None
-        with self._lock:
-            if self._refresh_sound_files_locked():
-                button_actions_to_persist = dict(self._button_actions)
-            snapshot = self.snapshot_locked()
-        if button_actions_to_persist is not None:
-            persist_button_actions(button_actions_to_persist)
         return self._finalize_snapshot(snapshot)
 
     def snapshot(self):
@@ -2199,161 +2086,6 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
         if data:
             self.wfile.write(data)
 
-    def _write_json_response(self, status, payload):
-        body = json.dumps(payload)
-        self._write_response(status, body, "application/json")
-
-    def _handle_sound_upload(self):
-        if not self.control_state:
-            self._write_json_response(
-                503,
-                {"status": "error", "message": "Sound-Upload ist nicht verfügbar."},
-            )
-            return
-        directory = self.control_state.get_sound_directory() if hasattr(self.control_state, "get_sound_directory") else None
-        if not directory:
-            self._write_json_response(
-                400,
-                {"status": "error", "message": "Kein MP3-Verzeichnis konfiguriert."},
-            )
-            return
-        content_type = self.headers.get("Content-Type", "")
-        if "multipart/form-data" not in content_type.lower():
-            self._write_json_response(
-                400,
-                {"status": "error", "message": "Ungültiger Inhaltstyp."},
-            )
-            return
-        try:
-            length = int(self.headers.get("Content-Length", "0"))
-        except ValueError:
-            length = 0
-        if length <= 0:
-            self._write_json_response(
-                400,
-                {"status": "error", "message": "Es wurde keine Datei übertragen."},
-            )
-            return
-        if length > MAX_SOUND_UPLOAD_SIZE + 65536:
-            remaining = length
-            while remaining > 0:
-                chunk = self.rfile.read(min(65536, remaining))
-                if not chunk:
-                    break
-                remaining -= len(chunk)
-            self._write_json_response(
-                413,
-                {
-                    "status": "error",
-                    "message": "MP3-Datei überschreitet das Upload-Limit von 20 MB.",
-                },
-            )
-            return
-        raw = self.rfile.read(length)
-        if not raw:
-            self._write_json_response(
-                400,
-                {"status": "error", "message": "Es wurde keine Datei übertragen."},
-            )
-            return
-        try:
-            form = cgi.FieldStorage(
-                fp=io.BytesIO(raw),
-                headers=self.headers,
-                environ={
-                    "REQUEST_METHOD": "POST",
-                    "CONTENT_TYPE": content_type,
-                    "CONTENT_LENGTH": str(len(raw)),
-                },
-                keep_blank_values=True,
-            )
-        except Exception:
-            self._write_json_response(
-                400,
-                {"status": "error", "message": "Upload konnte nicht verarbeitet werden."},
-            )
-            return
-        file_item = None
-        items = getattr(form, "list", None)
-        if items:
-            for item in items:
-                if getattr(item, "name", None) == "file" and getattr(item, "filename", None):
-                    file_item = item
-                    break
-        elif getattr(form, "filename", None):
-            file_item = form
-        if file_item is None:
-            self._write_json_response(
-                400,
-                {"status": "error", "message": "Keine MP3-Datei ausgewählt."},
-            )
-            return
-        filename = sanitize_uploaded_mp3_filename(getattr(file_item, "filename", ""))
-        if not filename:
-            self._write_json_response(
-                400,
-                {"status": "error", "message": "Dateiname ist ungültig oder keine MP3-Datei."},
-            )
-            return
-        file_content = b""
-        try:
-            if file_item.file:
-                file_item.file.seek(0)
-                file_content = file_item.file.read()
-        except Exception:
-            file_content = b""
-        if not file_content:
-            self._write_json_response(
-                400,
-                {"status": "error", "message": "Die hochgeladene Datei ist leer."},
-            )
-            return
-        if len(file_content) > MAX_SOUND_UPLOAD_SIZE:
-            self._write_json_response(
-                413,
-                {
-                    "status": "error",
-                    "message": "MP3-Datei überschreitet das Upload-Limit von 20 MB.",
-                },
-            )
-            return
-        target_dir = Path(directory)
-        try:
-            target_dir.mkdir(parents=True, exist_ok=True)
-        except OSError:
-            self._write_json_response(
-                500,
-                {"status": "error", "message": "MP3-Verzeichnis kann nicht erstellt werden."},
-            )
-            return
-        try:
-            final_name = ensure_unique_filename(str(target_dir), filename)
-        except FileExistsError:
-            self._write_json_response(
-                409,
-                {
-                    "status": "error",
-                    "message": "Datei konnte nicht gespeichert werden (Namenskonflikt).",
-                },
-            )
-            return
-        try:
-            target_path = target_dir / final_name
-            with open(target_path, "wb") as handle:
-                handle.write(file_content)
-        except OSError:
-            self._write_json_response(
-                500,
-                {"status": "error", "message": "MP3-Datei konnte nicht gespeichert werden."},
-            )
-            return
-        snapshot = self.control_state.refresh_sound_files()
-        payload = dict(snapshot)
-        payload["uploaded_file"] = final_name
-        payload["upload_message"] = f"MP3 \u201e{final_name}\u201c hochgeladen."
-        payload["status"] = "ok"
-        self._write_json_response(200, payload)
-
     def do_GET(self):
         parsed = urlparse(self.path)
         path_only = parsed.path
@@ -2419,9 +2151,6 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
         self._write_response(404, "Not found", "text/plain; charset=utf-8")
 
     def do_POST(self):
-        if self.path == "/api/sounds/upload":
-            self._handle_sound_upload()
-            return
         if not self.path.startswith("/api/control"):
             self._write_response(404, "Not found", "text/plain; charset=utf-8")
             return
@@ -2449,7 +2178,6 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
                 soundboard_port=data.get("soundboard_port"),
                 camera_port=data.get("camera_port"),
                 light_url=data.get("light_url"),
-                web_port=data.get("web_port"),
                 web_override=data.get("web_override"),
                 button_actions=data.get("button_actions"),
             )
@@ -2462,17 +2190,11 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
         return
 
 
-def start_webserver(state, port=WEB_PORT_DEFAULT):
-    """Startet den HTTP-Server für die Websteuerung."""
+def start_webserver(state):
+    """Startet den HTTP-Server für die Websteuerung auf Port 8081."""
 
     ControlRequestHandler.control_state = state
-    try:
-        bound_port = int(port)
-    except (TypeError, ValueError):
-        bound_port = WEB_PORT_DEFAULT
-    if not (WEB_PORT_MIN <= bound_port <= WEB_PORT_MAX):
-        bound_port = WEB_PORT_DEFAULT
-    server = ThreadingHTTPServer(("0.0.0.0", bound_port), ControlRequestHandler)
+    server = ThreadingHTTPServer(("0.0.0.0", 8081), ControlRequestHandler)
 
     thread = threading.Thread(target=server.serve_forever, name="web-control", daemon=True)
     thread.start()
@@ -2828,15 +2550,13 @@ def main():
         initial_soundboard_port=persisted_links.get("soundboard_port"),
         initial_camera_port=persisted_links.get("camera_port"),
         initial_light_url=persisted_links.get("light_url"),
-        initial_web_port=persisted_links.get("web_port"),
         initial_button_actions=persisted_button_actions,
         battery_monitor=battery_monitor,
     )
     web_server = None
     try:
-        port = web_state.get_web_port()
-        web_server = start_webserver(web_state, port=port)
-        print(f"Websteuerung aktiv: http://<IP>:{port}/ (Override schaltet Gamepad aus)")
+        web_server = start_webserver(web_state)
+        print("Websteuerung aktiv: http://<IP>:8081/ (Override schaltet Gamepad aus)")
     except Exception as exc:
         print(f"Webserver konnte nicht gestartet werden: {exc}", file=sys.stderr)
         web_server = None
