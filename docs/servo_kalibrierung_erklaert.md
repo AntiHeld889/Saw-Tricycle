@@ -13,9 +13,13 @@ Die Software merkt sich jetzt drei Pulsweiten (Links, Mitte, Rechts) für den Le
 
 1. Öffne die Seite „Weitere Einstellungen“ im Web-Interface.
 2. Scrolle zum Abschnitt **„Lenkservo kalibrieren“**.
-3. Fahre den Servo manuell (z. B. über die Fernbedienung) an den jeweiligen Anschlag und lies den Wert ab, der zum gewünschten Punkt passt.
-4. Trage die Pulsweite in Mikrosekunden (µs) für **Links**, **Mitte** und **Rechts** ein.
+3. Fahre den Servo manuell (z. B. über die Fernbedienung) an den jeweiligen Anschlag. Die Eingabefelder im Webinterface zeigen dir dabei jederzeit den aktuell eingestellten Mikropuls an – das ist exakt der Wert, den das System sofort an den Servo sendet.
+4. Trage bzw. lasse den Wert stehen, der zum beobachteten Anschlag passt. Jede Änderung wird direkt übernommen, du kannst dich also in kleinen Schritten an den gewünschten Punkt herantasten.
 5. Wenn du einen Wert änderst, wird er sofort gespeichert. Ungültige Eingaben werden verworfen und der letzte gültige Wert wiederhergestellt.
 6. Nach einem Neustart nutzt der Tricycle automatisch deine gespeicherten Kalibrierwerte – du musst nichts weiter tun.
 
 So stellst du sicher, dass der Servo seine physikalischen Grenzen respektiert und das Fahrzeug auch bei kleinen Fertigungstoleranzen sauber geradeaus fährt.
+
+### Tipp für Terminal-Fans
+
+Du möchtest die Pulse lieber am Raspberry Pi selbst nachsehen? Öffne ein Terminal und gib `pigs gpw <PIN>` ein (z. B. `pigs gpw 17`). Die Ausgabe zeigt die aktuell gesetzte Pulsweite in Mikrosekunden an – derselbe Wert, den du auch im Webinterface siehst.
