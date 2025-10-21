@@ -38,8 +38,8 @@ RESTART_SAME_TRACK   = True
 _UNSET = object()
 
 # ---- Gamepad ----
-GAMEPAD_NAME_EXACT   = "8BitDo Ultimate C 2.4G Wireless Controller"
-GAMEPAD_NAME_FALLBACK= "8BitDo"
+GAMEPAD_NAME_EXACT   = "8BitDo Ultimate 2 Wireless Controller"
+GAMEPAD_NAME_FALLBACK= "8BitDo Ultimate C 2.4G Wireless Controller"
 WAIT_FOR_DEVICE_S    = 15.0
 GAMEPAD_MAX_MISSING_SERVO_READS = 25  # ca. 0,5s bei 20ms Loopzeit
 
