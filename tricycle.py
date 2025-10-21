@@ -64,12 +64,16 @@ BUTTON_MODE_NONE = "none"
 BUTTON_MODE_MP3 = "mp3"
 BUTTON_MODE_COMMAND = "command"
 
-# ---- Servo 1 (Lenkung auf ABS_Z) ----
+# ---- Servo 1 (Lenkung) ----
 GPIO_PIN_MIN         = 0
 GPIO_PIN_MAX         = 27
 
 GPIO_PIN_SERVO_DEFAULT = 17
 GPIO_PIN_SERVO       = GPIO_PIN_SERVO_DEFAULT
+SERVO_AXIS_NAME_DEFAULT = "ABS_Z"
+SERVO_AXIS_NAME_OVERRIDES = {
+    GAMEPAD_NAME_EXACT: "ABS_RX",
+}
 US_MIN               = 600
 US_MAX               = 2400
 SERVO_RANGE_DEG      = 270.0
@@ -2829,6 +2833,18 @@ def find_gamepad():
             sys.exit(1)
         time.sleep(0.5)
 
+
+def resolve_servo_axis(dev):
+    name = dev.name or ""
+    axis_name = SERVO_AXIS_NAME_OVERRIDES.get(name, SERVO_AXIS_NAME_DEFAULT)
+    try:
+        axis_code = getattr(ecodes, axis_name)
+    except AttributeError as exc:
+        print(f"Unbekannte Servo-Achse '{axis_name}' für {name}: {exc}", file=sys.stderr)
+        sys.exit(1)
+    return axis_code, axis_name
+
+
 def get_abs_range(caps, code):
     """Kompatibel für unterschiedliche evdev-Formate."""
     for c, info in caps.get(ecodes.EV_ABS, []):
@@ -3003,6 +3019,7 @@ def main():
         while True:
             dev = find_gamepad()
             device_path = getattr(dev, "path", None)
+            servo_axis_code, servo_axis_name = resolve_servo_axis(dev)
 
             safe_start_motor_until = time.monotonic() + MOTOR_SAFE_START_S
             safe_start_servo_until = time.monotonic() + SERVO_SAFE_START_S
@@ -3018,13 +3035,13 @@ def main():
                 sys.exit(1)
 
             # Achsenbereiche
-            rng_servo  = get_abs_range(caps, ecodes.ABS_Z)
+            rng_servo  = get_abs_range(caps, servo_axis_code)
             rng_center = get_abs_range(caps, MOTOR_AXIS_CENTERED)
             rng_gas    = get_abs_range(caps, MOTOR_AXIS_GAS)
             rng_brake  = get_abs_range(caps, MOTOR_AXIS_BRAKE)
 
             if rng_servo is None:
-                print("Lenkachse (ABS_Z) nicht gefunden!", file=sys.stderr)
+                print(f"Lenkachse ({servo_axis_name}) nicht gefunden!", file=sys.stderr)
                 sys.exit(1)
 
             lo_s, hi_s = rng_servo
@@ -3136,8 +3153,8 @@ def main():
                         print(f"[Gamepad] Lesefehler: {exc}")
                         raise GamepadDisconnected from None
 
-                    # ===== Lenkservo (ABS_Z) =====
-                    raw_s = read_abs(dev, ecodes.ABS_Z)
+                    # ===== Lenkservo =====
+                    raw_s = read_abs(dev, servo_axis_code)
                     x = 0.0
                     if raw_s is None:
                         missing_servo_reads += 1
