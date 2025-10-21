@@ -162,20 +162,6 @@
       opacity: 0.7;
       font-size: 0.9rem;
     }
-    select {
-      background: rgba(255,255,255,0.05);
-      border: 1px solid rgba(255,255,255,0.12);
-      color: #fff;
-      border-radius: 12px;
-      padding: 0.55rem 0.75rem;
-      font: inherit;
-      min-height: 42px;
-    }
-    select:focus {
-      outline: none;
-      border-color: rgba(229,9,20,0.55);
-      box-shadow: 0 0 0 3px rgba(229,9,20,0.2);
-    }
     .number-input:focus-within {
       border-color: rgba(229,9,20,0.55);
       box-shadow: 0 0 0 3px rgba(229,9,20,0.2);
@@ -184,35 +170,6 @@
       display: flex;
       flex-direction: column;
       gap: 0.55rem;
-    }
-    .gpio-grid {
-      display: grid;
-      gap: 0.75rem;
-      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-    }
-    .motor-gpio-list {
-      display: flex;
-      flex-direction: column;
-      gap: 0.9rem;
-    }
-    .motor-channel {
-      background: rgba(255,255,255,0.03);
-      border: 1px solid rgba(255,255,255,0.08);
-      border-radius: 12px;
-      padding: 0.9rem;
-      display: flex;
-      flex-direction: column;
-      gap: 0.75rem;
-    }
-    .motor-channel h3 {
-      margin: 0;
-      font-size: 1rem;
-      font-weight: 600;
-    }
-    .motor-channel-grid {
-      display: grid;
-      gap: 0.75rem;
-      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
     }
     .slider-row {
       display: flex;
@@ -316,34 +273,6 @@
         </div>
       </div>
     </section>
-    <section class="settings-section" id="steeringCalibration">
-      <h2>Servo-Kalibrierung</h2>
-      <p class="hint">Speichert die realen Pulsweiten (µs) für Linksanschlag, Mitte und Rechtsanschlag.</p>
-      <p class="hint">Die Felder zeigen immer den Puls, den der Pi gerade ausgibt. Tippe einen Wert ein, beobachte die Servo-Position und passe ihn bei Bedarf schrittweise an.</p>
-      <div class="steering-grid">
-        <div class="field">
-          <label for="steeringPulseLeft">Links (µs)</label>
-          <div class="number-input">
-            <input id="steeringPulseLeft" type="number" inputmode="decimal" min="400" max="2600" step="1" aria-label="Pulsweite für Linksanschlag" autocomplete="off">
-            <span>µs</span>
-          </div>
-        </div>
-        <div class="field">
-          <label for="steeringPulseMid">Mitte (µs)</label>
-          <div class="number-input">
-            <input id="steeringPulseMid" type="number" inputmode="decimal" min="400" max="2600" step="1" aria-label="Pulsweite für Mittelstellung" autocomplete="off">
-            <span>µs</span>
-          </div>
-        </div>
-        <div class="field">
-          <label for="steeringPulseRight">Rechts (µs)</label>
-          <div class="number-input">
-            <input id="steeringPulseRight" type="number" inputmode="decimal" min="400" max="2600" step="1" aria-label="Pulsweite für Rechtsanschlag" autocomplete="off">
-            <span>µs</span>
-          </div>
-        </div>
-      </div>
-    </section>
     <section class="settings-section" id="headAngles">
       <h2>Kopfwinkel</h2>
       <p class="hint">Einstellbare Positionen für das Kopf-Servo (links, Mitte, rechts).</p>
@@ -389,27 +318,6 @@
         </div>
       </div>
     </section>
-    <section class="settings-section" id="gpioSettings">
-      <h2>GPIO-Belegung</h2>
-      <p class="hint">Definiert die GPIO-Pins für Lenkservo, Kopfservo und den MDD10A-Motortreiber.</p>
-      <div class="gpio-grid">
-        <div class="field">
-          <label for="steeringServoPin">Lenkservo (PWM)</label>
-          <div class="number-input">
-            <input id="steeringServoPin" type="number" inputmode="numeric" min="0" max="40" step="1" aria-label="GPIO-Pin für den Lenkservo" autocomplete="off">
-            <span>GPIO</span>
-          </div>
-        </div>
-        <div class="field">
-          <label for="headServoPin">Kopfservo (PWM)</label>
-          <div class="number-input">
-            <input id="headServoPin" type="number" inputmode="numeric" min="0" max="40" step="1" aria-label="GPIO-Pin für den Kopfservo" autocomplete="off">
-            <span>GPIO</span>
-          </div>
-        </div>
-      </div>
-      <div class="motor-gpio-list" id="motorGpioContainer"></div>
-    </section>
     <div class="settings-footer">
       <a class="primary-link" href="/settings" aria-label="Zurück zu den Einstellungen">Zurück</a>
     </div>
@@ -424,26 +332,14 @@
     const steeringMid = document.getElementById('steeringMid');
     const steeringRight = document.getElementById('steeringRight');
     const steeringInputs = [steeringLeft, steeringMid, steeringRight].filter((input) => input);
-    const steeringPulseLeft = document.getElementById('steeringPulseLeft');
-    const steeringPulseMid = document.getElementById('steeringPulseMid');
-    const steeringPulseRight = document.getElementById('steeringPulseRight');
-    const steeringPulseInputs = [steeringPulseLeft, steeringPulseMid, steeringPulseRight].filter((input) => input);
     const headLeft = document.getElementById('headLeft');
     const headMid = document.getElementById('headMid');
     const headRight = document.getElementById('headRight');
     const headInputs = [headLeft, headMid, headRight].filter((input) => input);
-    const steeringServoPin = document.getElementById('steeringServoPin');
-    const headServoPin = document.getElementById('headServoPin');
-    const motorGpioContainer = document.getElementById('motorGpioContainer');
-    const motorChannelInputs = [];
 
     let motorConfig = null;
     let steeringConfig = null;
-    let steeringPulseConfig = null;
     let headConfig = null;
-    let gpioConfig = null;
-    let gpioPinMin = 0;
-    let gpioPinMax = 27;
 
     const setStatus = (message, tone = '') => {
       if (!statusEl) {
@@ -600,39 +496,6 @@
       return Number.isFinite(normalized) ? String(normalized) : '';
     };
 
-    const quantizePulse = (value, min, max, step) => {
-      if (value === undefined || value === null) {
-        return null;
-      }
-      let candidate = value;
-      if (typeof candidate === 'string') {
-        candidate = candidate.trim();
-        if (candidate === '') {
-          return null;
-        }
-        candidate = candidate.replace(',', '.');
-      }
-      const numeric = Number.parseFloat(candidate);
-      if (!Number.isFinite(numeric)) {
-        return null;
-      }
-      const limited = Math.max(min, Math.min(max, numeric));
-      if (!Number.isFinite(step) || step <= 0) {
-        return Math.round(limited);
-      }
-      const steps = Math.round((limited - min) / step);
-      const quantized = min + steps * step;
-      const clamped = Math.max(min, Math.min(max, quantized));
-      return Math.round(clamped);
-    };
-
-    const formatPulseInput = (value) => {
-      if (!Number.isFinite(value)) {
-        return '';
-      }
-      return String(Math.round(value));
-    };
-
     const clampSteeringValue = (rawValue) => {
       if (!steeringConfig) {
         return null;
@@ -650,14 +513,6 @@
       }
       const { min, max, step } = steeringConfig;
       return quantizeAngle(candidate, min, max, step);
-    };
-
-    const clampSteeringPulseValue = (rawValue) => {
-      if (!steeringPulseConfig) {
-        return null;
-      }
-      const { min, max, step } = steeringPulseConfig;
-      return quantizePulse(rawValue, min, max, step);
     };
 
     const applySteeringInputs = (values) => {
@@ -684,31 +539,6 @@
         return;
       }
       applySteeringInputs(steeringConfig.values);
-    };
-
-    const applySteeringPulseInputs = (values) => {
-      if (!steeringPulseConfig) {
-        return;
-      }
-      if (steeringPulseLeft) {
-        steeringPulseLeft.value = formatPulseInput(values.left);
-      }
-      if (steeringPulseMid) {
-        steeringPulseMid.value = formatPulseInput(values.mid);
-      }
-      if (steeringPulseRight) {
-        steeringPulseRight.value = formatPulseInput(values.right);
-      }
-    };
-
-    const revertSteeringPulseInputs = () => {
-      if (!steeringPulseConfig || !steeringPulseConfig.values) {
-        steeringPulseInputs.forEach((input) => {
-          input.value = '';
-        });
-        return;
-      }
-      applySteeringPulseInputs(steeringPulseConfig.values);
     };
 
     const syncSteeringAngles = (info) => {
@@ -771,61 +601,6 @@
         return null;
       }
       if (!(left <= mid && mid <= right)) {
-        return null;
-      }
-      return { left, mid, right };
-    };
-
-    const syncSteeringPulses = (info) => {
-      if (steeringPulseInputs.length === 0) {
-        return null;
-      }
-      const minCandidate = Number.parseFloat(info?.min);
-      const maxCandidate = Number.parseFloat(info?.max);
-      const stepCandidate = Number.parseFloat(info?.step);
-      const min = Number.isFinite(minCandidate) ? minCandidate : 600;
-      const max = Number.isFinite(maxCandidate) ? maxCandidate : 2400;
-      const rawStep = Number.isFinite(stepCandidate) && stepCandidate > 0 ? stepCandidate : 1;
-      const left = quantizePulse(info?.left, min, max, rawStep);
-      const mid = quantizePulse(info?.mid, min, max, rawStep);
-      const right = quantizePulse(info?.right, min, max, rawStep);
-      const monotonicIncreasing = left !== null && mid !== null && right !== null && left <= mid && mid <= right;
-      const monotonicDecreasing = left !== null && mid !== null && right !== null && left >= mid && mid >= right;
-      if (left === null || mid === null || right === null || (!monotonicIncreasing && !monotonicDecreasing)) {
-        steeringPulseConfig = null;
-        steeringPulseInputs.forEach((input) => {
-          input.disabled = true;
-          input.value = '';
-        });
-        return null;
-      }
-      steeringPulseConfig = {
-        min,
-        max,
-        step: rawStep,
-        values: { left, mid, right },
-      };
-      steeringPulseInputs.forEach((input) => {
-        input.disabled = false;
-        input.min = String(min);
-        input.max = String(max);
-        input.step = String(rawStep);
-      });
-      applySteeringPulseInputs(steeringPulseConfig.values);
-      return steeringPulseConfig.values;
-    };
-
-    const getCurrentSteeringPulseValues = () => {
-      if (!steeringPulseConfig) {
-        return null;
-      }
-      const left = clampSteeringPulseValue(steeringPulseLeft?.value);
-      const mid = clampSteeringPulseValue(steeringPulseMid?.value);
-      const right = clampSteeringPulseValue(steeringPulseRight?.value);
-      if (left === null || mid === null || right === null) {
-        return null;
-      }
-      if (!((left <= mid && mid <= right) || (left >= mid && mid >= right))) {
         return null;
       }
       return { left, mid, right };
@@ -941,388 +716,6 @@
       return { left, mid, right };
     };
 
-    const sanitizePinValue = (value) => {
-      if (typeof value === 'number' && Number.isFinite(value)) {
-        return Math.trunc(value);
-      }
-      if (typeof value === 'string') {
-        const trimmed = value.trim();
-        if (trimmed === '') {
-          return null;
-        }
-        const parsed = Number.parseInt(trimmed, 10);
-        return Number.isFinite(parsed) ? parsed : null;
-      }
-      return null;
-    };
-
-    const sanitizeMotorChannelSnapshot = (channel) => {
-      if (!channel || typeof channel !== 'object') {
-        return null;
-      }
-      const pwm = sanitizePinValue(channel.pwm);
-      const dir = sanitizePinValue(channel.dir);
-      if (pwm === null || dir === null) {
-        return null;
-      }
-      const rawForward = channel.forward_high;
-      let forwardHigh = true;
-      if (typeof rawForward === 'boolean') {
-        forwardHigh = rawForward;
-      } else if (typeof rawForward === 'number' && Number.isFinite(rawForward)) {
-        forwardHigh = rawForward !== 0;
-      } else if (typeof rawForward === 'string') {
-        const normalized = rawForward.trim().toLowerCase();
-        if (normalized === '0' || normalized === 'false' || normalized === 'low') {
-          forwardHigh = false;
-        } else if (normalized === '1' || normalized === 'true' || normalized === 'high') {
-          forwardHigh = true;
-        }
-      }
-      return { pwm, dir, forward_high: forwardHigh };
-    };
-
-    const sanitizeGpioSnapshot = (info) => {
-      if (!info || typeof info !== 'object') {
-        return null;
-      }
-      const steering = sanitizePinValue(info.steering_servo);
-      const head = sanitizePinValue(info.head_servo);
-      const rawChannels = Array.isArray(info.motor_driver) ? info.motor_driver : [];
-      const channels = [];
-      rawChannels.forEach((entry) => {
-        const sanitized = sanitizeMotorChannelSnapshot(entry);
-        if (sanitized) {
-          channels.push(sanitized);
-        }
-      });
-      if (steering === null || head === null || channels.length === 0) {
-        return null;
-      }
-      return {
-        steering_servo: steering,
-        head_servo: head,
-        motor_driver: channels,
-      };
-    };
-
-    const clampPinValue = (rawValue, minVal, maxVal) => {
-      if (rawValue === undefined || rawValue === null) {
-        return null;
-      }
-      let candidate = rawValue;
-      if (typeof candidate === 'string') {
-        const trimmed = candidate.trim();
-        if (trimmed === '') {
-          return null;
-        }
-        candidate = trimmed;
-      }
-      const parsed = Number.parseInt(candidate, 10);
-      if (!Number.isFinite(parsed)) {
-        return null;
-      }
-      const lower = Number.isFinite(minVal) ? minVal : 0;
-      const upper = Number.isFinite(maxVal) ? maxVal : 27;
-      const limited = Math.min(Math.max(parsed, lower), upper);
-      return limited;
-    };
-
-    const enforcePinRange = (input) => {
-      if (!input) {
-        return;
-      }
-      const minVal = gpioConfig ? gpioConfig.minPin : gpioPinMin;
-      const maxVal = gpioConfig ? gpioConfig.maxPin : gpioPinMax;
-      const clamped = clampPinValue(input.value, minVal, maxVal);
-      if (clamped === null) {
-        return;
-      }
-      const normalized = String(clamped);
-      if (input.value !== normalized) {
-        input.value = normalized;
-      }
-    };
-
-    const disableGpioInputs = () => {
-      gpioConfig = null;
-      if (steeringServoPin) {
-        steeringServoPin.disabled = true;
-        steeringServoPin.value = '';
-      }
-      if (headServoPin) {
-        headServoPin.disabled = true;
-        headServoPin.value = '';
-      }
-      if (motorGpioContainer) {
-        motorGpioContainer.innerHTML = '';
-      }
-      motorChannelInputs.length = 0;
-    };
-
-    function handleGpioChange() {
-      const values = getCurrentGpioValues();
-      if (!values) {
-        setStatus('Ungültige GPIO-Konfiguration. Bitte prüfen.', 'error');
-        revertGpioInputs();
-        return;
-      }
-      const currentSerialized = gpioConfig ? JSON.stringify(gpioConfig.values) : '';
-      const nextSerialized = JSON.stringify(values);
-      if (currentSerialized === nextSerialized) {
-        if (gpioConfig && gpioConfig.values) {
-          applyGpioInputs(gpioConfig.values);
-        }
-        return;
-      }
-      saveGpioSettings(values);
-    }
-
-    const ensureMotorChannelInputs = (count) => {
-      if (!motorGpioContainer) {
-        motorChannelInputs.length = 0;
-        return;
-      }
-      if (!Number.isInteger(count) || count <= 0) {
-        motorGpioContainer.innerHTML = '';
-        motorChannelInputs.length = 0;
-        return;
-      }
-      if (motorChannelInputs.length === count && motorGpioContainer.childElementCount === count) {
-        return;
-      }
-      motorGpioContainer.innerHTML = '';
-      motorChannelInputs.length = 0;
-      for (let idx = 0; idx < count; idx += 1) {
-        const channelCard = document.createElement('div');
-        channelCard.className = 'motor-channel';
-        const heading = document.createElement('h3');
-        heading.textContent = `MDD10A Kanal ${idx + 1}`;
-        channelCard.appendChild(heading);
-        const grid = document.createElement('div');
-        grid.className = 'motor-channel-grid';
-        channelCard.appendChild(grid);
-
-        const createNumberField = (id, labelText) => {
-          const field = document.createElement('div');
-          field.className = 'field';
-          const label = document.createElement('label');
-          label.setAttribute('for', id);
-          label.textContent = labelText;
-          field.appendChild(label);
-          const wrapper = document.createElement('div');
-          wrapper.className = 'number-input';
-          const input = document.createElement('input');
-          input.type = 'number';
-          input.id = id;
-          input.inputMode = 'numeric';
-          input.autocomplete = 'off';
-          input.step = '1';
-          input.disabled = true;
-          input.setAttribute('aria-label', `GPIO-Pin für ${labelText}`);
-          wrapper.appendChild(input);
-          const suffix = document.createElement('span');
-          suffix.textContent = 'GPIO';
-          wrapper.appendChild(suffix);
-          field.appendChild(wrapper);
-          return { field, input };
-        };
-
-        const pwmId = `motorChannel${idx + 1}Pwm`;
-        const pwmField = createNumberField(pwmId, 'PWM');
-        grid.appendChild(pwmField.field);
-
-        const dirId = `motorChannel${idx + 1}Dir`;
-        const dirField = createNumberField(dirId, 'Richtung');
-        grid.appendChild(dirField.field);
-
-        const modeField = document.createElement('div');
-        modeField.className = 'field';
-        const modeLabel = document.createElement('label');
-        const forwardId = `motorChannel${idx + 1}ForwardHigh`;
-        modeLabel.setAttribute('for', forwardId);
-        modeLabel.textContent = 'Vorwärtspegel';
-        modeField.appendChild(modeLabel);
-        const select = document.createElement('select');
-        select.id = forwardId;
-        select.disabled = true;
-        select.setAttribute('aria-label', 'Logikpegel für Vorwärtsfahrt');
-        const optionHigh = document.createElement('option');
-        optionHigh.value = '1';
-        optionHigh.textContent = 'High = Vorwärts';
-        select.appendChild(optionHigh);
-        const optionLow = document.createElement('option');
-        optionLow.value = '0';
-        optionLow.textContent = 'Low = Vorwärts';
-        select.appendChild(optionLow);
-        modeField.appendChild(select);
-        grid.appendChild(modeField);
-
-        motorGpioContainer.appendChild(channelCard);
-
-        pwmField.input.addEventListener('input', () => enforcePinRange(pwmField.input));
-        pwmField.input.addEventListener('change', handleGpioChange);
-        dirField.input.addEventListener('input', () => enforcePinRange(dirField.input));
-        dirField.input.addEventListener('change', handleGpioChange);
-        select.addEventListener('change', handleGpioChange);
-
-        motorChannelInputs.push({
-          pwm: pwmField.input,
-          dir: dirField.input,
-          forwardHigh: select,
-        });
-      }
-    };
-
-    const applyGpioInputs = (values) => {
-      if (!values) {
-        return;
-      }
-      if (steeringServoPin) {
-        steeringServoPin.disabled = false;
-        steeringServoPin.min = String(gpioPinMin);
-        steeringServoPin.max = String(gpioPinMax);
-        steeringServoPin.value = String(values.steering_servo ?? '');
-      }
-      if (headServoPin) {
-        headServoPin.disabled = false;
-        headServoPin.min = String(gpioPinMin);
-        headServoPin.max = String(gpioPinMax);
-        headServoPin.value = String(values.head_servo ?? '');
-      }
-      motorChannelInputs.forEach((entry, idx) => {
-        const channel = values.motor_driver[idx];
-        if (!channel) {
-          entry.pwm.disabled = true;
-          entry.dir.disabled = true;
-          entry.forwardHigh.disabled = true;
-          entry.pwm.value = '';
-          entry.dir.value = '';
-          entry.forwardHigh.value = '1';
-          return;
-        }
-        entry.pwm.disabled = false;
-        entry.pwm.min = String(gpioPinMin);
-        entry.pwm.max = String(gpioPinMax);
-        entry.pwm.value = String(channel.pwm);
-        entry.dir.disabled = false;
-        entry.dir.min = String(gpioPinMin);
-        entry.dir.max = String(gpioPinMax);
-        entry.dir.value = String(channel.dir);
-        entry.forwardHigh.disabled = false;
-        entry.forwardHigh.value = channel.forward_high ? '1' : '0';
-      });
-    };
-
-    const revertGpioInputs = () => {
-      if (!gpioConfig || !gpioConfig.values) {
-        if (steeringServoPin) {
-          steeringServoPin.value = '';
-        }
-        if (headServoPin) {
-          headServoPin.value = '';
-        }
-        motorChannelInputs.forEach((entry) => {
-          entry.pwm.value = '';
-          entry.dir.value = '';
-          entry.forwardHigh.value = '1';
-        });
-        return;
-      }
-      applyGpioInputs(gpioConfig.values);
-    };
-
-    const syncGpioSettings = (info) => {
-      const sanitized = sanitizeGpioSnapshot(info);
-      const minCandidate = sanitizePinValue(info?.pin_min);
-      const maxCandidate = sanitizePinValue(info?.pin_max);
-      gpioPinMin = Number.isInteger(minCandidate) ? minCandidate : 0;
-      gpioPinMax = Number.isInteger(maxCandidate) ? maxCandidate : 27;
-      if (!sanitized) {
-        disableGpioInputs();
-        return null;
-      }
-      ensureMotorChannelInputs(sanitized.motor_driver.length);
-      if (motorChannelInputs.length !== sanitized.motor_driver.length) {
-        disableGpioInputs();
-        return null;
-      }
-      applyGpioInputs(sanitized);
-      gpioConfig = {
-        minPin: gpioPinMin,
-        maxPin: gpioPinMax,
-        values: sanitized,
-      };
-      return sanitized;
-    };
-
-    const getCurrentGpioValues = () => {
-      if (!gpioConfig) {
-        return null;
-      }
-      if (!steeringServoPin || !headServoPin) {
-        return null;
-      }
-      const minVal = gpioConfig.minPin ?? gpioPinMin;
-      const maxVal = gpioConfig.maxPin ?? gpioPinMax;
-      const steering = clampPinValue(steeringServoPin.value, minVal, maxVal);
-      const head = clampPinValue(headServoPin.value, minVal, maxVal);
-      if (steering === null || head === null) {
-        return null;
-      }
-      if (motorChannelInputs.length !== gpioConfig.values.motor_driver.length) {
-        return null;
-      }
-      const channels = [];
-      for (let idx = 0; idx < motorChannelInputs.length; idx += 1) {
-        const entry = motorChannelInputs[idx];
-        const pwm = clampPinValue(entry.pwm.value, minVal, maxVal);
-        const dir = clampPinValue(entry.dir.value, minVal, maxVal);
-        if (pwm === null || dir === null) {
-          return null;
-        }
-        const forwardHigh = entry.forwardHigh.value === '0' ? false : true;
-        channels.push({ pwm, dir, forward_high: forwardHigh });
-      }
-      return {
-        steering_servo: steering,
-        head_servo: head,
-        motor_driver: channels,
-      };
-    };
-
-    async function saveGpioSettings(settings) {
-      if (!settings) {
-        return;
-      }
-      try {
-        setStatus('Speichere GPIO-Einstellungen …');
-        const resp = await fetch('/api/control', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ gpio: settings }),
-        });
-        if (!resp.ok) {
-          throw new Error(`Status ${resp.status}`);
-        }
-        const data = await resp.json();
-        syncMotorLimits(data.motor_limits);
-        syncSteeringAngles(data.steering_angles);
-        syncSteeringPulses(data.steering_pulses);
-        syncHeadAngles(data.head_angles);
-        const updated = syncGpioSettings(data.gpio);
-        if (updated) {
-          setStatus('GPIO-Einstellungen gespeichert.', 'success');
-        } else {
-          setStatus('GPIO-Einstellungen aktualisiert.', 'success');
-        }
-      } catch (err) {
-        console.error('Speichern der GPIO-Einstellungen fehlgeschlagen', err);
-        revertGpioInputs();
-        setStatus('GPIO-Einstellungen konnten nicht gespeichert werden.', 'error');
-      }
-    }
-
     async function loadAdvancedSettings() {
       try {
         setStatus('Lade Einstellungen …');
@@ -1333,9 +726,7 @@
         const data = await resp.json();
         const motorValues = syncMotorLimits(data.motor_limits);
         const steeringValues = syncSteeringAngles(data.steering_angles);
-        const steeringPulseValues = syncSteeringPulses(data.steering_pulses);
         const headValues = syncHeadAngles(data.head_angles);
-        const gpioValues = syncGpioSettings(data.gpio);
         const loadedSections = [];
         if (motorValues) {
           loadedSections.push('Motor-Grenzen');
@@ -1343,14 +734,8 @@
         if (steeringValues) {
           loadedSections.push('Lenkwinkel');
         }
-        if (steeringPulseValues) {
-          loadedSections.push('Servo-Kalibrierung');
-        }
         if (headValues) {
           loadedSections.push('Kopfwinkel');
-        }
-        if (gpioValues) {
-          loadedSections.push('GPIO-Belegung');
         }
         const statusMessage = formatLoadedStatus(loadedSections);
         if (statusMessage) {
@@ -1363,9 +748,7 @@
         setStatus('Erweiterte Einstellungen konnten nicht geladen werden.', 'error');
         syncMotorLimits(null);
         syncSteeringAngles(null);
-        syncSteeringPulses(null);
         syncHeadAngles(null);
-        syncGpioSettings(null);
       }
     }
 
@@ -1385,9 +768,7 @@
         }
         const data = await resp.json();
         syncSteeringAngles(data.steering_angles);
-        syncSteeringPulses(data.steering_pulses);
         syncHeadAngles(data.head_angles);
-        syncGpioSettings(data.gpio);
         const updated = syncMotorLimits(data.motor_limits);
         if (updated) {
           setStatus('Motor-Grenzen gespeichert.', 'success');
@@ -1416,10 +797,8 @@
         }
         const data = await resp.json();
         const updated = syncSteeringAngles(data.steering_angles);
-        syncSteeringPulses(data.steering_pulses);
         syncMotorLimits(data.motor_limits);
         syncHeadAngles(data.head_angles);
-        syncGpioSettings(data.gpio);
         if (updated) {
           setStatus('Lenkwinkel gespeichert.', 'success');
         } else {
@@ -1429,38 +808,6 @@
         console.error('Speichern der Lenkwinkel fehlgeschlagen', err);
         revertSteeringInputs();
         setStatus('Lenkwinkel konnten nicht gespeichert werden.', 'error');
-      }
-    }
-
-    async function saveSteeringPulses(values) {
-      if (!values) {
-        return;
-      }
-      try {
-        setStatus('Speichere Servo-Kalibrierung …');
-        const resp = await fetch('/api/control', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ steering_pulses: values })
-        });
-        if (!resp.ok) {
-          throw new Error(`Status ${resp.status}`);
-        }
-        const data = await resp.json();
-        syncMotorLimits(data.motor_limits);
-        const updated = syncSteeringPulses(data.steering_pulses);
-        syncSteeringAngles(data.steering_angles);
-        syncHeadAngles(data.head_angles);
-        syncGpioSettings(data.gpio);
-        if (updated) {
-          setStatus('Servo-Kalibrierung gespeichert.', 'success');
-        } else {
-          setStatus('Servo-Kalibrierung konnte nicht gespeichert werden.', 'error');
-        }
-      } catch (err) {
-        console.error('Speichern der Servo-Kalibrierung fehlgeschlagen', err);
-        revertSteeringPulseInputs();
-        setStatus('Servo-Kalibrierung konnte nicht gespeichert werden.', 'error');
       }
     }
 
@@ -1482,8 +829,6 @@
         const updated = syncHeadAngles(data.head_angles);
         syncMotorLimits(data.motor_limits);
         syncSteeringAngles(data.steering_angles);
-        syncSteeringPulses(data.steering_pulses);
-        syncGpioSettings(data.gpio);
         if (updated) {
           setStatus('Kopfwinkel gespeichert.', 'success');
         } else {
@@ -1503,35 +848,12 @@
       });
     }
 
-    if (steeringPulseInputs.length > 0) {
-      steeringPulseInputs.forEach((input) => {
-        input.disabled = true;
-        input.value = '';
-      });
-    }
-
     if (headInputs.length > 0) {
       headInputs.forEach((input) => {
         input.disabled = true;
         input.value = '';
       });
     }
-
-    if (steeringServoPin) {
-      steeringServoPin.disabled = true;
-      steeringServoPin.value = '';
-      steeringServoPin.addEventListener('input', () => enforcePinRange(steeringServoPin));
-      steeringServoPin.addEventListener('change', handleGpioChange);
-    }
-
-    if (headServoPin) {
-      headServoPin.disabled = true;
-      headServoPin.value = '';
-      headServoPin.addEventListener('input', () => enforcePinRange(headServoPin));
-      headServoPin.addEventListener('change', handleGpioChange);
-    }
-
-    disableGpioInputs();
 
     if (motorForward) {
       motorForward.disabled = true;
@@ -1634,59 +956,6 @@
           }
         });
         input.addEventListener('change', handleSteeringChange);
-      });
-    }
-
-    if (steeringPulseInputs.length > 0) {
-      const handleSteeringPulseChange = () => {
-        const values = getCurrentSteeringPulseValues();
-        if (!values) {
-          setStatus('Ungültige Servo-Kalibrierung. Bitte Werte prüfen.', 'error');
-          revertSteeringPulseInputs();
-          return;
-        }
-        if (
-          steeringPulseConfig &&
-          steeringPulseConfig.values &&
-          values.left === steeringPulseConfig.values.left &&
-          values.mid === steeringPulseConfig.values.mid &&
-          values.right === steeringPulseConfig.values.right
-        ) {
-          applySteeringPulseInputs(steeringPulseConfig.values);
-          return;
-        }
-        applySteeringPulseInputs(values);
-        saveSteeringPulses(values);
-      };
-      steeringPulseInputs.forEach((input) => {
-        input.addEventListener('input', () => {
-          if (!steeringPulseConfig) {
-            return;
-          }
-          const raw = input.value;
-          if (raw === undefined || raw === null) {
-            return;
-          }
-          const normalized = String(raw).trim();
-          if (
-            normalized === '' ||
-            normalized.endsWith('.') ||
-            normalized.endsWith(',') ||
-            normalized === '-' ||
-            normalized === '+'
-          ) {
-            return;
-          }
-          const value = clampSteeringPulseValue(normalized);
-          if (value === null) {
-            return;
-          }
-          const formatted = formatPulseInput(value);
-          if (formatted !== raw) {
-            input.value = formatted;
-          }
-        });
-        input.addEventListener('change', handleSteeringPulseChange);
       });
     }
 
