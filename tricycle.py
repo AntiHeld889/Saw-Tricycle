@@ -43,7 +43,7 @@ GAMEPAD_NAME_FALLBACK= "8BitDo Ultimate C 2.4G Wireless Controller"
 WAIT_FOR_DEVICE_S    = 15.0
 GAMEPAD_MAX_MISSING_SERVO_READS = 25  # ca. 0,5s bei 20ms Loopzeit
 
-BUTTON_LAYOUT = [
+BUTTON_LAYOUT_BASE = [
     ("KEY_304", "A Button"),
     ("KEY_305", "B Button"),
     ("KEY_307", "X Button"),
@@ -57,8 +57,22 @@ BUTTON_LAYOUT = [
     ("KEY_318", "Lenkungs Button"),
 ]
 
-BUTTON_CODE_SET = {entry[0] for entry in BUTTON_LAYOUT}
-BUTTON_DEFINITIONS = [{"code": code, "label": label} for code, label in BUTTON_LAYOUT]
+BUTTON_LAYOUT_TRIGGER = [
+    ("ABS_Z", "Linker Trigger"),
+    ("ABS_RZ", "Rechter Trigger"),
+]
+
+BUTTON_LAYOUT_ALL = BUTTON_LAYOUT_BASE + BUTTON_LAYOUT_TRIGGER
+
+BUTTON_CODE_SET = {entry[0] for entry in BUTTON_LAYOUT_ALL}
+BUTTON_DEFINITIONS_BASE = [{"code": code, "label": label} for code, label in BUTTON_LAYOUT_BASE]
+BUTTON_DEFINITIONS_WITH_TRIGGERS = [
+    {"code": code, "label": label} for code, label in BUTTON_LAYOUT_ALL
+]
+
+AXIS_BUTTON_CODE_SET = frozenset(entry[0] for entry in BUTTON_LAYOUT_TRIGGER)
+AXIS_BUTTON_PRESS_THRESHOLD = 0.95
+AXIS_BUTTON_RELEASE_THRESHOLD = 0.85
 
 BUTTON_MODE_NONE = "none"
 BUTTON_MODE_MP3 = "mp3"
@@ -443,7 +457,7 @@ def _resolve_button_event_code(code_str):
 
 BUTTON_CODE_TO_EVENT = {}
 BUTTON_EVENT_TO_CODE = {}
-for code_str, _label in BUTTON_LAYOUT:
+for code_str, _label in BUTTON_LAYOUT_ALL:
     event_code = _resolve_button_event_code(code_str)
     if isinstance(event_code, int):
         BUTTON_CODE_TO_EVENT[code_str] = event_code
@@ -1693,6 +1707,9 @@ class WebControlState:
             self._web_port = WEB_PORT_DEFAULT
         normalized_actions = normalize_button_actions_map(initial_button_actions)
         self._button_actions = normalized_actions if normalized_actions is not None else {}
+        self._button_definitions = [dict(item) for item in BUTTON_DEFINITIONS_BASE]
+        self._active_button_codes = {entry["code"] for entry in self._button_definitions}
+        self._button_actions_enabled = True
         self._refresh_sound_files_locked()
         self._motor_limit_forward = MOTOR_LIMIT_FWD
         self._motor_limit_reverse = MOTOR_LIMIT_REV
@@ -1817,23 +1834,53 @@ class WebControlState:
 
     def _build_button_actions_snapshot_locked(self):
         assignments = {}
-        for definition in BUTTON_DEFINITIONS:
-            code = definition["code"]
-            entry = self._button_actions.get(code)
-            if not entry:
-                assignments[code] = {"mode": BUTTON_MODE_NONE, "value": None}
-            else:
-                assignments[code] = {
-                    "mode": entry.get("mode", BUTTON_MODE_NONE),
-                    "value": entry.get("value"),
-                }
+        if self._button_actions_enabled:
+            for definition in self._button_definitions:
+                code = definition["code"]
+                entry = self._button_actions.get(code)
+                if not entry:
+                    assignments[code] = {"mode": BUTTON_MODE_NONE, "value": None}
+                else:
+                    assignments[code] = {
+                        "mode": entry.get("mode", BUTTON_MODE_NONE),
+                        "value": entry.get("value"),
+                    }
         return {
-            "definitions": [dict(item) for item in BUTTON_DEFINITIONS],
+            "enabled": self._button_actions_enabled,
+            "definitions": [dict(item) for item in self._button_definitions],
             "assignments": assignments,
         }
 
+    def set_button_profile(self, *, include_triggers=False, enabled=True):
+        enabled_flag = bool(enabled)
+        include_triggers_flag = bool(include_triggers) and enabled_flag
+        if enabled_flag:
+            base_definitions = (
+                BUTTON_DEFINITIONS_WITH_TRIGGERS if include_triggers_flag else BUTTON_DEFINITIONS_BASE
+            )
+        else:
+            base_definitions = []
+        desired_codes = tuple(entry["code"] for entry in base_definitions)
+        with self._lock:
+            changed = False
+            current_codes = tuple(entry["code"] for entry in self._button_definitions)
+            if current_codes != desired_codes:
+                self._button_definitions = [dict(item) for item in base_definitions]
+                self._active_button_codes = set(desired_codes)
+                changed = True
+            if self._button_actions_enabled != enabled_flag:
+                self._button_actions_enabled = enabled_flag
+                if not enabled_flag:
+                    self._active_button_codes = set()
+                changed = True
+            if changed:
+                self._last_update = time.time()
+            return changed
+
     def _apply_button_action_updates_locked(self, updates):
         if not isinstance(updates, dict) or not updates:
+            return False
+        if not self._button_actions_enabled:
             return False
         changed = False
         for key, value in updates.items():
@@ -1842,6 +1889,8 @@ class WebControlState:
             except Exception:
                 continue
             if code not in BUTTON_CODE_SET:
+                continue
+            if self._active_button_codes and code not in self._active_button_codes:
                 continue
             sanitized = sanitize_button_action(code, value, self._sound_files)
             if sanitized is None:
@@ -2229,6 +2278,10 @@ class WebControlState:
         if code_str not in BUTTON_CODE_SET:
             return None
         with self._lock:
+            if not self._button_actions_enabled:
+                return None
+            if self._active_button_codes and code_str not in self._active_button_codes:
+                return None
             entry = self._button_actions.get(code_str)
             if not entry:
                 return None
@@ -3018,10 +3071,43 @@ def main():
         except Exception as exc:
             print(f"[Gamepad] Trennungsbefehl konnte nicht gestartet werden: {exc}", file=sys.stderr)
 
+    def run_button_action(button_code):
+        action = web_state.get_button_action(button_code)
+        if not action:
+            return
+        mode = action.get("mode")
+        if mode == BUTTON_MODE_MP3:
+            file_name = action.get("value")
+            if not file_name:
+                return
+            path = web_state.get_sound_file_path(file_name)
+            if path and os.path.isfile(path):
+                play_sound_switch(path, web_state.get_selected_alsa_device())
+            return
+        if mode == BUTTON_MODE_COMMAND:
+            command = action.get("value")
+            if not command:
+                return
+            try:
+                subprocess.Popen(command, shell=True)
+            except Exception as exc:
+                print(
+                    f"[Button] Kommando konnte nicht gestartet werden ({button_code}): {exc}",
+                    file=sys.stderr,
+                )
+
     try:
         while True:
             dev = find_gamepad()
             device_path = getattr(dev, "path", None)
+            device_name = dev.name or ""
+            if device_name == GAMEPAD_NAME_EXACT:
+                web_state.set_button_profile(include_triggers=True, enabled=True)
+            elif GAMEPAD_NAME_FALLBACK in device_name:
+                web_state.set_button_profile(include_triggers=False, enabled=False)
+            else:
+                web_state.set_button_profile(include_triggers=False, enabled=True)
+            triggers_enabled = device_name == GAMEPAD_NAME_EXACT
             servo_axis_code, servo_axis_name = resolve_servo_axis(dev)
 
             safe_start_motor_until = time.monotonic() + MOTOR_SAFE_START_S
@@ -3036,6 +3122,28 @@ def main():
             if ecodes.EV_ABS not in caps:
                 print("Kein EV_ABS – Controller-Modus prüfen!", file=sys.stderr)
                 sys.exit(1)
+
+            axis_button_ranges = {}
+            axis_button_states = {}
+            axis_event_to_code = {}
+            if triggers_enabled:
+                for code in AXIS_BUTTON_CODE_SET:
+                    event_code = BUTTON_CODE_TO_EVENT.get(code)
+                    if event_code is None:
+                        continue
+                    rng = get_abs_range(caps, event_code)
+                    if rng is None:
+                        continue
+                    axis_button_ranges[code] = rng
+                    axis_event_to_code[event_code] = code
+                    raw_initial = read_abs(dev, event_code)
+                    if raw_initial is None:
+                        axis_button_states[code] = False
+                    else:
+                        lo_axis, hi_axis = rng
+                        axis_button_states[code] = (
+                            norm_axis_trigger(raw_initial, lo_axis, hi_axis) >= AXIS_BUTTON_PRESS_THRESHOLD
+                        )
 
             # Achsenbereiche
             rng_servo  = get_abs_range(caps, servo_axis_code)
@@ -3121,35 +3229,30 @@ def main():
                     try:
                         e = dev.read_one()
                         while e:
-                            if e.type == ecodes.EV_ABS and now >= safe_start_head_until:
-                                # Kopfservo LATCHEND via D-Pad:
-                                if e.code == ecodes.ABS_HAT0X:
-                                    if   e.value == -1: head_target = HEAD_LEFT_DEG
-                                    elif e.value ==  1: head_target = HEAD_RIGHT_DEG
-                                elif e.code == ecodes.ABS_HAT0Y:
-                                    if e.value == -1: head_target = HEAD_CENTER_DEG
+                            if e.type == ecodes.EV_ABS:
+                                if now >= safe_start_head_until:
+                                    # Kopfservo LATCHEND via D-Pad:
+                                    if e.code == ecodes.ABS_HAT0X:
+                                        if   e.value == -1: head_target = HEAD_LEFT_DEG
+                                        elif e.value ==  1: head_target = HEAD_RIGHT_DEG
+                                    elif e.code == ecodes.ABS_HAT0Y:
+                                        if e.value == -1: head_target = HEAD_CENTER_DEG
+                                if axis_event_to_code:
+                                    axis_code = axis_event_to_code.get(e.code)
+                                    if axis_code and axis_code in axis_button_ranges:
+                                        lo_axis, hi_axis = axis_button_ranges[axis_code]
+                                        value_norm = norm_axis_trigger(e.value, lo_axis, hi_axis)
+                                        if axis_button_states.get(axis_code):
+                                            if value_norm <= AXIS_BUTTON_RELEASE_THRESHOLD:
+                                                axis_button_states[axis_code] = False
+                                        else:
+                                            if value_norm >= AXIS_BUTTON_PRESS_THRESHOLD:
+                                                axis_button_states[axis_code] = True
+                                                run_button_action(axis_code)
                             if e.type == ecodes.EV_KEY and e.value == 1:
                                 button_code = BUTTON_EVENT_TO_CODE.get(e.code)
                                 if button_code:
-                                    action = web_state.get_button_action(button_code)
-                                    if action:
-                                        mode = action.get("mode")
-                                        if mode == BUTTON_MODE_MP3:
-                                            file_name = action.get("value")
-                                            if file_name:
-                                                path = web_state.get_sound_file_path(file_name)
-                                                if path and os.path.isfile(path):
-                                                    play_sound_switch(path, web_state.get_selected_alsa_device())
-                                        elif mode == BUTTON_MODE_COMMAND:
-                                            command = action.get("value")
-                                            if command:
-                                                try:
-                                                    subprocess.Popen(command, shell=True)
-                                                except Exception as exc:
-                                                    print(
-                                                        f"[Button] Kommando konnte nicht gestartet werden ({button_code}): {exc}",
-                                                        file=sys.stderr,
-                                                    )
+                                    run_button_action(button_code)
 
                             e = dev.read_one()
                     except OSError as exc:
@@ -3356,6 +3459,7 @@ def main():
 
                     time.sleep(0.02)
             except GamepadDisconnected:
+                web_state.set_button_profile(include_triggers=False, enabled=True)
                 print("Gamepad getrennt – warte auf erneute Verbindung …")
                 try:
                     dev.close()

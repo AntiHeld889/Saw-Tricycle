@@ -565,6 +565,7 @@
     const buttonActionControls = new Map();
     let buttonAssignments = {};
     let buttonDefinitions = [];
+    let buttonActionsEnabled = true;
     let currentSoundFiles = [];
     let soundDirectoryConfigured = false;
     let syncingButtonActions = false;
@@ -721,7 +722,9 @@
       if (!Array.isArray(definitions) || definitions.length === 0) {
         const empty = document.createElement('p');
         empty.className = 'hint';
-        empty.textContent = 'Keine konfigurierbaren Tasten gefunden.';
+        empty.textContent = buttonActionsEnabled
+          ? 'Keine konfigurierbaren Tasten gefunden.'
+          : 'Tastenbelegung für diesen Controller ist deaktiviert.';
         buttonActionsContainer.append(empty);
         updatePreviewButtonState();
         return;
@@ -980,11 +983,19 @@
       if (!buttonActionsContainer) {
         return null;
       }
+      const enabledFlag = !info || info.enabled !== false;
+      buttonActionsEnabled = enabledFlag;
       if (!info || !Array.isArray(info.definitions)) {
         buttonDefinitions = [];
         buttonAssignments = {};
         buttonActionControls.clear();
         buttonActionsContainer.innerHTML = '';
+        if (!buttonActionsEnabled) {
+          const message = document.createElement('p');
+          message.className = 'hint';
+          message.textContent = 'Tastenbelegung für diesen Controller ist deaktiviert.';
+          buttonActionsContainer.append(message);
+        }
         updatePreviewButtonState();
         return null;
       }
@@ -1025,6 +1036,9 @@
 
     async function saveButtonAction(code, mode, rawValue) {
       if (!code) {
+        return;
+      }
+      if (!buttonActionsEnabled) {
         return;
       }
       let normalizedMode = typeof mode === 'string' ? mode.toLowerCase() : BUTTON_MODE_NONE;
