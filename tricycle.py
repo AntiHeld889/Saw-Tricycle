@@ -702,11 +702,18 @@ def sanitize_uploaded_mp3_filename(filename):
     sanitized_stem = re.sub(r"__+", "_", sanitized_stem)
     if not sanitized_stem or sanitized_stem in {".", ".."}:
         return None
-    sanitized = f"{sanitized_stem}.mp3"
-    if len(sanitized) > 255:
-        sanitized = sanitized[:255]
-        if not sanitized.lower().endswith(".mp3"):
-            sanitized = sanitized[:251] + ".mp3"
+    extension = ".mp3"
+    max_total_bytes = 255
+    max_stem_chars = max_total_bytes - len(extension)
+    if len(sanitized_stem) > max_stem_chars:
+        sanitized_stem = sanitized_stem[:max_stem_chars]
+
+    sanitized = f"{sanitized_stem}{extension}"
+    while sanitized_stem and len(sanitized.encode("utf-8")) > max_total_bytes:
+        sanitized_stem = sanitized_stem[:-1]
+        sanitized = f"{sanitized_stem}{extension}"
+    if not sanitized_stem or sanitized_stem in {".", ".."}:
+        return None
     if "/" in sanitized or "\\" in sanitized:
         return None
     return sanitized
