@@ -684,7 +684,19 @@ def sanitize_uploaded_mp3_filename(filename):
     if filename is None:
         return None
     try:
-        raw_name = os.path.basename(str(filename))
+        raw_candidate = os.fspath(filename)
+    except (TypeError, ValueError, AttributeError):
+        try:
+            raw_candidate = str(filename)
+        except Exception:
+            return None
+    if isinstance(raw_candidate, bytes):
+        try:
+            raw_candidate = os.fsdecode(raw_candidate)
+        except Exception:
+            return None
+    try:
+        raw_name = os.path.basename(str(raw_candidate))
     except Exception:
         return None
     raw_name = raw_name.replace("\\", "/")
