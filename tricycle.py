@@ -1276,16 +1276,17 @@ def apply_gpio_settings(settings):
     if sanitized is None:
         return False
     global GPIO_PIN_SERVO, GPIO_PIN_HEAD, MOTOR_DRIVER_CHANNELS
-    GPIO_PIN_SERVO = sanitized["steering_servo"]
-    GPIO_PIN_HEAD = sanitized["head_servo"]
-    MOTOR_DRIVER_CHANNELS = tuple(
-        {
-            "pwm": channel["pwm"],
-            "dir": channel["dir"],
-            "forward_high": channel.get("forward_high", True),
-        }
-        for channel in sanitized["motor_driver"]
-    )
+    with _config_lock:
+        GPIO_PIN_SERVO = sanitized["steering_servo"]
+        GPIO_PIN_HEAD = sanitized["head_servo"]
+        MOTOR_DRIVER_CHANNELS = tuple(
+            {
+                "pwm": channel["pwm"],
+                "dir": channel["dir"],
+                "forward_high": channel.get("forward_high", True),
+            }
+            for channel in sanitized["motor_driver"]
+        )
     return True
 
 
@@ -1343,9 +1344,10 @@ def apply_head_angles(angles):
     if sanitized is None:
         return False
     global HEAD_LEFT_DEG, HEAD_CENTER_DEG, HEAD_RIGHT_DEG
-    HEAD_LEFT_DEG = sanitized["left"]
-    HEAD_CENTER_DEG = sanitized["mid"]
-    HEAD_RIGHT_DEG = sanitized["right"]
+    with _config_lock:
+        HEAD_LEFT_DEG = sanitized["left"]
+        HEAD_CENTER_DEG = sanitized["mid"]
+        HEAD_RIGHT_DEG = sanitized["right"]
     return True
 
 
@@ -1456,9 +1458,10 @@ def apply_steering_angles(angles):
     if sanitized is None:
         return False
     global LEFT_MAX_DEG, MID_DEG, RIGHT_MAX_DEG
-    LEFT_MAX_DEG = sanitized["left"]
-    MID_DEG = sanitized["mid"]
-    RIGHT_MAX_DEG = sanitized["right"]
+    with _config_lock:
+        LEFT_MAX_DEG = sanitized["left"]
+        MID_DEG = sanitized["mid"]
+        RIGHT_MAX_DEG = sanitized["right"]
     return True
 
 
@@ -1488,15 +1491,20 @@ def apply_steering_pulses(pulses):
     if sanitized is None:
         return False
     global STEERING_LEFT_US, STEERING_MID_US, STEERING_RIGHT_US
-    STEERING_LEFT_US = sanitized["left"]
-    STEERING_MID_US = sanitized["mid"]
-    STEERING_RIGHT_US = sanitized["right"]
+    with _config_lock:
+        STEERING_LEFT_US = sanitized["left"]
+        STEERING_MID_US = sanitized["mid"]
+        STEERING_RIGHT_US = sanitized["right"]
     return True
 
 
 # === Laufzeit-Handle für exklusives MP3-Playback ===
 CURRENT_PLAYER_PROC = None
 CURRENT_PLAYER_PATH = None
+_player_lock = threading.Lock()
+
+# === Thread-Lock für globale Konfigurationsvariablen ===
+_config_lock = threading.Lock()
 
 
 # === Batterieüberwachung ===
@@ -1657,6 +1665,14 @@ class BatteryMonitor:
         self._stop.set()
         if self._thread and self._thread.is_alive():
             self._thread.join(timeout=0.2)
+        # I2C-Verbindung schließen, falls möglich
+        if self._i2c and hasattr(self._i2c, 'deinit'):
+            try:
+                self._i2c.deinit()
+            except Exception:
+                pass
+        self._i2c = None
+        self._sensor = None
 
 
 # === Websteuerungszustand ===
@@ -2734,9 +2750,13 @@ def deg_to_us_lenkung(deg):
 def axis_to_deg_lenkung(ax):
     if ax >= 0:
         span = RIGHT_MAX_DEG - MID_DEG
+        if span <= 0:
+            return MID_DEG
         return clamp(MID_DEG + ax * span, LEFT_MAX_DEG, RIGHT_MAX_DEG)
     else:
         span = MID_DEG - LEFT_MAX_DEG
+        if span <= 0:
+            return MID_DEG
         return clamp(MID_DEG + ax * span, LEFT_MAX_DEG, RIGHT_MAX_DEG)
 
 
@@ -2799,18 +2819,19 @@ def _start_player_async(path, alsa_dev=DEFAULT_ALSA_DEVICE):
 
 def stop_current_sound():
     global CURRENT_PLAYER_PROC, CURRENT_PLAYER_PATH
-    if CURRENT_PLAYER_PROC is None:
-        return
-    try:
-        CURRENT_PLAYER_PROC.terminate()
+    with _player_lock:
+        if CURRENT_PLAYER_PROC is None:
+            return
         try:
-            CURRENT_PLAYER_PROC.wait(timeout=0.4)
+            CURRENT_PLAYER_PROC.terminate()
+            try:
+                CURRENT_PLAYER_PROC.wait(timeout=0.4)
+            except Exception:
+                CURRENT_PLAYER_PROC.kill()
         except Exception:
-            CURRENT_PLAYER_PROC.kill()
-    except Exception:
-        pass
-    CURRENT_PLAYER_PROC = None
-    CURRENT_PLAYER_PATH = None
+            pass
+        CURRENT_PLAYER_PROC = None
+        CURRENT_PLAYER_PATH = None
 
 def play_sound_switch(path, alsa_dev=DEFAULT_ALSA_DEVICE, restart_if_same=None):
     """
@@ -2822,31 +2843,45 @@ def play_sound_switch(path, alsa_dev=DEFAULT_ALSA_DEVICE, restart_if_same=None):
     if restart_if_same is None:
         restart_if_same = RESTART_SAME_TRACK
 
-    # Falls ein alter Player-Prozess schon beendet ist, aufräumen
-    try:
+    with _player_lock:
+        # Falls ein alter Player-Prozess schon beendet ist, aufräumen
+        try:
+            if CURRENT_PLAYER_PROC is not None:
+                if CURRENT_PLAYER_PROC.poll() is not None:  # schon exit?
+                    CURRENT_PLAYER_PROC = None
+                    CURRENT_PLAYER_PATH = None
+        except Exception:
+            CURRENT_PLAYER_PROC = None
+            CURRENT_PLAYER_PATH = None
+
+        same_file = (CURRENT_PLAYER_PATH is not None) and (
+            os.path.abspath(path) == os.path.abspath(CURRENT_PLAYER_PATH)
+        )
+
+        if (CURRENT_PLAYER_PROC is not None) and same_file and not restart_if_same:
+            return True
+
+        # stop_current_sound wird nicht aufgerufen, da wir bereits das Lock haben
+        # Stattdessen inline stoppen:
         if CURRENT_PLAYER_PROC is not None:
-            if CURRENT_PLAYER_PROC.poll() is not None:  # schon exit?
-                CURRENT_PLAYER_PROC = None
-                CURRENT_PLAYER_PATH = None
-    except Exception:
-        CURRENT_PLAYER_PROC = None
-        CURRENT_PLAYER_PATH = None
+            try:
+                CURRENT_PLAYER_PROC.terminate()
+                try:
+                    CURRENT_PLAYER_PROC.wait(timeout=0.4)
+                except Exception:
+                    CURRENT_PLAYER_PROC.kill()
+            except Exception:
+                pass
+            CURRENT_PLAYER_PROC = None
+            CURRENT_PLAYER_PATH = None
 
-    same_file = (CURRENT_PLAYER_PATH is not None) and (
-        os.path.abspath(path) == os.path.abspath(CURRENT_PLAYER_PATH)
-    )
-
-    if (CURRENT_PLAYER_PROC is not None) and same_file and not restart_if_same:
+        proc, which = _start_player_async(path, alsa_dev)
+        if proc is None:
+            return False
+        CURRENT_PLAYER_PROC = proc
+        CURRENT_PLAYER_PATH = path
+        print(f"[MP3] {os.path.basename(path)} (via {which})")
         return True
-
-    stop_current_sound()
-    proc, which = _start_player_async(path, alsa_dev)
-    if proc is None:
-        return False
-    CURRENT_PLAYER_PROC = proc
-    CURRENT_PLAYER_PATH = path
-    print(f"[MP3] {os.path.basename(path)} (via {which})")
-    return True
 
 
 # --------- evdev / Hardware ---------
@@ -3387,8 +3422,13 @@ def main():
                             y_shaped = 0.0
                         else:
                             sign = 1 if y_total >= 0 else -1
-                            y_eff = (abs(y_total) - DEADZONE_MOTOR) / (1 - DEADZONE_MOTOR)
-                            y_shaped = shape_expo(sign * y_eff, EXPO_MOTOR)
+                            denominator = 1 - DEADZONE_MOTOR
+                            if denominator <= 0.0:
+                                # Sicherheitscheck: wenn DEADZONE_MOTOR >= 1, verwende Rohwert
+                                y_shaped = sign
+                            else:
+                                y_eff = (abs(y_total) - DEADZONE_MOTOR) / denominator
+                                y_shaped = shape_expo(sign * y_eff, EXPO_MOTOR)
                         motor_target = clamp(y_shaped, -1.0, +1.0)
                     else:
                         motor_target = 0.0
