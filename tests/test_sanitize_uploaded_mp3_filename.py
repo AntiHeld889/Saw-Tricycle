@@ -72,6 +72,11 @@ class SanitizeUploadedMp3FilenameTests(unittest.TestCase):
         self.assertTrue(result.endswith(".mp3"))
         self.assertLessEqual(len(result.encode("utf-8")), 255)
 
+    def test_accepts_bytes_input(self) -> None:
+        name = ("ä" * 5 + " valid name" + ".mp3").encode("utf-8")
+        result = sanitize_uploaded_mp3_filename(name)
+        self.assertEqual(result, "ä" * 5 + " valid name" + ".mp3")
+
 
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()
