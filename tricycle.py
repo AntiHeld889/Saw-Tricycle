@@ -121,6 +121,10 @@ DEADZONE_OUT         = 0.10
 EXPO_SERVO           = 0.50
 SMOOTH_A_SERVO       = 0.20
 RATE_DEG_S           = 150.0
+CURRENT_STEERING_RATE_DEG_S = RATE_DEG_S
+STEERING_RATE_MIN_DEG_S = 10.0
+STEERING_RATE_MAX_DEG_S = 600.0
+STEERING_RATE_STEP_DEG_S = 5.0
 MIN_STEP_DEG         = 0.02
 NEUTRAL_HOLD_S       = 2.0
 CENTER_SNAP_DEG      = 0.4
@@ -1444,6 +1448,83 @@ def sanitize_bool(value, *, default=False):
         if normalized in {"0", "false", "off", "no", "disable", "disabled"}:
             return False
     return default
+
+
+def sanitize_steering_rate(
+    value,
+    *,
+    minimum=STEERING_RATE_MIN_DEG_S,
+    maximum=STEERING_RATE_MAX_DEG_S,
+    step=STEERING_RATE_STEP_DEG_S,
+):
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(numeric):
+        return None
+    try:
+        lo = float(minimum)
+    except (TypeError, ValueError):
+        lo = STEERING_RATE_MIN_DEG_S
+    try:
+        hi = float(maximum)
+    except (TypeError, ValueError):
+        hi = STEERING_RATE_MAX_DEG_S
+    if not math.isfinite(lo):
+        lo = STEERING_RATE_MIN_DEG_S
+    if not math.isfinite(hi):
+        hi = STEERING_RATE_MAX_DEG_S
+    if hi < lo:
+        lo, hi = hi, lo
+    numeric = max(lo, min(hi, numeric))
+    if step and step > 0:
+        try:
+            step_val = float(step)
+        except (TypeError, ValueError):
+            step_val = STEERING_RATE_STEP_DEG_S
+        if not math.isfinite(step_val) or step_val <= 0:
+            step_val = STEERING_RATE_STEP_DEG_S
+        steps = round((numeric - lo) / step_val)
+        numeric = lo + steps * step_val
+        numeric = max(lo, min(hi, numeric))
+    return round(numeric, 3)
+
+
+def load_persisted_steering_rate(default_value=RATE_DEG_S, *, _payload=None):
+    sanitized_default = sanitize_steering_rate(
+        default_value, step=None, minimum=STEERING_RATE_MIN_DEG_S, maximum=STEERING_RATE_MAX_DEG_S
+    )
+    if sanitized_default is None:
+        sanitized_default = sanitize_steering_rate(
+            RATE_DEG_S, step=None, minimum=STEERING_RATE_MIN_DEG_S, maximum=STEERING_RATE_MAX_DEG_S
+        ) or RATE_DEG_S
+    data = _payload if _payload is not None else _load_persisted_state()
+    if isinstance(data, dict):
+        raw_rate = data.get("steering_rate")
+        sanitized = sanitize_steering_rate(raw_rate)
+        if sanitized is not None:
+            return sanitized
+    return sanitized_default
+
+
+def persist_steering_rate(value):
+    sanitized = sanitize_steering_rate(value)
+    if sanitized is None:
+        return False
+    payload = _load_persisted_state()
+    payload["steering_rate"] = sanitized
+    return _persist_state(payload)
+
+
+def apply_steering_rate(value):
+    sanitized = sanitize_steering_rate(value)
+    if sanitized is None:
+        return False
+    global CURRENT_STEERING_RATE_DEG_S
+    with _config_lock:
+        CURRENT_STEERING_RATE_DEG_S = sanitized
+    return True
 def load_persisted_steering_angles(defaults=None):
     if defaults is None:
         defaults = DEFAULT_STEERING_ANGLES
@@ -1699,6 +1780,7 @@ class WebControlState:
         initial_motor_limits=None,
         initial_steering_angles=None,
         initial_steering_pulses=None,
+        initial_steering_rate=None,
         initial_head_angles=None,
         initial_sound_directory=None,
         initial_connected_sound=None,
@@ -1755,6 +1837,11 @@ class WebControlState:
             reverse = sanitize_motor_limit(initial_motor_limits.get("reverse"))
             if reverse is not None:
                 self._motor_limit_reverse = reverse
+        self._steering_rate = CURRENT_STEERING_RATE_DEG_S
+        sanitized_rate = sanitize_steering_rate(initial_steering_rate)
+        if sanitized_rate is not None:
+            self._steering_rate = sanitized_rate
+        apply_steering_rate(self._steering_rate)
         self._steering_angles = {
             "left": LEFT_MAX_DEG,
             "mid": MID_DEG,
@@ -2009,6 +2096,7 @@ class WebControlState:
         steering_angles=None,
         steering_pulses=None,
         head_angles=None,
+        steering_config=None,
         sound_directory=None,
         connected_sound=None,
         startup_sound=None,
@@ -2027,6 +2115,7 @@ class WebControlState:
         motor_limits_to_persist = None
         steering_angles_to_persist = None
         steering_pulses_to_persist = None
+        steering_rate_to_persist = None
         head_angles_to_persist = None
         sound_settings_to_persist = None
         gamepad_settings_to_persist = None
@@ -2090,6 +2179,11 @@ class WebControlState:
                 if sanitized_pulses is not None and sanitized_pulses != self._steering_pulses:
                     self._steering_pulses = sanitized_pulses
                     steering_pulses_to_persist = sanitized_pulses
+            if steering_config is not None and isinstance(steering_config, dict):
+                rate_value = sanitize_steering_rate(steering_config.get("rate_deg_s"))
+                if rate_value is not None and rate_value != self._steering_rate:
+                    self._steering_rate = rate_value
+                    steering_rate_to_persist = rate_value
             if head_angles is not None and isinstance(head_angles, dict):
                 sanitized_head = sanitize_head_angles(head_angles)
                 if sanitized_head is not None and sanitized_head != self._head_angles:
@@ -2198,6 +2292,9 @@ class WebControlState:
         if steering_pulses_to_persist is not None:
             apply_steering_pulses(steering_pulses_to_persist)
             persist_steering_pulses(steering_pulses_to_persist)
+        if steering_rate_to_persist is not None:
+            apply_steering_rate(steering_rate_to_persist)
+            persist_steering_rate(steering_rate_to_persist)
         if head_angles_to_persist is not None:
             apply_head_angles(head_angles_to_persist)
             persist_head_angles(head_angles_to_persist)
@@ -2259,6 +2356,12 @@ class WebControlState:
                 "min": 0.0,
                 "max": SERVO_RANGE_DEG,
                 "step": STEERING_STEP_DEG,
+            },
+            "steering_config": {
+                "rate_deg_s": self._steering_rate,
+                "min": STEERING_RATE_MIN_DEG_S,
+                "max": STEERING_RATE_MAX_DEG_S,
+                "step": STEERING_RATE_STEP_DEG_S,
             },
             "steering_pulses": {
                 "left": self._steering_pulses["left"],
@@ -2638,6 +2741,7 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
                 motor_limits=data.get("motor_limits"),
                 steering_angles=data.get("steering_angles"),
                 head_angles=data.get("head_angles"),
+                steering_config=data.get("steering_config"),
                 sound_directory=data.get("sound_directory"),
                 connected_sound=data.get("connected_sound"),
                 startup_sound=data.get("startup_sound"),
@@ -3030,6 +3134,8 @@ def set_motor(pi, speed_norm):
 
 # --------- Main ---------
 def main():
+    persisted_rate = load_persisted_steering_rate()
+    apply_steering_rate(persisted_rate)
     persisted_pulses = load_persisted_steering_pulses()
     if not apply_steering_pulses(persisted_pulses):
         apply_steering_pulses(DEFAULT_STEERING_PULSES)
@@ -3085,6 +3191,7 @@ def main():
         initial_motor_limits=persisted_motor_limits,
         initial_steering_angles=persisted_steering,
         initial_steering_pulses=persisted_pulses,
+        initial_steering_rate=persisted_rate,
         initial_head_angles=persisted_head,
         initial_sound_directory=persisted_sound.get("directory"),
         initial_connected_sound=persisted_sound.get("connected_sound"),
@@ -3373,7 +3480,15 @@ def main():
 
                     # Sanftes Nachführen
                     filtered_target = current_deg + (target_deg - current_deg) * SMOOTH_A_SERVO
-                    max_step = RATE_DEG_S * dt
+                    steering_rate = CURRENT_STEERING_RATE_DEG_S
+                    steering_config_snapshot = control_snapshot.get("steering_config")
+                    if isinstance(steering_config_snapshot, dict):
+                        rate_candidate = sanitize_steering_rate(
+                            steering_config_snapshot.get("rate_deg_s")
+                        )
+                        if rate_candidate is not None:
+                            steering_rate = rate_candidate
+                    max_step = steering_rate * dt
                     delta = clamp(filtered_target - current_deg, -max_step, +max_step)
                     if 0 < abs(delta) < MIN_STEP_DEG:
                         delta = MIN_STEP_DEG if delta > 0 else -MIN_STEP_DEG
