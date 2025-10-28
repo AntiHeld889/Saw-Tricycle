@@ -88,8 +88,12 @@ SERVO_AXIS_NAME_DEFAULT = "ABS_Z"
 SERVO_AXIS_NAME_OVERRIDES = {
     GAMEPAD_NAME_EXACT: "ABS_RX",
 }
-US_MIN               = 600
-US_MAX               = 2400
+US_LIMIT_MIN         = 400
+US_LIMIT_MAX         = 2600
+US_MIN_DEFAULT       = 600
+US_MAX_DEFAULT       = 2400
+US_MIN               = US_MIN_DEFAULT
+US_MAX               = US_MAX_DEFAULT
 SERVO_RANGE_DEG      = 270.0
 
 MID_DEG              = 150.0
@@ -105,11 +109,22 @@ DEFAULT_STEERING_ANGLES = {
 }
 
 STEERING_PULSE_STEP_US = 1
-DEFAULT_STEERING_PULSES = {
-    "left": int(round(US_MIN + (US_MAX - US_MIN) * (LEFT_MAX_DEG / SERVO_RANGE_DEG))),
-    "mid": int(round(US_MIN + (US_MAX - US_MIN) * (MID_DEG / SERVO_RANGE_DEG))),
-    "right": int(round(US_MIN + (US_MAX - US_MIN) * (RIGHT_MAX_DEG / SERVO_RANGE_DEG))),
-}
+def _compute_default_steering_pulses(min_us, max_us):
+    span = max_us - min_us
+    if span <= 0:
+        span = 1
+    left = min(max(min_us + span * (LEFT_MAX_DEG / SERVO_RANGE_DEG), min_us), max_us)
+    mid = min(max(min_us + span * (MID_DEG / SERVO_RANGE_DEG), min_us), max_us)
+    right = min(max(min_us + span * (RIGHT_MAX_DEG / SERVO_RANGE_DEG), min_us), max_us)
+    return {
+        "left": int(round(left)),
+        "mid": int(round(mid)),
+        "right": int(round(right)),
+    }
+
+
+DEFAULT_STEERING_PULSES = _compute_default_steering_pulses(US_MIN, US_MAX)
+STEERING_PULSE_LIMITS_DEFAULT = {"min": US_MIN, "max": US_MAX}
 
 STEERING_LEFT_US = DEFAULT_STEERING_PULSES["left"]
 STEERING_MID_US = DEFAULT_STEERING_PULSES["mid"]
@@ -1432,6 +1447,36 @@ def sanitize_steering_pulses(payload):
     return {"left": left, "mid": mid, "right": right}
 
 
+def _sanitize_pulse_boundary(value, *, absolute_min=US_LIMIT_MIN, absolute_max=US_LIMIT_MAX):
+    if value is None:
+        return None
+    candidate = value
+    if isinstance(candidate, str):
+        candidate = candidate.strip().replace(",", ".")
+        if not candidate:
+            return None
+    try:
+        numeric = float(candidate)
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(numeric):
+        return None
+    limited = max(float(absolute_min), min(float(absolute_max), numeric))
+    return int(round(limited))
+
+
+def sanitize_steering_pulse_limits(payload):
+    if not isinstance(payload, dict):
+        return None
+    minimum = _sanitize_pulse_boundary(payload.get("min"))
+    maximum = _sanitize_pulse_boundary(payload.get("max"))
+    if minimum is None or maximum is None:
+        return None
+    if minimum >= maximum:
+        return None
+    return {"min": minimum, "max": maximum}
+
+
 def sanitize_bool(value, *, default=False):
     if isinstance(value, bool):
         return value
@@ -1489,6 +1534,51 @@ def sanitize_steering_rate(
         numeric = lo + steps * step_val
         numeric = max(lo, min(hi, numeric))
     return round(numeric, 3)
+
+
+def load_persisted_steering_pulse_limits(defaults=None, *, _payload=None):
+    if defaults is None:
+        defaults = STEERING_PULSE_LIMITS_DEFAULT
+    data = _payload if _payload is not None else _load_persisted_state()
+    if isinstance(data, dict):
+        raw = data.get("steering_pulse_limits")
+        sanitized = sanitize_steering_pulse_limits(raw)
+        if sanitized:
+            return sanitized
+    return dict(defaults)
+
+
+def persist_steering_pulse_limits(limits):
+    sanitized = sanitize_steering_pulse_limits(limits)
+    if sanitized is None:
+        return False
+    payload = _load_persisted_state()
+    payload["steering_pulse_limits"] = sanitized
+    return _persist_state(payload)
+
+
+def apply_steering_pulse_limits(limits):
+    sanitized = sanitize_steering_pulse_limits(limits)
+    if sanitized is None:
+        return False
+    global US_MIN, US_MAX
+    global DEFAULT_STEERING_PULSES
+    global STEERING_LEFT_US, STEERING_MID_US, STEERING_RIGHT_US
+    with _config_lock:
+        US_MIN = sanitized["min"]
+        US_MAX = sanitized["max"]
+        DEFAULT_STEERING_PULSES = _compute_default_steering_pulses(US_MIN, US_MAX)
+        current = {
+            "left": STEERING_LEFT_US,
+            "mid": STEERING_MID_US,
+            "right": STEERING_RIGHT_US,
+        }
+        sanitized_current = sanitize_steering_pulses(current)
+        if sanitized_current is not None:
+            STEERING_LEFT_US = sanitized_current["left"]
+            STEERING_MID_US = sanitized_current["mid"]
+            STEERING_RIGHT_US = sanitized_current["right"]
+    return True
 
 
 def load_persisted_steering_rate(default_value=RATE_DEG_S, *, _payload=None):
@@ -1779,6 +1869,7 @@ class WebControlState:
         initial_volume_map=None,
         initial_motor_limits=None,
         initial_steering_angles=None,
+        initial_steering_pulse_limits=None,
         initial_steering_pulses=None,
         initial_steering_rate=None,
         initial_head_angles=None,
@@ -1837,6 +1928,13 @@ class WebControlState:
             reverse = sanitize_motor_limit(initial_motor_limits.get("reverse"))
             if reverse is not None:
                 self._motor_limit_reverse = reverse
+        limits = sanitize_steering_pulse_limits(initial_steering_pulse_limits)
+        if limits is None:
+            limits = sanitize_steering_pulse_limits(STEERING_PULSE_LIMITS_DEFAULT)
+        if limits is None:
+            limits = {"min": US_MIN, "max": US_MAX}
+        apply_steering_pulse_limits(limits)
+        self._steering_pulse_limits = limits
         self._steering_rate = CURRENT_STEERING_RATE_DEG_S
         sanitized_rate = sanitize_steering_rate(initial_steering_rate)
         if sanitized_rate is not None:
@@ -1918,6 +2016,12 @@ class WebControlState:
         return self._connected_sound
 
     def _build_sound_snapshot_locked(self):
+        limits = self._steering_pulse_limits
+        if not isinstance(limits, dict):
+            limits = sanitize_steering_pulse_limits({"min": US_MIN, "max": US_MAX}) or {
+                "min": US_MIN,
+                "max": US_MAX,
+            }
         return {
             "directory": self._sound_directory,
             "files": list(self._sound_files),
@@ -2097,6 +2201,7 @@ class WebControlState:
         steering_pulses=None,
         head_angles=None,
         steering_config=None,
+        steering_pulse_limits=None,
         sound_directory=None,
         connected_sound=None,
         startup_sound=None,
@@ -2116,6 +2221,7 @@ class WebControlState:
         steering_angles_to_persist = None
         steering_pulses_to_persist = None
         steering_rate_to_persist = None
+        steering_pulse_limits_to_persist = None
         head_angles_to_persist = None
         sound_settings_to_persist = None
         gamepad_settings_to_persist = None
@@ -2179,6 +2285,16 @@ class WebControlState:
                 if sanitized_pulses is not None and sanitized_pulses != self._steering_pulses:
                     self._steering_pulses = sanitized_pulses
                     steering_pulses_to_persist = sanitized_pulses
+            if steering_pulse_limits is not None and isinstance(steering_pulse_limits, dict):
+                sanitized_limits = sanitize_steering_pulse_limits(steering_pulse_limits)
+                if sanitized_limits is not None and sanitized_limits != self._steering_pulse_limits:
+                    if apply_steering_pulse_limits(sanitized_limits):
+                        self._steering_pulse_limits = sanitized_limits
+                        steering_pulse_limits_to_persist = dict(sanitized_limits)
+                        sanitized_current = sanitize_steering_pulses(self._steering_pulses)
+                        if sanitized_current is not None and sanitized_current != self._steering_pulses:
+                            self._steering_pulses = sanitized_current
+                            steering_pulses_to_persist = sanitized_current
             if steering_config is not None and isinstance(steering_config, dict):
                 rate_value = sanitize_steering_rate(steering_config.get("rate_deg_s"))
                 if rate_value is not None and rate_value != self._steering_rate:
@@ -2295,6 +2411,8 @@ class WebControlState:
         if steering_rate_to_persist is not None:
             apply_steering_rate(steering_rate_to_persist)
             persist_steering_rate(steering_rate_to_persist)
+        if steering_pulse_limits_to_persist is not None:
+            persist_steering_pulse_limits(steering_pulse_limits_to_persist)
         if head_angles_to_persist is not None:
             apply_head_angles(head_angles_to_persist)
             persist_head_angles(head_angles_to_persist)
@@ -2367,8 +2485,15 @@ class WebControlState:
                 "left": self._steering_pulses["left"],
                 "mid": self._steering_pulses["mid"],
                 "right": self._steering_pulses["right"],
-                "min": US_MIN,
-                "max": US_MAX,
+                "min": limits["min"],
+                "max": limits["max"],
+                "step": STEERING_PULSE_STEP_US,
+            },
+            "steering_pulse_limits": {
+                "min": limits["min"],
+                "max": limits["max"],
+                "absolute_min": US_LIMIT_MIN,
+                "absolute_max": US_LIMIT_MAX,
                 "step": STEERING_PULSE_STEP_US,
             },
             "head_angles": {
@@ -2740,6 +2865,7 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
                 audio_volume=data.get("audio_volume"),
                 motor_limits=data.get("motor_limits"),
                 steering_angles=data.get("steering_angles"),
+                steering_pulse_limits=data.get("steering_pulse_limits"),
                 head_angles=data.get("head_angles"),
                 steering_config=data.get("steering_config"),
                 sound_directory=data.get("sound_directory"),
@@ -3134,6 +3260,10 @@ def set_motor(pi, speed_norm):
 
 # --------- Main ---------
 def main():
+    persisted_pulse_limits = load_persisted_steering_pulse_limits()
+    if not apply_steering_pulse_limits(persisted_pulse_limits):
+        apply_steering_pulse_limits(STEERING_PULSE_LIMITS_DEFAULT)
+        persisted_pulse_limits = dict(STEERING_PULSE_LIMITS_DEFAULT)
     persisted_rate = load_persisted_steering_rate()
     apply_steering_rate(persisted_rate)
     persisted_pulses = load_persisted_steering_pulses()
@@ -3190,6 +3320,7 @@ def main():
         initial_volume_map=persisted_audio.get("volumes"),
         initial_motor_limits=persisted_motor_limits,
         initial_steering_angles=persisted_steering,
+        initial_steering_pulse_limits=persisted_pulse_limits,
         initial_steering_pulses=persisted_pulses,
         initial_steering_rate=persisted_rate,
         initial_head_angles=persisted_head,
