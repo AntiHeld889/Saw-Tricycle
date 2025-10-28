@@ -92,9 +92,9 @@ US_MIN               = 600
 US_MAX               = 2400
 SERVO_RANGE_DEG      = 180.0
 
-MID_DEG              = 100.0
-LEFT_MAX_DEG         = 66.7
-RIGHT_MAX_DEG        = 133.3
+MID_DEG              = 90.0
+LEFT_MAX_DEG         = 60.0
+RIGHT_MAX_DEG        = 120.0
 STEERING_STEP_DEG    = 0.5
 
 # Standard-Lenkwinkel als Dictionary für Persistenz/Defaults
