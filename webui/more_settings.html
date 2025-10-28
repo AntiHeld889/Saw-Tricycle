@@ -1782,7 +1782,6 @@
         const values = getCurrentSteeringValues();
         if (!values) {
           setStatus('Ungültige Lenkwinkel. Bitte Werte prüfen.', 'error');
-          revertSteeringInputs();
           return;
         }
         if (
@@ -1835,7 +1834,6 @@
         const values = getCurrentSteeringPulseValues();
         if (!values) {
           setStatus('Ungültige Servo-Kalibrierung. Bitte Werte prüfen.', 'error');
-          revertSteeringPulseInputs();
           return;
         }
         if (
