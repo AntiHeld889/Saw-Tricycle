@@ -90,11 +90,11 @@ SERVO_AXIS_NAME_OVERRIDES = {
 }
 US_MIN               = 600
 US_MAX               = 2400
-SERVO_RANGE_DEG      = 270.0
+SERVO_RANGE_DEG      = 180.0
 
-MID_DEG              = 150.0
-LEFT_MAX_DEG         = 100.0
-RIGHT_MAX_DEG        = 200.0
+MID_DEG              = 90.0
+LEFT_MAX_DEG         = 60.0
+RIGHT_MAX_DEG        = 120.0
 STEERING_STEP_DEG    = 0.5
 
 # Standard-Lenkwinkel als Dictionary für Persistenz/Defaults
