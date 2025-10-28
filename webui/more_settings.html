@@ -296,21 +296,21 @@
         <div class="field">
           <label for="steeringLeft">Links (max.)</label>
           <div class="number-input">
-            <input id="steeringLeft" type="number" inputmode="decimal" min="0" max="270" step="0.5" aria-label="Maximaler Lenkwinkel nach links" autocomplete="off">
+            <input id="steeringLeft" type="number" inputmode="decimal" min="0" max="180" step="0.5" aria-label="Maximaler Lenkwinkel nach links" autocomplete="off">
             <span>°</span>
           </div>
         </div>
         <div class="field">
           <label for="steeringMid">Mitte</label>
           <div class="number-input">
-            <input id="steeringMid" type="number" inputmode="decimal" min="0" max="270" step="0.5" aria-label="Neutralstellung des Lenkservos" autocomplete="off">
+            <input id="steeringMid" type="number" inputmode="decimal" min="0" max="180" step="0.5" aria-label="Neutralstellung des Lenkservos" autocomplete="off">
             <span>°</span>
           </div>
         </div>
         <div class="field">
           <label for="steeringRight">Rechts (max.)</label>
           <div class="number-input">
-            <input id="steeringRight" type="number" inputmode="decimal" min="0" max="270" step="0.5" aria-label="Maximaler Lenkwinkel nach rechts" autocomplete="off">
+            <input id="steeringRight" type="number" inputmode="decimal" min="0" max="180" step="0.5" aria-label="Maximaler Lenkwinkel nach rechts" autocomplete="off">
             <span>°</span>
           </div>
         </div>
@@ -359,21 +359,21 @@
         <div class="field">
           <label for="headLeft">Links (max.)</label>
           <div class="number-input">
-            <input id="headLeft" type="number" inputmode="decimal" min="0" max="270" step="0.5" aria-label="Maximaler Kopfwinkel nach links" autocomplete="off">
+            <input id="headLeft" type="number" inputmode="decimal" min="0" max="180" step="0.5" aria-label="Maximaler Kopfwinkel nach links" autocomplete="off">
             <span>°</span>
           </div>
         </div>
         <div class="field">
           <label for="headMid">Mitte</label>
           <div class="number-input">
-            <input id="headMid" type="number" inputmode="decimal" min="0" max="270" step="0.5" aria-label="Neutralstellung des Kopfservos" autocomplete="off">
+            <input id="headMid" type="number" inputmode="decimal" min="0" max="180" step="0.5" aria-label="Neutralstellung des Kopfservos" autocomplete="off">
             <span>°</span>
           </div>
         </div>
         <div class="field">
           <label for="headRight">Rechts (max.)</label>
           <div class="number-input">
-            <input id="headRight" type="number" inputmode="decimal" min="0" max="270" step="0.5" aria-label="Maximaler Kopfwinkel nach rechts" autocomplete="off">
+            <input id="headRight" type="number" inputmode="decimal" min="0" max="180" step="0.5" aria-label="Maximaler Kopfwinkel nach rechts" autocomplete="off">
             <span>°</span>
           </div>
         </div>
@@ -776,7 +776,7 @@
         return null;
       }
       const min = Number.isFinite(info.min) ? info.min : 0;
-      const max = Number.isFinite(info.max) ? info.max : 270;
+      const max = Number.isFinite(info.max) ? info.max : 180;
       const step = Number.isFinite(info.step) && info.step > 0 ? info.step : 0.5;
       const precision = determineAnglePrecision(step);
       const left = quantizeAngle(info.left, min, max, step);
@@ -989,7 +989,7 @@
         return null;
       }
       const min = Number.isFinite(info.min) ? info.min : 0;
-      const max = Number.isFinite(info.max) ? info.max : 270;
+      const max = Number.isFinite(info.max) ? info.max : 180;
       const step = Number.isFinite(info.step) && info.step > 0 ? info.step : 0.5;
       const precision = determineAnglePrecision(step);
       const left = quantizeAngle(info.left, min, max, step);
