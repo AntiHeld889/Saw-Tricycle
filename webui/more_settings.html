@@ -315,14 +315,6 @@
           </div>
         </div>
       </div>
-      <div class="field">
-        <label for="steeringRate">Lenkgeschwindigkeit</label>
-        <div class="number-input">
-          <input id="steeringRate" type="number" inputmode="decimal" min="10" max="600" step="5" aria-label="Lenkgeschwindigkeit des Servos" autocomplete="off">
-          <span>°/s</span>
-        </div>
-        <p class="hint">Begrenzt, wie schnell der Zielwinkel erreicht wird.</p>
-      </div>
     </section>
     <section class="settings-section" id="steeringCalibration">
       <h2>Servo-Kalibrierung</h2>
@@ -432,7 +424,6 @@
     const steeringMid = document.getElementById('steeringMid');
     const steeringRight = document.getElementById('steeringRight');
     const steeringInputs = [steeringLeft, steeringMid, steeringRight].filter((input) => input);
-    const steeringRate = document.getElementById('steeringRate');
     const steeringPulseLeft = document.getElementById('steeringPulseLeft');
     const steeringPulseMid = document.getElementById('steeringPulseMid');
     const steeringPulseRight = document.getElementById('steeringPulseRight');
@@ -449,7 +440,6 @@
     let motorConfig = null;
     let steeringConfig = null;
     let steeringPulseConfig = null;
-    let steeringRateConfig = null;
     let headConfig = null;
     let gpioConfig = null;
     let gpioPinMin = 0;
@@ -696,43 +686,6 @@
       applySteeringInputs(steeringConfig.values);
     };
 
-    const clampSteeringRateValue = (rawValue) => {
-      if (!steeringRateConfig) {
-        return null;
-      }
-      if (rawValue === undefined || rawValue === null) {
-        return null;
-      }
-      let candidate = rawValue;
-      if (typeof candidate === 'string') {
-        candidate = candidate.trim();
-        if (candidate === '') {
-          return null;
-        }
-        candidate = candidate.replace(',', '.');
-      }
-      const { min, max, step } = steeringRateConfig;
-      return quantizeAngle(candidate, min, max, step);
-    };
-
-    const applySteeringRateInput = (value) => {
-      if (!steeringRateConfig || !steeringRate) {
-        return;
-      }
-      const precision = steeringRateConfig.precision ?? 0;
-      steeringRate.value = formatAngleInput(value, precision);
-    };
-
-    const revertSteeringRateInput = () => {
-      if (!steeringRateConfig || !Number.isFinite(steeringRateConfig.value)) {
-        if (steeringRate) {
-          steeringRate.value = '';
-        }
-        return;
-      }
-      applySteeringRateInput(steeringRateConfig.value);
-    };
-
     const applySteeringPulseInputs = (values) => {
       if (!steeringPulseConfig) {
         return;
@@ -821,54 +774,6 @@
         return null;
       }
       return { left, mid, right };
-    };
-
-    const getCurrentSteeringRate = () => {
-      if (!steeringRateConfig || !steeringRate) {
-        return null;
-      }
-      const value = clampSteeringRateValue(steeringRate.value);
-      return Number.isFinite(value) ? value : null;
-    };
-
-    const syncSteeringRate = (info) => {
-      if (!steeringRate) {
-        return null;
-      }
-      const rate = Number.parseFloat(info?.rate_deg_s);
-      if (!Number.isFinite(rate)) {
-        steeringRateConfig = null;
-        steeringRate.disabled = true;
-        steeringRate.value = '';
-        return null;
-      }
-      const minCandidate = Number.parseFloat(info?.min);
-      const maxCandidate = Number.parseFloat(info?.max);
-      const stepCandidate = Number.parseFloat(info?.step);
-      const min = Number.isFinite(minCandidate) ? minCandidate : 10;
-      const max = Number.isFinite(maxCandidate) ? maxCandidate : 600;
-      const step = Number.isFinite(stepCandidate) && stepCandidate > 0 ? stepCandidate : 5;
-      const precision = determineAnglePrecision(step);
-      const quantized = quantizeAngle(rate, min, max, step);
-      if (quantized === null) {
-        steeringRateConfig = null;
-        steeringRate.disabled = true;
-        steeringRate.value = '';
-        return null;
-      }
-      steeringRateConfig = {
-        min,
-        max,
-        step,
-        precision,
-        value: quantized,
-      };
-      steeringRate.disabled = false;
-      steeringRate.min = String(min);
-      steeringRate.max = String(max);
-      steeringRate.step = String(step);
-      applySteeringRateInput(quantized);
-      return quantized;
     };
 
     const syncSteeringPulses = (info) => {
@@ -1403,7 +1308,6 @@
         const data = await resp.json();
         syncMotorLimits(data.motor_limits);
         syncSteeringAngles(data.steering_angles);
-        syncSteeringRate(data.steering_config);
         syncSteeringPulses(data.steering_pulses);
         syncHeadAngles(data.head_angles);
         const updated = syncGpioSettings(data.gpio);
@@ -1429,7 +1333,6 @@
         const data = await resp.json();
         const motorValues = syncMotorLimits(data.motor_limits);
         const steeringValues = syncSteeringAngles(data.steering_angles);
-        const steeringRateValue = syncSteeringRate(data.steering_config);
         const steeringPulseValues = syncSteeringPulses(data.steering_pulses);
         const headValues = syncHeadAngles(data.head_angles);
         const gpioValues = syncGpioSettings(data.gpio);
@@ -1439,9 +1342,6 @@
         }
         if (steeringValues) {
           loadedSections.push('Lenkwinkel');
-        }
-        if (steeringRateValue !== null) {
-          loadedSections.push('Lenkgeschwindigkeit');
         }
         if (steeringPulseValues) {
           loadedSections.push('Servo-Kalibrierung');
@@ -1463,7 +1363,6 @@
         setStatus('Erweiterte Einstellungen konnten nicht geladen werden.', 'error');
         syncMotorLimits(null);
         syncSteeringAngles(null);
-        syncSteeringRate(null);
         syncSteeringPulses(null);
         syncHeadAngles(null);
         syncGpioSettings(null);
@@ -1486,7 +1385,6 @@
         }
         const data = await resp.json();
         syncSteeringAngles(data.steering_angles);
-        syncSteeringRate(data.steering_config);
         syncSteeringPulses(data.steering_pulses);
         syncHeadAngles(data.head_angles);
         syncGpioSettings(data.gpio);
@@ -1518,7 +1416,6 @@
         }
         const data = await resp.json();
         const updated = syncSteeringAngles(data.steering_angles);
-        syncSteeringRate(data.steering_config);
         syncSteeringPulses(data.steering_pulses);
         syncMotorLimits(data.motor_limits);
         syncHeadAngles(data.head_angles);
@@ -1532,40 +1429,6 @@
         console.error('Speichern der Lenkwinkel fehlgeschlagen', err);
         revertSteeringInputs();
         setStatus('Lenkwinkel konnten nicht gespeichert werden.', 'error');
-      }
-    }
-
-    async function saveSteeringRate(value) {
-      if (!Number.isFinite(value)) {
-        return;
-      }
-      try {
-        setStatus('Speichere Lenkgeschwindigkeit …');
-        const resp = await fetch('/api/control', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ steering_config: { rate_deg_s: value } })
-        });
-        if (!resp.ok) {
-          throw new Error(`Status ${resp.status}`);
-        }
-        const data = await resp.json();
-        syncMotorLimits(data.motor_limits);
-        const updated = syncSteeringRate(data.steering_config);
-        syncSteeringAngles(data.steering_angles);
-        syncSteeringPulses(data.steering_pulses);
-        syncHeadAngles(data.head_angles);
-        syncGpioSettings(data.gpio);
-        if (updated !== null) {
-          setStatus('Lenkgeschwindigkeit gespeichert.', 'success');
-        } else {
-          revertSteeringRateInput();
-          setStatus('Lenkgeschwindigkeit konnte nicht gespeichert werden.', 'error');
-        }
-      } catch (err) {
-        console.error('Speichern der Lenkgeschwindigkeit fehlgeschlagen', err);
-        revertSteeringRateInput();
-        setStatus('Lenkgeschwindigkeit konnte nicht gespeichert werden.', 'error');
       }
     }
 
@@ -1585,7 +1448,6 @@
         }
         const data = await resp.json();
         syncMotorLimits(data.motor_limits);
-        syncSteeringRate(data.steering_config);
         const updated = syncSteeringPulses(data.steering_pulses);
         syncSteeringAngles(data.steering_angles);
         syncHeadAngles(data.head_angles);
@@ -1620,7 +1482,6 @@
         const updated = syncHeadAngles(data.head_angles);
         syncMotorLimits(data.motor_limits);
         syncSteeringAngles(data.steering_angles);
-        syncSteeringRate(data.steering_config);
         syncSteeringPulses(data.steering_pulses);
         syncGpioSettings(data.gpio);
         if (updated) {
@@ -1640,11 +1501,6 @@
         input.disabled = true;
         input.value = '';
       });
-    }
-
-    if (steeringRate) {
-      steeringRate.disabled = true;
-      steeringRate.value = '';
     }
 
     if (steeringPulseInputs.length > 0) {
@@ -1725,55 +1581,6 @@
         motorReverse.value = String(Math.round(values.reverse * 100));
         motorReverseValue.textContent = formatMotorPercent(values.reverse);
         saveMotorLimits(values.forward, values.reverse);
-      });
-    }
-
-    if (steeringRate) {
-      steeringRate.addEventListener('input', () => {
-        if (!steeringRateConfig) {
-          return;
-        }
-        const raw = steeringRate.value;
-        if (raw === undefined || raw === null) {
-          return;
-        }
-        const normalized = String(raw).trim();
-        if (
-          normalized === '' ||
-          normalized.endsWith('.') ||
-          normalized.endsWith(',') ||
-          normalized === '-' ||
-          normalized === '+'
-        ) {
-          return;
-        }
-        const value = clampSteeringRateValue(normalized);
-        if (value === null) {
-          return;
-        }
-        const precision = steeringRateConfig.precision ?? 0;
-        const formatted = formatAngleInput(value, precision);
-        if (formatted !== raw) {
-          steeringRate.value = formatted;
-        }
-      });
-      steeringRate.addEventListener('change', () => {
-        const value = getCurrentSteeringRate();
-        if (value === null) {
-          setStatus('Ungültige Lenkgeschwindigkeit. Bitte Wert prüfen.', 'error');
-          revertSteeringRateInput();
-          return;
-        }
-        if (
-          steeringRateConfig &&
-          Number.isFinite(steeringRateConfig.value) &&
-          value === steeringRateConfig.value
-        ) {
-          applySteeringRateInput(steeringRateConfig.value);
-          return;
-        }
-        applySteeringRateInput(value);
-        saveSteeringRate(value);
       });
     }
 
