@@ -498,7 +498,7 @@ def _persist_state(payload):
         STATE_DIR.mkdir(parents=True, exist_ok=True)
         tmp_path = SETTINGS_FILE.with_suffix(".tmp")
         with tmp_path.open("w", encoding="utf-8") as fh:
-            json.dump(payload, fh)
+            json.dump(payload, fh, ensure_ascii=False, indent=2)
         os.replace(tmp_path, SETTINGS_FILE)
         return True
     except (OSError, IOError) as e:
