@@ -92,9 +92,9 @@ US_MIN               = 600
 US_MAX               = 2400
 SERVO_RANGE_DEG      = 270.0
 
-MID_DEG              = 150.0
+MID_DEG              = 135.0
 LEFT_MAX_DEG         = 100.0
-RIGHT_MAX_DEG        = 200.0
+RIGHT_MAX_DEG        = 185.0
 STEERING_STEP_DEG    = 0.5
 
 # Standard-Lenkwinkel als Dictionary für Persistenz/Defaults
@@ -164,9 +164,9 @@ MOTOR_DIR_SWITCH_PAUSE_S = 0.015
 # ---- Servo 2 (Kopf per D-Pad, LATCHEND) ----
 GPIO_PIN_HEAD_DEFAULT = 24
 GPIO_PIN_HEAD        = GPIO_PIN_HEAD_DEFAULT
-HEAD_LEFT_DEG        = 30.0
+HEAD_LEFT_DEG        = 70.0
 HEAD_CENTER_DEG      = 90.0
-HEAD_RIGHT_DEG       = 150.0
+HEAD_RIGHT_DEG       = 110.0
 HEAD_STEP_DEG        = 0.5
 HEAD_SMOOTH_A        = 0.8
 HEAD_RATE_DEG_S      = 60.0
