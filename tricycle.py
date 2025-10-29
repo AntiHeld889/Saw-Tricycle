@@ -469,11 +469,11 @@ def _default_state_dir():
     env_path = os.environ.get("SAW_TRICYCLE_STATE_DIR")
     if env_path:
         return Path(env_path)
-    return Path("/opt/configs/saw-tricycle")
+    return Path("/opt/configs")
 
 
 STATE_DIR = _default_state_dir()
-SETTINGS_FILE = STATE_DIR / "settings.json"
+SETTINGS_FILE = STATE_DIR / "saw-tricycle-settings.json"
 
 
 def _load_persisted_state():
