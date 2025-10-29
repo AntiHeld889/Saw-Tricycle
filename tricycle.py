@@ -58,8 +58,8 @@ BUTTON_LAYOUT_BASE = [
 ]
 
 BUTTON_LAYOUT_TRIGGER = [
-    ("ABS_Z", "Linker Trigger"),
-    ("ABS_RZ", "Rechter Trigger"),
+    ("ABS_Z", "L2 Button"),
+    ("ABS_RZ", "R2 Button"),
 ]
 
 BUTTON_LAYOUT_ALL = BUTTON_LAYOUT_BASE + BUTTON_LAYOUT_TRIGGER
