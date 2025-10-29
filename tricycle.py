@@ -225,7 +225,11 @@ from urllib.parse import parse_qs, urlparse
 try:
     import board  # type: ignore
     import adafruit_ina260  # type: ignore
-except Exception:  # pragma: no cover - optional dependency
+except (ImportError, ModuleNotFoundError):  # pragma: no cover - optional dependency
+    board = None  # type: ignore
+    adafruit_ina260 = None  # type: ignore
+except Exception as e:
+    print(f"[Import] Warnung: Unerwarteter Fehler beim Import von board/adafruit_ina260: {e}", file=sys.stderr)
     board = None  # type: ignore
     adafruit_ina260 = None  # type: ignore
 
@@ -270,7 +274,11 @@ def _list_aplay_playback_devices(timeout=2.0):
         )
     except FileNotFoundError:
         return []
-    except Exception:
+    except subprocess.TimeoutExpired:
+        print("[Audio] Warnung: aplay -l timeout", file=sys.stderr)
+        return []
+    except (OSError, subprocess.SubprocessError) as e:
+        print(f"[Audio] Fehler beim Auflisten der Audio-Geräte: {e}", file=sys.stderr)
         return []
     output = completed.stdout or ""
     devices = []
@@ -308,7 +316,11 @@ def _list_amixer_simple_controls(card_index, timeout=2.0):
         )
     except (FileNotFoundError, ValueError):
         return ()
-    except Exception:
+    except subprocess.TimeoutExpired:
+        print(f"[Audio] Warnung: amixer timeout für Card {card_index}", file=sys.stderr)
+        return ()
+    except (OSError, subprocess.SubprocessError) as e:
+        print(f"[Audio] Fehler beim Auflisten der Mixer-Controls: {e}", file=sys.stderr)
         return ()
     output = completed.stdout or ""
     controls = []
@@ -481,7 +493,11 @@ def _load_persisted_state():
             data = json.load(fh)
     except FileNotFoundError:
         return {}
-    except Exception:
+    except json.JSONDecodeError as e:
+        print(f"[Config] Warnung: Ungültiges JSON in {SETTINGS_FILE}: {e}", file=sys.stderr)
+        return {}
+    except (OSError, IOError) as e:
+        print(f"[Config] Fehler beim Laden der Einstellungen: {e}", file=sys.stderr)
         return {}
     if isinstance(data, dict):
         return data
@@ -496,7 +512,11 @@ def _persist_state(payload):
             json.dump(payload, fh)
         os.replace(tmp_path, SETTINGS_FILE)
         return True
-    except Exception:
+    except (OSError, IOError) as e:
+        print(f"[Config] Fehler beim Speichern der Einstellungen: {e}", file=sys.stderr)
+        return False
+    except (TypeError, ValueError) as e:
+        print(f"[Config] Fehler beim JSON-Serialisieren: {e}", file=sys.stderr)
         return False
 
 
@@ -671,7 +691,8 @@ def sanitize_sound_directory(path):
         return None
     try:
         raw = str(path).strip()
-    except Exception:
+    except (TypeError, ValueError, AttributeError) as e:
+        print(f"[Config] Fehler bei Sound-Directory-Konvertierung: {e}", file=sys.stderr)
         return None
     if not raw:
         return None
@@ -688,16 +709,19 @@ def sanitize_uploaded_mp3_filename(filename):
     except (TypeError, ValueError, AttributeError):
         try:
             raw_candidate = str(filename)
-        except Exception:
+        except (TypeError, ValueError) as e:
+            print(f"[Upload] Fehler bei Dateinamen-Konvertierung: {e}", file=sys.stderr)
             return None
     if isinstance(raw_candidate, bytes):
         try:
             raw_candidate = os.fsdecode(raw_candidate)
-        except Exception:
+        except (UnicodeDecodeError, ValueError) as e:
+            print(f"[Upload] Fehler beim Dekodieren des Dateinamens: {e}", file=sys.stderr)
             return None
     try:
         raw_name = os.path.basename(str(raw_candidate))
-    except Exception:
+    except (TypeError, ValueError) as e:
+        print(f"[Upload] Fehler bei Basename-Extraktion: {e}", file=sys.stderr)
         return None
     raw_name = raw_name.replace("\\", "/")
     raw_name = os.path.basename(raw_name)
@@ -777,7 +801,8 @@ def sanitize_camera_port(value):
     else:
         try:
             raw = str(value).strip()
-        except Exception:
+        except (TypeError, ValueError, AttributeError) as e:
+            print(f"[Config] Fehler bei Camera-Port-Konvertierung: {e}", file=sys.stderr)
             return None
         if not raw:
             return None
@@ -821,7 +846,8 @@ def sanitize_light_url(value, *, allowed_schemes=("http", "https")):
         return None
     try:
         raw = str(value).strip()
-    except Exception:
+    except (TypeError, ValueError, AttributeError) as e:
+        print(f"[Config] Fehler bei Light-URL-Konvertierung: {e}", file=sys.stderr)
         return None
     if not raw:
         return None
@@ -832,7 +858,8 @@ def sanitize_light_url(value, *, allowed_schemes=("http", "https")):
         normalized = f"http://{normalized}"
     try:
         parsed = urlparse(normalized)
-    except Exception:
+    except (ValueError, AttributeError) as e:
+        print(f"[Config] Fehler beim Parsen der Light-URL: {e}", file=sys.stderr)
         return None
     scheme = (parsed.scheme or "").lower()
     if scheme not in allowed_schemes:
@@ -848,7 +875,8 @@ def sanitize_disconnect_command(value, *, max_length=1024):
         return None
     try:
         raw = str(value)
-    except Exception:
+    except (TypeError, ValueError, AttributeError) as e:
+        print(f"[Config] Fehler bei Disconnect-Command-Konvertierung: {e}", file=sys.stderr)
         return None
     cleaned = raw.replace("\r", " ").replace("\n", " ")
     trimmed = cleaned.strip()
@@ -864,7 +892,8 @@ def sanitize_sounds(name, available_files=None):
         return None
     try:
         raw = os.path.basename(str(name).strip())
-    except Exception:
+    except (TypeError, ValueError, AttributeError) as e:
+        print(f"[Config] Fehler bei Sound-Namen-Konvertierung: {e}", file=sys.stderr)
         return None
     if not raw:
         return None
@@ -881,7 +910,8 @@ def sanitize_button_command(command):
         return None
     try:
         raw = str(command)
-    except Exception:
+    except (TypeError, ValueError, AttributeError) as e:
+        print(f"[Config] Fehler bei Button-Command-Konvertierung: {e}", file=sys.stderr)
         return None
     trimmed = raw.strip()
     return trimmed or None
@@ -892,7 +922,7 @@ def sanitize_button_action(code, value, available_files=None):
         return None
     try:
         code_str = str(code)
-    except Exception:
+    except (TypeError, ValueError, AttributeError):
         return None
     if code_str not in BUTTON_CODE_SET:
         return None
@@ -929,7 +959,8 @@ def normalize_button_actions_map(raw_map, available_files=None):
     for key, value in raw_map.items():
         try:
             code = str(key)
-        except Exception:
+        except (TypeError, ValueError, AttributeError):
+            # Ungültiger Key, überspringen
             continue
         if code not in BUTTON_CODE_SET:
             continue
@@ -942,7 +973,8 @@ def normalize_button_actions_map(raw_map, available_files=None):
 def list_mp3_files(directory):
     try:
         path = Path(directory)
-    except Exception:
+    except (TypeError, ValueError, OSError) as e:
+        print(f"[Sound] Fehler bei Pfad-Konvertierung: {e}", file=sys.stderr)
         return []
     try:
         if not path.is_dir():
@@ -954,7 +986,8 @@ def list_mp3_files(directory):
                 if entry.is_file() and entry.name.lower().endswith(".mp3")
             ]
         return sorted(files, key=str.casefold)
-    except Exception:
+    except (OSError, PermissionError) as e:
+        print(f"[Sound] Fehler beim Lesen des Sound-Verzeichnisses: {e}", file=sys.stderr)
         return []
 
 
@@ -1576,12 +1609,12 @@ class BatteryMonitor:
             try:
                 # Höhere Mittelung sorgt für ein ruhigeres Signal.
                 self._sensor.average_count = adafruit_ina260.AveragingCount.COUNT_16  # type: ignore[attr-defined]
-            except Exception:
-                pass
+            except (OSError, RuntimeError, AttributeError) as e:
+                print(f"[Battery] Warnung: Konnte AveragingCount nicht setzen: {e}", file=sys.stderr)
             try:
                 self._sensor.mode = adafruit_ina260.Mode.CONTINUOUS  # type: ignore[attr-defined]
-            except Exception:
-                pass
+            except (OSError, RuntimeError, AttributeError) as e:
+                print(f"[Battery] Warnung: Konnte Sensor-Modus nicht setzen: {e}", file=sys.stderr)
         except Exception as exc:
             print(f"[BatteryMonitor] INA260 konnte nicht initialisiert werden: {exc}", file=sys.stderr)
             self._state["status"] = "error"
@@ -1625,7 +1658,8 @@ class BatteryMonitor:
                 power_w = None
                 try:
                     power_raw = float(self._sensor.power)  # type: ignore[attr-defined]
-                except Exception:
+                except (AttributeError, ValueError, TypeError):
+                    # Sensor unterstützt kein Power-Reading oder Wert ungültig
                     power_raw = None
                 if power_raw is not None and math.isfinite(power_raw):
                     # Laut Datenblatt liefert der INA260 die Leistung in Milliwatt.
@@ -1678,11 +1712,18 @@ class BatteryMonitor:
         if self._thread and self._thread.is_alive():
             self._thread.join(timeout=0.2)
         # I2C-Verbindung schließen, falls möglich
-        if self._i2c and hasattr(self._i2c, 'deinit'):
+        if self._i2c:
             try:
-                self._i2c.deinit()
-            except Exception:
-                pass
+                if hasattr(self._i2c, 'deinit'):
+                    self._i2c.deinit()
+            except (OSError, RuntimeError, AttributeError) as e:
+                # OSError: I2C-Bus-Fehler
+                # RuntimeError: Gerät bereits geschlossen oder nicht verfügbar
+                # AttributeError: Ungültiges I2C-Objekt
+                print(f"[Battery] Warnung: I2C-Cleanup fehlgeschlagen: {e}", file=sys.stderr)
+            except Exception as e:
+                # Unerwartete Fehler loggen aber nicht crashen
+                print(f"[Battery] Unerwarteter Fehler beim I2C-Cleanup: {e}", file=sys.stderr)
         self._i2c = None
         self._sensor = None
 
@@ -1921,7 +1962,8 @@ class WebControlState:
         for key, value in updates.items():
             try:
                 code = str(key)
-            except Exception:
+            except (TypeError, ValueError, AttributeError):
+                # Ungültiger Key
                 continue
             if code not in BUTTON_CODE_SET:
                 continue
@@ -1946,7 +1988,7 @@ class WebControlState:
             return None
         try:
             requested = str(filename)
-        except Exception:
+        except (TypeError, ValueError, AttributeError):
             return None
         with self._lock:
             directory = self._sound_directory
@@ -1960,7 +2002,8 @@ class WebControlState:
         try:
             base_dir = os.path.realpath(directory)
             resolved = os.path.realpath(candidate)
-        except Exception:
+        except (OSError, ValueError):
+            # Pfad-Auflösung fehlgeschlagen
             return None
         if not resolved.startswith(base_dir + os.sep) and resolved != base_dir:
             return None
@@ -2293,7 +2336,8 @@ class WebControlState:
         if self._battery_monitor:
             try:
                 snapshot["battery"] = self._battery_monitor.get_state()
-            except Exception:
+            except (RuntimeError, AttributeError) as e:
+                print(f"[Battery] Fehler beim Abrufen des Battery-Status: {e}", file=sys.stderr)
                 snapshot["battery"] = {"status": "error"}
         return snapshot
 
@@ -2302,13 +2346,14 @@ class WebControlState:
             return None
         try:
             return self._battery_monitor.get_state()
-        except Exception:
+        except (RuntimeError, AttributeError) as e:
+            print(f"[Battery] Fehler beim Abrufen des Battery-Status: {e}", file=sys.stderr)
             return {"status": "error"}
 
     def get_button_action(self, code):
         try:
             code_str = str(code)
-        except Exception:
+        except (TypeError, ValueError, AttributeError):
             return None
         if code_str not in BUTTON_CODE_SET:
             return None
@@ -2463,7 +2508,8 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
                 },
                 keep_blank_values=True,
             )
-        except Exception:
+        except (ValueError, TypeError, OSError) as e:
+            print(f"[Upload] Fehler beim Parsen des Uploads: {e}", file=sys.stderr)
             self._write_json_response(
                 400,
                 {"status": "error", "message": "Upload konnte nicht verarbeitet werden."},
@@ -2496,7 +2542,8 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
             if file_item.file:
                 file_item.file.seek(0)
                 file_content = file_item.file.read()
-        except Exception:
+        except (OSError, IOError, AttributeError) as e:
+            print(f"[Upload] Fehler beim Lesen der hochgeladenen Datei: {e}", file=sys.stderr)
             file_content = b""
         if not file_content:
             self._write_json_response(
@@ -2783,8 +2830,10 @@ def run_audio_setup(commands):
     for cmd in commands or []:
         try:
             subprocess.run(cmd, check=False, timeout=AUDIO_ROUTE_TIMEOUT)
-        except Exception:
-            pass
+        except (FileNotFoundError, OSError) as e:
+            print(f"[Audio] Audio-Setup-Command fehlgeschlagen: {e}", file=sys.stderr)
+        except subprocess.TimeoutExpired:
+            print(f"[Audio] Audio-Setup-Command timeout", file=sys.stderr)
 
 
 def apply_audio_output(audio_id):
@@ -2806,7 +2855,11 @@ def apply_audio_volume(audio_id, volume):
     try:
         subprocess.run(command, check=False, timeout=AUDIO_ROUTE_TIMEOUT)
         return True
-    except Exception:
+    except (FileNotFoundError, OSError) as e:
+        print(f"[Audio] Volume-Command fehlgeschlagen: {e}", file=sys.stderr)
+        return False
+    except subprocess.TimeoutExpired:
+        print(f"[Audio] Volume-Command timeout", file=sys.stderr)
         return False
 
 def _start_player_async(path, alsa_dev=DEFAULT_ALSA_DEVICE):
@@ -2824,7 +2877,8 @@ def _start_player_async(path, alsa_dev=DEFAULT_ALSA_DEVICE):
             return proc, cmd[0]
         except FileNotFoundError:
             continue
-        except Exception:
+        except (OSError, subprocess.SubprocessError) as e:
+            print(f"[Audio] Fehler beim Starten von {cmd[0]}: {e}", file=sys.stderr)
             continue
     print("Kein Player gefunden (mpg123/ffplay). Installiere: sudo apt-get install mpg123 ffmpeg", file=sys.stderr)
     return None, None
@@ -2838,10 +2892,14 @@ def stop_current_sound():
             CURRENT_PLAYER_PROC.terminate()
             try:
                 CURRENT_PLAYER_PROC.wait(timeout=0.4)
-            except Exception:
+            except subprocess.TimeoutExpired:
                 CURRENT_PLAYER_PROC.kill()
-        except Exception:
-            pass
+                try:
+                    CURRENT_PLAYER_PROC.wait(timeout=0.2)
+                except subprocess.TimeoutExpired:
+                    print("[Audio] Warnung: Player konnte nicht gestoppt werden", file=sys.stderr)
+        except (OSError, AttributeError) as e:
+            print(f"[Audio] Fehler beim Stoppen des Players: {e}", file=sys.stderr)
         CURRENT_PLAYER_PROC = None
         CURRENT_PLAYER_PATH = None
 
@@ -2859,10 +2917,27 @@ def play_sound_switch(path, alsa_dev=DEFAULT_ALSA_DEVICE, restart_if_same=None):
         # Falls ein alter Player-Prozess schon beendet ist, aufräumen
         try:
             if CURRENT_PLAYER_PROC is not None:
-                if CURRENT_PLAYER_PROC.poll() is not None:  # schon exit?
+                returncode = CURRENT_PLAYER_PROC.poll()
+                if returncode is not None:  # schon exit?
+                    try:
+                        # Ordentliches Cleanup des Prozesses
+                        CURRENT_PLAYER_PROC.wait(timeout=0.1)
+                    except subprocess.TimeoutExpired:
+                        pass  # Sollte nicht passieren nach poll(), aber sicher ist sicher
                     CURRENT_PLAYER_PROC = None
                     CURRENT_PLAYER_PATH = None
-        except Exception:
+        except subprocess.TimeoutExpired:
+            # Prozess hängt noch
+            pass
+        except (OSError, AttributeError) as e:
+            # OSError: Prozess-Interaktion fehlgeschlagen
+            # AttributeError: CURRENT_PLAYER_PROC ist korrupt
+            print(f"[Audio] Fehler beim Player-Cleanup: {e}", file=sys.stderr)
+            if CURRENT_PLAYER_PROC:
+                try:
+                    CURRENT_PLAYER_PROC.kill()
+                except (OSError, AttributeError):
+                    pass
             CURRENT_PLAYER_PROC = None
             CURRENT_PLAYER_PATH = None
 
@@ -2880,10 +2955,15 @@ def play_sound_switch(path, alsa_dev=DEFAULT_ALSA_DEVICE, restart_if_same=None):
                 CURRENT_PLAYER_PROC.terminate()
                 try:
                     CURRENT_PLAYER_PROC.wait(timeout=0.4)
-                except Exception:
+                except subprocess.TimeoutExpired:
+                    # Prozess reagiert nicht auf SIGTERM, forciere SIGKILL
                     CURRENT_PLAYER_PROC.kill()
-            except Exception:
-                pass
+                    try:
+                        CURRENT_PLAYER_PROC.wait(timeout=0.2)
+                    except subprocess.TimeoutExpired:
+                        print("[Audio] Warnung: Player-Prozess konnte nicht beendet werden", file=sys.stderr)
+            except (OSError, AttributeError) as e:
+                print(f"[Audio] Fehler beim Stoppen des Players: {e}", file=sys.stderr)
             CURRENT_PLAYER_PROC = None
             CURRENT_PLAYER_PATH = None
 
@@ -3522,8 +3602,8 @@ def main():
                 print("Gamepad getrennt – warte auf erneute Verbindung …")
                 try:
                     dev.close()
-                except Exception:
-                    pass
+                except (OSError, AttributeError) as e:
+                    print(f"[Gamepad] Fehler beim Schließen des Gamepad-Devices: {e}", file=sys.stderr)
                 set_motor(pi, 0.0)
                 pi.set_servo_pulsewidth(GPIO_PIN_SERVO, deg_to_us_lenkung(MID_DEG))
                 pi.set_servo_pulsewidth(GPIO_PIN_HEAD, deg_to_us_unclamped(HEAD_CENTER_DEG))
@@ -3541,19 +3621,19 @@ def main():
             pi.set_servo_pulsewidth(GPIO_PIN_SERVO, 0)
             pi.set_servo_pulsewidth(GPIO_PIN_HEAD, 0)
             set_motor(pi, 0.0)
-        except Exception:
-            pass
+        except (OSError, AttributeError) as e:
+            print(f"[Cleanup] Fehler beim Freigeben von Servo/Motor: {e}", file=sys.stderr)
         stop_current_sound()
         pi.stop()
         try:
             web_server.shutdown()
             web_server.server_close()
-        except Exception:
-            pass
+        except (OSError, AttributeError) as e:
+            print(f"[Cleanup] Fehler beim Beenden des Web-Servers: {e}", file=sys.stderr)
         try:
             battery_monitor.stop()
-        except Exception:
-            pass
+        except (RuntimeError, AttributeError) as e:
+            print(f"[Cleanup] Fehler beim Beenden des Battery-Monitors: {e}", file=sys.stderr)
 
 
 if __name__ == "__main__":
