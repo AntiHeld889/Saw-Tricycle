@@ -480,7 +480,7 @@ def _default_state_dir():
     env_path = os.environ.get("SAW_TRICYCLE_STATE_DIR")
     if env_path:
         return Path(env_path)
-    return Path.home() / ".config" / "saw-tricycle"
+    return Path("/opt/configs/saw-tricycle")
 
 
 STATE_DIR = _default_state_dir()
