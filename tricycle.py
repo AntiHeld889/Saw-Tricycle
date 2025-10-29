@@ -48,8 +48,8 @@ BUTTON_LAYOUT_BASE = [
     ("KEY_305", "B Button"),
     ("KEY_307", "X Button"),
     ("KEY_308", "Y Button"),
-    ("KEY_310", "LB Button"),
-    ("KEY_311", "RB Button"),
+    ("KEY_310", "L1 Button"),
+    ("KEY_311", "R1 Button"),
     ("KEY_314", "Minus Button"),
     ("KEY_315", "Plus Button"),
     ("KEY_316", "Stern Button"),
@@ -58,8 +58,8 @@ BUTTON_LAYOUT_BASE = [
 ]
 
 BUTTON_LAYOUT_TRIGGER = [
-    ("ABS_Z", "Linker Trigger"),
-    ("ABS_RZ", "Rechter Trigger"),
+    ("ABS_Z", "L2 Button"),
+    ("ABS_RZ", "R2 Button"),
 ]
 
 BUTTON_LAYOUT_ALL = BUTTON_LAYOUT_BASE + BUTTON_LAYOUT_TRIGGER
