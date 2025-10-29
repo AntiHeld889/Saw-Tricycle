@@ -111,25 +111,8 @@ else:
 
 ---
 
-### Bug #4: Division durch Null in Servo-Kalibrierung
-**Location:** `tricycle.py:2747-2748, 2754-2755`
-**Severity:** KRITISCH
-**Typ:** Runtime Error
-
-```python
-denom = MID_DEG - LEFT_MAX_DEG
-if denom <= 0:
-    pulse = STEERING_MID_US
-else:
-    ratio = (d - LEFT_MAX_DEG) / denom  # Kann bei denom=0.0 fehlschlagen
-```
-
-**Problem:**
-Der Check `denom <= 0` ist korrekt, aber bei exakt `denom == 0.0` (Floating-Point) könnte theoretisch die Division erreicht werden.
-
-**Status:** ✅ Bereits korrekt gehandhabt durch den if-Check
-
-**Empfehlung:** Code ist korrekt, aber Dokumentation wäre hilfreich
+### Bug #4: Division durch Null in Servo-Kalibrierung ✅ ENTFÄLLT
+**Hinweis:** Die Servo-Kalibrierung wurde vollständig entfernt. Der zuvor analysierte Code existiert nicht mehr, daher entfällt das Risiko.
 
 ---
 
@@ -196,7 +179,6 @@ Die globalen Konfigurationsvariablen werden beim Schreiben mit `_config_lock` ge
 - `GPIO_PIN_SERVO`, `GPIO_PIN_HEAD`
 - `MOTOR_DRIVER_CHANNELS`
 - `LEFT_MAX_DEG`, `MID_DEG`, `RIGHT_MAX_DEG`
-- `STEERING_LEFT_US`, `STEERING_MID_US`, `STEERING_RIGHT_US`
 
 **Risiko:**
 "Torn reads" - der Gamepad-Thread liest z.B. neues `LEFT_MAX_DEG` aber altes `MID_DEG`
